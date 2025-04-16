@@ -1,9 +1,10 @@
 {
-    "name": "BufferUtils",
-    "version": "0.1.0",
-    "entry": "src/buffer_utils.mbti",
-    "description": "A high-performance buffer utility library for MoonBit.",
-    "authors": ["ZSeanYves"],
-    "license": "Apache-2.0"
-  }
-  
+  "name": "ZSeanYves/bufferutils",
+  "version": "0.1.0",
+  "readme": "README.md",
+  "repository": "",
+  "license": "Apache-2.0",
+  "keywords": [],
+  "description": "A high-performance buffer utility library for MoonBit.",
+  "source": "src"
+}
