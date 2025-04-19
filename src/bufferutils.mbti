@@ -1,0 +1,80 @@
+package ZSeanYves/bufferutils/lib
+
+// ========== 公共构造函数 ==========
+
+fn write(data: Array[Byte], cap: Int) 
+  -> Array[Byte]!BufferOverflowError | FlushError | InvalidCapacityError
+
+fn copy_bytes(data: Bytes) 
+  -> Array[Byte]!BufferUnderflowError | BufferOverflowError | FlushError | InvalidCapacityError
+
+
+
+// ========== 错误类型定义 ==========
+
+/// 缓冲读取失败：读取位置已到结尾或为空
+type BufferUnderflowError String derive(Show)
+impl show for BufferUnderflowError
+
+/// 缓冲写入失败：尝试写入超出最大容量
+type BufferOverflowError String derive(Show)
+impl show for BufferOverflowError
+
+/// 初始化失败：指定的缓冲区容量无效或为负
+type InvalidCapacityError String derive(Show)
+impl show for InvalidCapacityError
+
+/// 刷新失败：尝试将缓冲数据输出时发生未知错误
+type FlushError String derive(Show)
+impl show for FlushError
+
+// ========== 类型定义 ==========
+
+/// 缓冲读取器结构体
+pub struct BufferReader {
+  buf: Bytes
+  mut pos: Int
+}
+
+impl BufferReader {
+  fn new_reader(buf: Bytes) -> BufferReader
+  read_byte(Self) -> Byte!BufferUnderflowError
+  peek(Self) -> Byte!BufferUnderflowError
+  skip(Self, Int) -> Unit
+  is_empty(Self) -> Bool
+  remaining(Self) -> Int
+  reader_rewind(Self) -> Unit
+  reader_buffer(Self) -> Array[Byte]
+}
+
+/// 缓冲写入器结构体
+pub struct BufferWriter {
+  mut buf: Array[Byte]
+  mut pos: Int
+  capacity: Int
+}
+
+impl BufferWriter {
+  fn new_writer(cap~ : Int = ..) -> BufferWriter
+  write_byte(Self, Byte) -> Unit!BufferOverflowError
+  write_all(Self, Array[Byte]) -> Unit!BufferOverflowError
+  flush(Self) -> Array[Byte]!FlushError
+  clear(Self) -> Unit
+  writer_rewind(Self) -> Unit
+  writer_remaining(Self) -> Int
+}
+
+
+
+// ========== Trait 接口定义 ==========
+
+/// 表示可读取单个字节的接口
+pub trait Readable {
+  pub fn read_byte(self) -> Int!
+}
+
+/// 表示可写入单个字节并支持刷新操作的接口
+pub trait Writable {
+  pub fn write_byte(self, byte: Int) -> Void!
+  pub fn flush(self) -> Void!
+}

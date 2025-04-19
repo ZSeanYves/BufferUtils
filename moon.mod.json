@@ -2,7 +2,7 @@
   "name": "ZSeanYves/bufferutils",
   "version": "0.1.0",
   "readme": "README.md",
-  "repository": "",
+  "repository": "https://github.com/ZSeanYves/BufferUtils.git",
   "license": "Apache-2.0",
   "keywords": [],
   "description": "A high-performance buffer utility library for MoonBit.",

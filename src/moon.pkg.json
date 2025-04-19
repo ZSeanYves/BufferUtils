@@ -1,5 +1,4 @@
 {
-  "import": [
-    "ZSeanYves/bufferutils/lib"
-  ]
+  "is-main": false,
+  "import": []
 }
