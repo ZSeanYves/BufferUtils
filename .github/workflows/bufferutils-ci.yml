@@ -1,0 +1,40 @@
+name: BufferUtils CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Build & Test BufferUtils
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Moonbit
+        uses: hustcer/setup-moonbit@v1
+
+      - name: Check Moonbit Version
+        run: |
+          moon version --all
+          moon update
+          moon install
+
+      - name: Run tests with coverage
+        run: |
+          moon test --enable-coverage
+
+      - name: Upload coverage report to Codecov
+        run: |
+          moon coverage report \
+            -f coveralls \
+            -o codecov_report.json \
+            --service-name github \
+            --service-job-id "$GITHUB_RUN_ID" \
+            --service-pull-request "${{ github.event.pull_request.number }}" \
+            --send-to codecov

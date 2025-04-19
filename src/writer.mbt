@@ -18,6 +18,7 @@ pub fn new_writer(cap: Int) -> BufferWriter!BufferError {
   writer
 }
 
+
 /// 写入一个字节到缓冲区
 /// 如果已满则抛出 BufferOverflowError
 pub fn write_byte(self: BufferWriter, b: Byte) -> Unit!BufferError {

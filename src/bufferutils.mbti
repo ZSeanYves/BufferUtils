@@ -1,13 +1,18 @@
 package ZSeanYves/bufferutils/lib
 
-// ========== 公共构造函数 ==========
+// ========== 最终实现函数 ==========
+// SAFE WRAPPER INTERFACES
+pub fn readBytes(Bytes) -> Array[Byte]
+pub fn readBytesArray(Array[Byte]) -> Array[Byte]
+pub fn readInts(Array[Int]) -> Array[Byte]
+pub fn readString(String) -> Array[Byte]
 
-fn write(data: Array[Byte], cap: Int) 
-  -> Array[Byte]!BufferOverflowError | FlushError | InvalidCapacityError
-
-fn copy_bytes(data: Bytes) 
-  -> Array[Byte]!BufferUnderflowError | BufferOverflowError | FlushError | InvalidCapacityError
-
+pub fn writeBytes(Bytes, cap~ : Int = ..) -> Array[Byte]
+pub fn writeBytesClear(Bytes, cap~ : Int = ..) -> Array[Byte]
+pub fn writeInt(Array[Int], cap~ : Int = ..) -> Array[Int]
+pub fn writeIntClear(Array[Int], cap~ : Int = ..) -> Array[Int]
+pub fn writeString(String, cap~ : Int = ..) -> Array[Byte]
+pub fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
 
 
 // ========== 错误类型定义 ==========
@@ -68,13 +73,3 @@ impl BufferWriter {
 
 // ========== Trait 接口定义 ==========
 
-/// 表示可读取单个字节的接口
-pub trait Readable {
-  pub fn read_byte(self) -> Int!
-}
-
-/// 表示可写入单个字节并支持刷新操作的接口
-pub trait Writable {
-  pub fn write_byte(self, byte: Int) -> Void!
-  pub fn flush(self) -> Void!
-}

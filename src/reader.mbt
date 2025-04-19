@@ -5,6 +5,7 @@ pub struct BufferReader {
   mut pos: Int      /// 当前读取位置（偏移量）
 }
 
+
 /// 创建一个新的 BufferReader
 /// 从给定的字节序列 Bytes 初始化
 pub fn new_reader(buf: Bytes) -> BufferReader {
@@ -13,6 +14,10 @@ pub fn new_reader(buf: Bytes) -> BufferReader {
     pos: 0
   }
   reader
+}
+
+pub fn to_bytes(arr: Array[Int]) -> Array[Byte] {
+  arr.map(fn(x) { x.to_byte() })
 }
 
 /// 从缓冲区中读取下一个字节，并将位置前移
