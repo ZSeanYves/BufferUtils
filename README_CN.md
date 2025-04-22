@@ -1,82 +1,98 @@
-# 📦 BufferUtils：一个为 MoonBit 构建的高性能缓冲库
+# 🎞 BufferUtils：MoonBit 的高性能缓冲库
 
 [English](https://github.com/ZSeanYves/BufferUtils/blob/main/README.md) | [简体中文](https://github.com/ZSeanYves/BufferUtils/blob/main/README_zh_CN.md)
 
-[![构建状态](https://img.shields.io/github/actions/workflow/status/ZSeanYves/BufferUtils/bufferutils-ci.yml)](https://github.com/ZSeanYves/BufferUtils/actions)
+[![构建状态](https://img.shields.io/github/actions/workflow/status/ZSeanYves/BufferUtils/bufferutils-ci.yml)](https://github.com/ZSeanYves/BufferUtils/actions)  
 [![许可证](https://img.shields.io/github/license/ZSeanYves/BufferUtils)](LICENSE)
 
-**BufferUtils** 是为 MoonBit 设计的高性能缓冲区工具库，灵感来自 Rust 的 `BufReader` 和 `BufWriter`。它支持高效、灵活、可组合的缓冲读取与写入，并具备完整的错误处理与多类型交互能力。
+**BufferUtils** 是一个为 [MoonBit](https://moonbitlang.com/) 构建的高性能缓冲工具库，灵感来自 Rust 的 `BufReader` 和 `BufWriter`，支持高效、灵活、可组合的缓冲读取和写入，并具备完整的错误处理和多类型兼容性。
 
 ---
 
-## 🚀 功能亮点
-- **缓冲读写**：流式 I/O，支持预览、跳过、重置、刷新和清空
-- **多类型交互**：支持 `Bytes`、`Array[Byte]`、`Array[Int]` 和 `String`
-- **动态容量管理**：自定义缓冲区容量
-- **零拷贝设计**：最大限度减少复制操作
-- **安全封装版本**：所有函数都有 `_safe` 版本以防止抛出异常
-- **统一错误处理**：通过 `BufferError` 枚举实现清晰的错误报告
+## 🚀 功能特色
+
+- **缓冲读写**：支持流式读取/写入，peek，skip，rewind，flush 和 clear 等操作
+- **多类型兼容**：支持二进制数据、文本数据，兼容 `Bytes`，`Array[Byte]`，`Array[Int]`，`String`
+- **动态容量管理**：可自定义缓冲区容量
+- **零拷贝优化**：尽可能减少不必要的数据复制
+- **统一错误管理**：使用枚举类 `BufferError` 实现清晰的错误处理机制
 
 ---
 
 ## 📦 安装方式
+
 ```bash
 moon add ZSeanYves/bufferutils
 ```
-或手动在 `moon.mod.json` 中添加：
+
+或在 `moon.mod.json` 中手动添加：
+
 ```json
 "import": ["ZSeanYves/bufferutils"]
 ```
 
 ---
 
-## 🔧 快速使用
+## 🔧 基本用法示例
 
-### 读取，写入字符串并刷新、清空
+### 写入、刷新
+
 ```moonbit
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit")
-// 可以自己增添参数 cap 修改字节大小，默认为 128
-// 同时目前 Moonbit 不支持将bytes类型转换为String类型故未其返回类型仍是 Array[Byte]
-// 其余 `write` 函数均可返回其输入值类型
+// 可选参 cap 用于设置缓冲容量，默认为 128
 
+/// 当前 MoonBit 未支持将 `Bytes` 类型转换为 `String`，
+/// 因此返回类型为 `Array[Byte]`。
+/// 其他 write 函数可返回其输入时的类型值
+@ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.writeIntsClear([10, 20, 30])
 ```
 
-### 从字节数组读取
+### 写入不清空
+
 ```moonbit
-let data = [72, 105]
-@ZSeanYves/bufferutils.readInts(data) // [72, 105]
+@ZSeanYves/bufferutils.writeString("hello moonbit")
+@ZSeanYves/bufferutils.writeBytes(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.writeInts([10, 20, 30])
+// 你需要手动调用 clear() 来清空缓冲区
 ```
 
+### 读取字节数据
+
+```moonbit
+@ZSeanYves/bufferutils.readBytes(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.readInts([72, 105])
+@ZSeanYves/bufferutils.readString("hello")
+```
 
 ---
 
-## 📘 API 一览
+## 📘 API 总览
 
-### 读取接口
-| 函数                         | 功能说明                         |
-|------------------------------|----------------------------------|
-| `readBytes(Bytes)`           | 从 `Bytes` 读取所有字节          |
-| `readBytesArray([Byte])`     | 从字节数组读取                   |
-| `readInts([Int])`            | 从整型数组读取                   |
-| `readString(String)`         | 从字符串读取                     |
-| 所有 `_safe` 版本             | 错误时返回空数组，无异常抛出     |
+### 读取函数
 
-### 写入接口
-| 函数                            | 功能说明                          |
-|---------------------------------|-----------------------------------|
-| `writeBytes(Bytes)`             | 写入并刷新                        |
-| `writeBytesClear(Bytes)`        | 写入、刷新并清空缓冲区            |
-| `writeInts([Int])`              | 写入整型数组                      |
-| `writeIntsClear([Int])`         | 写入整型数组并清空缓冲区          |
-| `writeString(String)`           | 写入字符串                        |
-| `writeStringClear(String)`      | 写入字符串并清空缓冲区            |
-| 所有 `_safe` 版本               | 错误时返回空数组，无异常抛出      |
+| 函数名称                  | 描述                         |
+|--------------------------|------------------------------|
+| `readBytes(Bytes)`       | 从 Bytes 中读取              |
+| `readBytesArray([Byte])` | 从 Array[Byte] 中读取        |
+| `readInts([Int])`        | 从 Int 数组中读取        |
+| `readString(String)`     | 从 UTF-8 字符串中读取    |
+
+### 写入函数
+
+| 函数名称                     | 描述                           |
+|-----------------------------|--------------------------------|
+| `writeBytes(Bytes)`         | 写入后 flush                    |
+| `writeBytesClear(Bytes)`    | 写入，flush 后再清空     |
+| `writeInts([Int])`          | 写入 Int 数组               |
+| `writeIntsClear([Int])`     | 写入后清空缓冲          |
+| `writeString(String)`       | 写入字符串                |
+| `writeStringClear(String)`  | 写入字符串并清空     |
 
 ---
 
-## ⚠️ 错误类型
+## ⚠️ 错误处理机制
 
-所有错误统一封装在 `BufferError` 枚举中：
 ```moonbit
 enum BufferError {
   Overflow(String)
@@ -85,40 +101,45 @@ enum BufferError {
   InvalidCapacity(String)
 }
 ```
-支持使用 `!`、`?` 或 `match` 进行错误传播或处理。
+
+可使用 `!`，`?`，或 `match` 进行优雅的错误处理。
 
 ---
 
 ## 📂 项目结构
+
 ```
 BufferUtils/
 ├── src/lib/
-│   ├── bufferutils.mbt          # 高级功能封装
-│   ├── bufferutils.mbti         # 公共接口定义
-│   ├── reader.mbt               # 读取器模块
-│   ├── writer.mbt               # 写入器模块
-│   ├── error.mbt                # 错误定义模块
+│   ├── bufferutils.mbt          # 高级封装接口
+│   ├── bufferutils.mbti         # 类型定义与导出接口
+│   ├── reader.mbt               # 缓冲读取器模块
+│   ├── writer.mbt               # 缓冲写入器模块
+│   ├── error.mbt                # 错误类型定义
 │   └── bufferutils_test.mbt     # 测试模块（黑盒 + 白盒）
-├── moon.mod.json
+├── moon.mod.json 
 ├── LICENSE
 └── README.md
 ```
 
 ---
 
-## 🧪 测试方式
-运行完整测试用例：
+## 🧪 测试方法
+
+运行全量测试套件：
+
 ```bash
 moon test -p ZSeanYves/bufferutils
 ```
-运行模拟外部调用：
+
+模拟用户外部调用场景测试：
+
 ```bash
 moon run ZSeanYves/bufferutils_test
 ```
 
 ---
 
-## 📜 开源协议
-Apache-2.0 许可协议。详见 [LICENSE](./LICENSE)。
+## 📜 许可证
 
----
+本项目采用 Apache-2.0 开源许可协议，详见 [LICENSE](./LICENSE)。

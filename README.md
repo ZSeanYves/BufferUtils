@@ -11,7 +11,7 @@
 
 ## 🚀 Features
 - **Buffer Reading & Writing**: Stream-style I/O with peek, skip, rewind, flush, and clear.
-- **Multi-Type Interop**: Support for `Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
+- **Multi-Type Interop**: Support for Binary data ,Text data,`Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
 - **Dynamic Capacity Management**: Customize buffer capacity.
 - **Zero-Copy**: Minimized unnecessary copying.
 - **Unified Errors**: Clean enum-based error handling (`BufferError`).
@@ -31,20 +31,29 @@ Or manually in `moon.mod.json`:
 
 ## 🔧 Basic Usage
 
-### read ,Write and flush a string
+### read ,Write and flush 
 ```moonbit
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit") 
 // Optional parameter cap allows setting buffer size (default: 128)
 /// Currently, Moonbit does not support converting the `Bytes` type back to `String`,  
 /// so the return type remains as `Array[Byte]`.  
 /// Other `write` functions can return values in their original input types.
-
+@ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.writeIntsClear([10,20,30])
 ```
+
+### read ,Write
+```moonbit
+@ZSeanYves/bufferutils.writeString("hello moonbit") 
+@ZSeanYves/bufferutils.writeBytes(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.writeInts([10,20,30])
+///You need to manually call clear() to reset the buffer.
 
 ### Read from byte array
 ```moonbit
-let data = [72, 105]
-@ZSeanYves/bufferutils.readInts(data) // [72, 105]
+@ZSeanYves/bufferutils.readBytes(Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.readInts([72,105]) 
+@ZSeanYves/bufferutils.readString("hello")
 ```
 
 ---
@@ -58,7 +67,6 @@ let data = [72, 105]
 | `readBytesArray([Byte])` | Read from Array[Byte]                  |
 | `readInts([Int])`        | Read from Int array                    |
 | `readString(String)`     | Read from UTF-8 string                 |
-| `_safe` versions          | Return default on error                |
 
 ### Write Functions
 | Function                  | Description                            |
@@ -69,7 +77,6 @@ let data = [72, 105]
 | `writeIntsClear([Int])`  | Write then clear buffer                |
 | `writeString(String)`    | Write string                           |
 | `writeStringClear(String)` | Write string and clear               |
-| `_safe` versions          | Handle errors internally               |
 
 ---
 
