@@ -14,7 +14,6 @@
 - **Multi-Type Interop**: Support for `Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
 - **Dynamic Capacity Management**: Customize buffer capacity.
 - **Zero-Copy**: Minimized unnecessary copying.
-- **Safe Variants**: All functions have `_safe` versions to handle errors gracefully.
 - **Unified Errors**: Clean enum-based error handling (`BufferError`).
 
 ---
@@ -32,21 +31,20 @@ Or manually in `moon.mod.json`:
 
 ## 🔧 Basic Usage
 
-### Write and flush a string
+### read ,Write and flush a string
 ```moonbit
-@ZSeanYves/bufferutils.writeStringClear("hello moonbit")
+@ZSeanYves/bufferutils.writeStringClear("hello moonbit") 
+// Optional parameter cap allows setting buffer size (default: 128)
+/// Currently, Moonbit does not support converting the `Bytes` type back to `String`,  
+/// so the return type remains as `Array[Byte]`.  
+/// Other `write` functions can return values in their original input types.
+
 ```
 
 ### Read from byte array
 ```moonbit
 let data = [72, 105]
 @ZSeanYves/bufferutils.readInts(data) // [72, 105]
-```
-
-### Safe variant
-```moonbit
-let res = @ZSeanYves/bufferutils.writeStringClearSafe("moonbit")
-inspect!(res.length())
 ```
 
 ---
@@ -98,9 +96,10 @@ BufferUtils/
 │   ├── reader.mbt               # BufferReader
 │   ├── writer.mbt               # BufferWriter
 │   ├── error.mbt                # Error types
-│   ├── traits.mbt               # Trait interface
 │   └── bufferutils_test.mbt     # Tests (black + white box)
-└── LICENSE / moon.mod.json / README.md
+|── moon.mod.json 
+├── LICENSE
+└── README.md
 ```
 
 ---

@@ -32,9 +32,13 @@ moon add ZSeanYves/bufferutils
 
 ## 🔧 快速使用
 
-### 写入字符串并刷新、清空
+### 读取，写入字符串并刷新、清空
 ```moonbit
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit")
+// 可以自己增添参数 cap 修改字节大小，默认为 128
+// 同时目前 Moonbit 不支持将bytes类型转换为String类型故未其返回类型仍是 Array[Byte]
+// 其余 `write` 函数均可返回其输入值类型
+
 ```
 
 ### 从字节数组读取
@@ -43,11 +47,6 @@ let data = [72, 105]
 @ZSeanYves/bufferutils.readInts(data) // [72, 105]
 ```
 
-### 安全版本调用
-```moonbit
-let res = @ZSeanYves/bufferutils.writeStringClearSafe("moonbit")
-inspect!(res.length())
-```
 
 ---
 
@@ -99,7 +98,6 @@ BufferUtils/
 │   ├── reader.mbt               # 读取器模块
 │   ├── writer.mbt               # 写入器模块
 │   ├── error.mbt                # 错误定义模块
-│   ├── traits.mbt               # Trait 接口定义
 │   └── bufferutils_test.mbt     # 测试模块（黑盒 + 白盒）
 ├── moon.mod.json
 ├── LICENSE

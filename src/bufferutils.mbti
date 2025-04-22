@@ -1,41 +1,60 @@
 package ZSeanYves/bufferutils/lib
 
-// ========== 最终实现函数 ==========
-// SAFE WRAPPER INTERFACES
+// ========== FINAL SAFE WRAPPER INTERFACES ==========
+
+/// Read all bytes from Bytes input, return as Array[Byte]
 pub fn readBytes(Bytes) -> Array[Byte]
+
+/// Read bytes from Array[Byte] input
 pub fn readBytesArray(Array[Byte]) -> Array[Byte]
+
+/// Read from Array[Int] input, converted to bytes
 pub fn readInts(Array[Int]) -> Array[Byte]
+
+/// Read from String input, converted to bytes
 pub fn readString(String) -> Array[Byte]
 
+/// Write Bytes into buffer with flush, returns written result
 pub fn writeBytes(Bytes, cap~ : Int = ..) -> Array[Byte]
+
+/// Write and flush Bytes input, clear buffer afterward
 pub fn writeBytesClear(Bytes, cap~ : Int = ..) -> Array[Byte]
+
+/// Write Int array as bytes and flush, return as Array[Int]
 pub fn writeInt(Array[Int], cap~ : Int = ..) -> Array[Int]
+
+/// Write and flush Int array, clear buffer afterward
 pub fn writeIntClear(Array[Int], cap~ : Int = ..) -> Array[Int]
+
+/// Write string input as bytes and flush
 pub fn writeString(String, cap~ : Int = ..) -> Array[Byte]
+
+/// Write and flush string input, clear buffer afterward
 pub fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
 
 
-// ========== 错误类型定义 ==========
+// ========== ERROR TYPE DEFINITIONS ==========
 
-/// 缓冲读取失败：读取位置已到结尾或为空
-type BufferUnderflowError String derive(Show)
+/// Buffer read failed: reached the end or empty
+pub type BufferUnderflowError String derive(Show)
 impl show for BufferUnderflowError
 
-/// 缓冲写入失败：尝试写入超出最大容量
-type BufferOverflowError String derive(Show)
+/// Buffer write failed: capacity exceeded
+pub type BufferOverflowError String derive(Show)
 impl show for BufferOverflowError
 
-/// 初始化失败：指定的缓冲区容量无效或为负
-type InvalidCapacityError String derive(Show)
+/// Initialization failed: capacity invalid or negative
+pub type InvalidCapacityError String derive(Show)
 impl show for InvalidCapacityError
 
-/// 刷新失败：尝试将缓冲数据输出时发生未知错误
-type FlushError String derive(Show)
+/// Flush failed: unknown error occurred during flush
+pub type FlushError String derive(Show)
 impl show for FlushError
 
-// ========== 类型定义 ==========
 
-/// 缓冲读取器结构体
+// ========== STRUCT DEFINITIONS ==========
+
+/// Buffer reader structure
 pub struct BufferReader {
   buf: Bytes
   mut pos: Int
@@ -52,7 +71,7 @@ impl BufferReader {
   reader_buffer(Self) -> Array[Byte]
 }
 
-/// 缓冲写入器结构体
+/// Buffer writer structure
 pub struct BufferWriter {
   mut buf: Array[Byte]
   mut pos: Int
@@ -70,6 +89,4 @@ impl BufferWriter {
 }
 
 
-
-// ========== Trait 接口定义 ==========
-
+// ========== TRAIT INTERFACES ==========

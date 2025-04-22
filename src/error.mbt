@@ -1,13 +1,14 @@
+/// Unified buffer error type for read/write operations
 pub type! BufferError {
-  /// 缓冲区写入失败：尝试写入超出最大容量
+  /// Buffer write failed: attempt to write beyond the maximum capacity
   Overflow(String)
 
-  /// 缓冲区读取失败：读取位置已到结尾或为空
+  /// Buffer read failed: position has reached the end or buffer is empty
   Underflow(String)
 
-  /// 初始化失败：指定的缓冲区容量无效或为负
+  /// Initialization failed: specified buffer capacity is invalid or negative
   InvalidCapacity(String)
 
-  /// 刷新失败：尝试将缓冲数据输出时发生未知错误
+  /// Flush failed: error occurred while trying to output buffered data
   Flush(String)
 }

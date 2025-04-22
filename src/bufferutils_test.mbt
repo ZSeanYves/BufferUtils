@@ -1,4 +1,4 @@
-///黑盒测试
+/// Black-box tests
 test "safe read from empty bytes" {
   let result = readBytes(Bytes::from_array([]))
   assert_eq!(result.length(), 0)
@@ -6,12 +6,12 @@ test "safe read from empty bytes" {
 
 test "write from string and read back" {
   let input = "moonbit"
-  let flushed = writeStringClear(input)
+  let flushed = writeStringClear(input,cap=64)
   let byte_array = []
   for i in 0..<input.length() {
     let b = input.charcode_at(i).to_byte()
     byte_array.push(b)
-  }
+  } 
   assert_eq!(flushed, byte_array)
 }
 
@@ -21,8 +21,7 @@ test "write from int array and back" {
   assert_eq!(flushed, input)
 }
 
-
-///白盒测试
+/// White-box tests
 test "error raised on read from empty buffer" {
   let empty = Bytes::from_array([])
   let result = read_bytes?(empty)
@@ -38,7 +37,7 @@ test "flush fails when buffer is empty" {
   let result = writer.flush?()
   match result {
     Ok(_) => inspect!(false)
-    Err(BufferError::Flush(msg)) => inspect!(msg.contains("刷新失败"), content="true")
+    Err(BufferError::Flush(msg)) => inspect!(msg.contains("缓冲刷新失败：缓冲区是空的"), content="true")
     Err(_) => inspect!(false)
   }
 }
@@ -53,10 +52,11 @@ test "buffer reader reads one by one" {
   assert_eq!(out, [1, 2, 3])
 }
 
-///模拟外部调用
+/// Simulated external calls
+/// These tests simulate how end users would call the public APIs from outside the package.
 test "external call - write int data" {
   let data = [10, 20, 30]
-  let result:Array[Int] = @ZSeanYves/bufferutils.writeInt(data)
+  let result:Array[Int] = @ZSeanYves/bufferutils.writeInt(data,cap=32)
   assert_eq!(result, [10, 20, 30])
 }
 
