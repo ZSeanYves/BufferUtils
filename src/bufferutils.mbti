@@ -1,4 +1,4 @@
-package ZSeanYves/bufferutils/lib
+package ZSeanYves/bufferutils
 
 // ========== FINAL SAFE WRAPPER INTERFACES ==========
 
@@ -35,22 +35,42 @@ pub fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
 
 // ========== ERROR TYPE DEFINITIONS ==========
 
-/// Buffer read failed: reached the end or empty
-pub type BufferUnderflowError String derive(Show)
-impl show for BufferUnderflowError
+pub type! BufferError {
+  /// Buffer write failed: attempt to write beyond the maximum capacity
+  Overflow(String)
 
-/// Buffer write failed: capacity exceeded
-pub type BufferOverflowError String derive(Show)
-impl show for BufferOverflowError
+  /// Buffer read failed: position has reached the end or buffer is empty
+  Underflow(String)
 
-/// Initialization failed: capacity invalid or negative
-pub type InvalidCapacityError String derive(Show)
-impl show for InvalidCapacityError
+  /// Initialization failed: specified buffer capacity is invalid or negative
+  InvalidCapacity(String)
 
-/// Flush failed: unknown error occurred during flush
-pub type FlushError String derive(Show)
-impl show for FlushError
+  /// Flush failed: error occurred while trying to output buffered data
+  Flush(String)
+}
 
+
+// ===== Trait Definitions for BufferUtils =====
+
+// Trait for readable buffers
+pub trait BufReadable {
+  read_byte(Self) -> Byte!BufferError
+  peek(Self) -> Byte!BufferError
+  is_empty(Self) -> Bool
+  reader_rewind(Self) -> Unit
+  reader_remaining(Self) -> Int
+  skip(Self, Int) -> Unit
+}
+
+// Trait for writable buffers
+pub trait BufWritable {
+  write_byte(Self, Byte) -> Unit!BufferError
+  write_all(Self, Array[Byte]) -> Unit!BufferError
+  flush(Self) -> Array[Byte]!BufferError
+  clear(Self) -> Unit
+  writer_rewind(Self) -> Unit
+  writer_remaining(Self) -> Int
+}
 
 // ========== STRUCT DEFINITIONS ==========
 
@@ -60,15 +80,13 @@ pub struct BufferReader {
   mut pos: Int
 }
 
-impl BufferReader {
-  fn new_reader(buf: Bytes) -> BufferReader
-  read_byte(Self) -> Byte!BufferUnderflowError
-  peek(Self) -> Byte!BufferUnderflowError
-  skip(Self, Int) -> Unit
-  is_empty(Self) -> Bool
-  remaining(Self) -> Int
-  reader_rewind(Self) -> Unit
-  reader_buffer(Self) -> Array[Byte]
+// Implementation for BufferReader
+impl BufReadable for BufferReader with {
+  read_byte(self) { self.read_byte!() }
+  peek(self) { self.peek!() }
+  is_empty(self) { self.is_empty() }
+  rewind(self) { self.reader_rewind() }
+  remaining(self) { self.reader_remaining() }
 }
 
 /// Buffer writer structure
@@ -78,15 +96,12 @@ pub struct BufferWriter {
   capacity: Int
 }
 
-impl BufferWriter {
-  fn new_writer(cap~ : Int = ..) -> BufferWriter
-  write_byte(Self, Byte) -> Unit!BufferOverflowError
-  write_all(Self, Array[Byte]) -> Unit!BufferOverflowError
-  flush(Self) -> Array[Byte]!FlushError
-  clear(Self) -> Unit
-  writer_rewind(Self) -> Unit
-  writer_remaining(Self) -> Int
+// Implementation for BufferWriter
+impl BufWritable for BufferWriter with {
+  write_byte(self, b) { self.write_byte!(b) }
+  write_all(self, arr) { self.write_all!(arr) }
+  flush(self) { self.flush!() }
+  clear(self) { self.clear() }
+  rewind(self) { self.writer_rewind() }
+  remaining(self) { self.writer_remaining() }
 }
-
-
-// ========== TRAIT INTERFACES ==========

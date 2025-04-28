@@ -24,7 +24,7 @@ pub fn new_writer(cap: Int) -> BufferWriter!BufferError {
 
 /// Write a single byte into the buffer.
 /// Raises `BufferError::Overflow` if the buffer is full.
-pub fn write_byte(self: BufferWriter, b: Byte) -> Unit!BufferError {
+impl BufWritable for BufferWriter with write_byte(self: BufferWriter, b: Byte) -> Unit!BufferError {
   if self.pos >= self.capacity {
     raise BufferError::Overflow("写入失败:缓冲区溢出w")
   }
@@ -34,7 +34,7 @@ pub fn write_byte(self: BufferWriter, b: Byte) -> Unit!BufferError {
 
 /// Write multiple bytes to the buffer in batch.
 /// Raises `BufferError::Overflow` if total size exceeds capacity.
-pub fn write_all(self: BufferWriter, data: Array[Byte]) -> Unit!BufferError {
+impl BufWritable for BufferWriter with write_all(self: BufferWriter, data: Array[Byte]) -> Unit!BufferError {
   if self.pos + data.length() > self.capacity {
     raise BufferError::Overflow("写入失败：数据超过缓冲区容量")
   }
@@ -47,7 +47,7 @@ pub fn write_all(self: BufferWriter, data: Array[Byte]) -> Unit!BufferError {
 /// Flush the buffer and return a copy of the current written content.
 /// Note: Does not clear the buffer — you must call `clear()` explicitly.
 /// Simulates an error if buffer is empty.
-pub fn flush(self: BufferWriter) -> Array[Byte]!BufferError {
+impl BufWritable for BufferWriter with flush(self: BufferWriter) -> Array[Byte]!BufferError {
   if self.pos == 0 {
     raise BufferError::Flush("缓冲刷新失败：缓冲区是空的")
   }
@@ -60,18 +60,18 @@ pub fn flush(self: BufferWriter) -> Array[Byte]!BufferError {
 }
 
 /// Clear the buffer and reset the write position to 0.
-pub fn clear(self: BufferWriter) -> Unit {
+impl BufWritable for BufferWriter with clear(self: BufferWriter) -> Unit {
   self.buf = []
   self.pos = 0
 }
 
 /// Rewind the position to the beginning (without clearing content).
 /// This allows for overwriting the buffer content from the start.
-pub fn writer_rewind(self: BufferWriter) -> Unit {
+impl BufWritable for BufferWriter with writer_rewind(self: BufferWriter) -> Unit {
   self.pos = 0
 }
 
 /// Get the number of remaining writable slots in the buffer.
-pub fn writer_remaining(self: BufferWriter) -> Int {
+impl BufWritable for BufferWriter with writer_remaining(self: BufferWriter) -> Int {
   self.capacity - self.pos
 }

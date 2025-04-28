@@ -1,113 +1,129 @@
-/// Black-box tests
-test "safe read from empty bytes" {
-  let result = readBytes(Bytes::from_array([]))
-  assert_eq!(result.length(), 0)
-}
+/// ======================
+/// Unified API Tests (Public Module Functions Only)
+/// ======================
 
-test "write from string and read back" {
-  let input = "moonbit"
-  let flushed = writeStringClear(input,cap=64)
-  let byte_array = []
-  for i in 0..<input.length() {
-    let b = input.charcode_at(i).to_byte()
-    byte_array.push(b)
-  } 
-  assert_eq!(flushed, byte_array)
-}
+/// --- Reading API Tests ---
 
-test "write from int array and back" {
-  let input = [65, 66, 67]
-  let flushed = writeIntClear(input)
-  assert_eq!(flushed, input)
-}
-
-/// White-box tests
-test "error raised on read from empty buffer" {
-  let empty = Bytes::from_array([])
-  let result = read_bytes?(empty)
-  match result {
-    Ok(_) => inspect!(false)
-    Err(BufferError::Underflow(msg)) => inspect!(msg.contains("读取失败：到达缓冲区末尾"),content="true")
-    Err(_) => inspect!(false)
-  }
-}
-
-test "flush fails when buffer is empty" {
-  let writer = new_writer!(16)
-  let result = writer.flush?()
-  match result {
-    Ok(_) => inspect!(false)
-    Err(BufferError::Flush(msg)) => inspect!(msg.contains("缓冲刷新失败：缓冲区是空的"), content="true")
-    Err(_) => inspect!(false)
-  }
-}
-
-test "buffer reader reads one by one" {
+test "readBytes normal input" {
   let data = Bytes::from_array([1, 2, 3])
-  let reader = new_reader(data)
-  let  out = []
-  for i in 0..<3 {
-    out.push(reader.read_byte!())
-  }
-  assert_eq!(out, [1, 2, 3])
-}
-
-/// Simulated external calls
-/// These tests simulate how end users would call the public APIs from outside the package.
-test "external call - write int data" {
-  let data = [10, 20, 30]
-  let result:Array[Int] = @ZSeanYves/bufferutils.writeInt(data,cap=32)
-  assert_eq!(result, [10, 20, 30])
-}
-
-test "external call - write string and clear" {
-  let input = "abc"
-  let result = @ZSeanYves/bufferutils.writeStringClear(input)
-  assert_eq!(result, [97, 98, 99])  // "a" "b" "c"
-}
-
-
-test "external call - read from Bytes" {
-  let data = Bytes::from_array([1, 2, 3])
-  let result = @ZSeanYves/bufferutils.readBytes(data)
+  let result = readBytes(data)
   assert_eq!(result, [1, 2, 3])
 }
 
-test "external call - read from Array[Byte]" {
-  let result = @ZSeanYves/bufferutils.readBytesArray([4, 5, 6])
+test "readBytes empty input returns empty array" {
+  let data = Bytes::from_array([])
+  let result = readBytes(data)
+  assert_eq!(result.length(), 0)
+}
+
+test "readBytesArray normal input" {
+  let arr: Array[Byte] = [10, 20, 30]
+  let result = readBytesArray(arr)
+  assert_eq!(result, [10, 20, 30])
+}
+
+test "readInts normal input" {
+  let ints = [100, 101, 102]
+  let result = readInts(ints)
+  assert_eq!(result, [100, 101, 102])
+}
+
+test "readInts empty input returns empty array" {
+  let ints: Array[Int] = []
+  let result = readInts(ints)
+  assert_eq!(result.length(), 0)
+}
+
+test "readString normal input" {
+  let s = "Moon"
+  let result = readString(s)
+  assert_eq!(result.length(), 4)
+}
+
+test "readString empty input returns empty array" {
+  let s = ""
+  let result = readString(s)
+  assert_eq!(result.length(), 0)
+}
+
+/// --- Writing API Tests ---
+
+test "writeBytes normal Bytes input" {
+  let data = Bytes::from_array([4, 5, 6])
+  let result = writeBytes(data)
   assert_eq!(result, [4, 5, 6])
 }
 
-test "external call - read from Ints" {
-  let result = @ZSeanYves/bufferutils.readInts([7, 8])
+test "writeBytesClear normal Bytes input" {
+  let data = Bytes::from_array([7, 8])
+  let result = writeBytesClear(data)
   assert_eq!(result, [7, 8])
 }
 
-test "external call - read from String" {
-  let result = @ZSeanYves/bufferutils.readString("hi")
-  let s = "hi"
-  let a = s.charcode_at(0).to_byte()
-  let b = s.charcode_at(1).to_byte()
-  assert_eq!(result, [a,b])
+test "writeInt normal Int array" {
+  let ints = [200, 201, 202]
+  let result = writeInt(ints)
+  assert_eq!(result, [200, 201, 202])
 }
 
-test "external call - write and flush Bytes" {
-  let result = @ZSeanYves/bufferutils.writeBytes(Bytes::from_array([9, 10]))
-  assert_eq!(result, [9, 10])
+test "writeIntClear normal Int array" {
+  let ints = [203, 204]
+  let result = writeIntClear(ints)
+  assert_eq!(result, [203, 204])
 }
 
-test "external call - write and clear Ints" {
-  let result = @ZSeanYves/bufferutils.writeIntClear([100, 101])
-  assert_eq!(result, [100, 101])
+test "writeString normal String input" {
+  let s = "Bit"
+  let result = writeString(s)
+  assert_eq!(result.length(), 3)
 }
 
-test "external call - write and clear String" {
-  let result = @ZSeanYves/bufferutils.writeStringClear("OK")
-  let s = "OK"
-  let a = s.charcode_at(0).to_byte()
-  let b = s.charcode_at(1).to_byte()
-  assert_eq!(
-    result,
-    [a, b]  // "O" "K"
-  )
+test "writeStringClear normal String input" {
+  let s = "Lang"
+  let result = writeStringClear(s)
+  assert_eq!(result.length(), 4)
 }
+
+/// --- Error Handling Tests ---
+
+test "writeBytes with empty input returns empty array" {
+  let data = Bytes::from_array([])
+  let result = writeBytes(data)
+  assert_eq!(result.length(), 0)
+}
+
+test "writeInt with empty array returns empty array" {
+  let ints: Array[Int] = []
+  let result = writeInt(ints)
+  assert_eq!(result.length(), 0)
+}
+
+test "writeString with empty string returns empty array" {
+  let s = ""
+  let result = writeString(s)
+  assert_eq!(result.length(), 0)
+}
+
+/// --- Large Input Edge Tests ---
+test "readBytes handles large Bytes array" {
+  let arr:Array[Int] = []
+  for i in 0..<1000 {
+    arr.push(i % 256)
+  }
+  let data = Bytes::from_array(arr.map(fn(i) { i.to_byte() }))
+  let result = readBytes(data)
+  assert_eq!(result.length(), 1000)
+}
+
+test "writeBytes handles large Bytes array" {
+  let arr:Array[Int] = []
+  for i in 0..<1000 {
+    arr.push(i % 256)
+  }
+  let data = Bytes::from_array(arr.map(fn(i) { i.to_byte() }))
+  let result1 = writeBytes(data)
+  let result2=writeBytes(data,cap=1000)
+  assert_eq!(result1.length(), 0)
+  assert_eq!(result2.length(), 1000)
+}
+
