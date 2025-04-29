@@ -6,7 +6,7 @@
 
 test "readBytes normal input" {
   let data = Bytes::from_array([1, 2, 3])
-  let result = readBytes(data)
+  let result = @ZSeanYves/bufferutils.readBytes(data)
   assert_eq!(result, [1, 2, 3])
 }
 

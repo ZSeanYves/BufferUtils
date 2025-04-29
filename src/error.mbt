@@ -1,5 +1,5 @@
 /// Unified buffer error type for read/write operations
-pub type! BufferError {
+type! BufferError {
   /// Buffer write failed: attempt to write beyond the maximum capacity
   Overflow(String)
 

@@ -9,7 +9,7 @@ pub struct BufferWriter {
 /// Create a new `BufferWriter`
 /// `cap` specifies the capacity; must be a positive integer.
 /// Raises `BufferError::InvalidCapacity` if cap ≤ 0.
-pub fn new_writer(cap: Int) -> BufferWriter!BufferError {
+fn new_writer(cap: Int) -> BufferWriter!BufferError {
   if cap <= 0 {
     raise BufferError::InvalidCapacity("无效的容量：缓冲区大小必须为正")
   }

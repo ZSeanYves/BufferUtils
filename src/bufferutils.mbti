@@ -35,7 +35,7 @@ pub fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
 
 // ========== ERROR TYPE DEFINITIONS ==========
 
-pub type! BufferError {
+type! BufferError {
   /// Buffer write failed: attempt to write beyond the maximum capacity
   Overflow(String)
 

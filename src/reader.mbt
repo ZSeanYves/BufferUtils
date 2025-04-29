@@ -9,7 +9,7 @@ pub struct BufferReader {
 
 /// Create a new `BufferReader`
 /// Initializes the reader from a given byte sequence.
-pub fn new_reader(buf: Bytes) -> BufferReader {
+fn new_reader(buf: Bytes) -> BufferReader {
   let reader: BufferReader = {
     buf: buf,
     pos: 0
