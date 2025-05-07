@@ -128,36 +128,32 @@ test "writeBytes handles large Bytes array" {
 }
 
 /// --- Performance Tests ---
-test "performance test - write and read 1MB Bytes" {
-  let size = 1024 * 1024  # 1MB
-  let data = Bytes::from_array(Array::init(size, fn(i) { (i % 256).to_byte() }))
+test "write and read 1MB" {
+  let size = 1024 * 1024  
 
-  let start_write = time::now()
-  let written = @ZSeanYves/bufferutils.writeBytes(data)
-  let write_time = time::now() - start_write
+  let arr: Array[Byte] = []
+  for i in 0..<size {
+    arr.push((i % 256).to_byte())
+  }
+  let data = Bytes::from_array(arr)
 
-  let start_read = time::now()
+  let written = @ZSeanYves/bufferutils.writeBytes(data,cap=size+1024)
   let read = @ZSeanYves/bufferutils.readBytes(Bytes::from_array(written))
-  let read_time = time::now() - start_read
 
-  inspect!("Write 1MB time", write_time)
-  inspect!("Read 1MB time", read_time)
   assert_eq!(read.length(), size)
 }
 
-test "performance test - write and read 10MB Bytes" {
-  let size = 10 * 1024 * 1024  # 10MB
-  let data = Bytes::from_array(Array::init(size, fn(i) { (i % 256).to_byte() }))
+test "write and read 100MB with clear" {
+  let size = 1024 * 1024 * 100 
 
-  let start_write = time::now()
-  let written = @ZSeanYves/bufferutils.writeBytes(data)
-  let write_time = time::now() - start_write
+  let arr: Array[Byte] = []
+  for i in 0..<size {
+    arr.push((i % 256).to_byte())
+  }
+  let data = Bytes::from_array(arr)
 
-  let start_read = time::now()
+  let written = @ZSeanYves/bufferutils.writeBytesClear(data,cap=size+1024)
   let read = @ZSeanYves/bufferutils.readBytes(Bytes::from_array(written))
-  let read_time = time::now() - start_read
 
-  inspect!("Write 10MB time", write_time)
-  inspect!("Read 10MB time", read_time)
   assert_eq!(read.length(), size)
 }
