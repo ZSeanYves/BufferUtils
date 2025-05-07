@@ -127,3 +127,37 @@ test "writeBytes handles large Bytes array" {
   assert_eq!(result2.length(), 1000)
 }
 
+/// --- Performance Tests ---
+test "performance test - write and read 1MB Bytes" {
+  let size = 1024 * 1024  # 1MB
+  let data = Bytes::from_array(Array::init(size, fn(i) { (i % 256).to_byte() }))
+
+  let start_write = time::now()
+  let written = @ZSeanYves/bufferutils.writeBytes(data)
+  let write_time = time::now() - start_write
+
+  let start_read = time::now()
+  let read = @ZSeanYves/bufferutils.readBytes(Bytes::from_array(written))
+  let read_time = time::now() - start_read
+
+  inspect!("Write 1MB time", write_time)
+  inspect!("Read 1MB time", read_time)
+  assert_eq!(read.length(), size)
+}
+
+test "performance test - write and read 10MB Bytes" {
+  let size = 10 * 1024 * 1024  # 10MB
+  let data = Bytes::from_array(Array::init(size, fn(i) { (i % 256).to_byte() }))
+
+  let start_write = time::now()
+  let written = @ZSeanYves/bufferutils.writeBytes(data)
+  let write_time = time::now() - start_write
+
+  let start_read = time::now()
+  let read = @ZSeanYves/bufferutils.readBytes(Bytes::from_array(written))
+  let read_time = time::now() - start_read
+
+  inspect!("Write 10MB time", write_time)
+  inspect!("Read 10MB time", read_time)
+  assert_eq!(read.length(), size)
+}
