@@ -55,6 +55,8 @@ moon add ZSeanYves/bufferutils
 @ZSeanYves/bufferutils.writeBytes(Bytes::from_array([72, 101, 108, 108, 111]))
 @ZSeanYves/bufferutils.writeInts([10, 20, 30])
 // 你需要手动调用 clear() 来清空缓冲区
+
+🧠 处理大数据写入
 当使用 `writeBytes` 写入大数据时（如 1MB 或以上），**强烈建议你手动指定 cap\~ 缓冲区容量参数**，否则会触发 `BufferOverflowError` 或出现数据截断：
 
 ```moonbit

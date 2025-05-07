@@ -49,7 +49,7 @@ Or manually in `moon.mod.json`:
 @ZSeanYves/bufferutils.writeInts([10,20,30])
 ///You need to manually call clear() to reset the buffer.
 
-### 🧠 Handling Large Data Writes (处理大数据写入)
+🧠 Handling Large Data Writes 
 
 When writing large binary or textual data to the buffer using `writeBytes`, it's **strongly recommended** to explicitly specify the buffer capacity (`cap~`) to avoid overflow or silent truncation:
 
