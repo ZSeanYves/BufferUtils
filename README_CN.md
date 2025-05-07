@@ -55,6 +55,28 @@ moon add ZSeanYves/bufferutils
 @ZSeanYves/bufferutils.writeBytes(Bytes::from_array([72, 101, 108, 108, 111]))
 @ZSeanYves/bufferutils.writeInts([10, 20, 30])
 // 你需要手动调用 clear() 来清空缓冲区
+当使用 `writeBytes` 写入大数据时（如 1MB 或以上），**强烈建议你手动指定 cap\~ 缓冲区容量参数**，否则会触发 `BufferOverflowError` 或出现数据截断：
+
+```moonbit
+let size = 1024 * 1024  # 1MB
+let data: Array[Byte] = []
+for i in 0..<size {
+  data.push((i % 256).to_byte())
+}
+let bytes = Bytes::from_array(data)
+
+# ✅ 推荐用法：自行设置合理的 cap~ 容量
+let result = @ZSeanYves/bufferutils.writeBytes(bytes, cap~ = size + 128)
+```
+
+你也可以通过读取已有数据长度自动设置缓冲区大小，例如：
+
+```moonbit
+let read_data = @ZSeanYves/bufferutils.readBytes(file_input)
+let result = @ZSeanYves/bufferutils.writeBytes(read_data, cap~ = read_data.length() + 128)
+```
+
+默认容量仅为 `128`，无法完整存储大块数据。
 ```
 
 ### 读取字节数据

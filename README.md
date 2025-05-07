@@ -49,6 +49,33 @@ Or manually in `moon.mod.json`:
 @ZSeanYves/bufferutils.writeInts([10,20,30])
 ///You need to manually call clear() to reset the buffer.
 
+### 🧠 Handling Large Data Writes (处理大数据写入)
+
+When writing large binary or textual data to the buffer using `writeBytes`, it's **strongly recommended** to explicitly specify the buffer capacity (`cap~`) to avoid overflow or silent truncation:
+
+```moonbit
+let size = 1024 * 1024  # 1MB
+let data: Array[Byte] = []
+for i in 0..<size {
+  data.push((i % 256).to_byte())
+}
+let bytes = Bytes::from_array(data)
+
+# ✅ Correct usage: manually specify enough capacity
+let result = @ZSeanYves/bufferutils.writeBytes(bytes, cap~ = size + 128)
+```
+
+> ⚠️ By default, `writeBytes` uses `cap~ = 128`. When handling large inputs (e.g., 1MB+), you **must** pass a larger `cap~` to avoid unexpected output.
+
+Alternatively, if you're **reading from an existing buffer** (e.g., a file or input stream), you can use `read_bytes` to dynamically determine the data size and pass that to your writer:
+
+```moonbit
+let read_data = @ZSeanYves/bufferutils.readBytes(file_input)
+let result = @ZSeanYves/bufferutils.writeBytes(read_data, cap~ = read_data.length() + 128)
+```
+
+---
+
 ### Read from byte array
 ```moonbit
 @ZSeanYves/bufferutils.readBytes(Bytes::from_array([72, 101, 108, 108, 111]))
