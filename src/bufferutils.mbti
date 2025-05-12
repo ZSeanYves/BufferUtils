@@ -1,58 +1,43 @@
-package ZSeanYves/bufferutils
+package "ZSeanYves/bufferutils"
 
-// ========== FINAL SAFE WRAPPER INTERFACES ==========
+// Values
+fn readBytes(Bytes) -> Array[Byte]
 
-/// Read all bytes from Bytes input, return as Array[Byte]
-pub fn readBytes(Bytes) -> Array[Byte]
+fn readBytesArray(Array[Byte]) -> Array[Byte]
 
-/// Read bytes from Array[Byte] input
-pub fn readBytesArray(Array[Byte]) -> Array[Byte]
+fn readInts(Array[Int]) -> Array[Byte]
 
-/// Read from Array[Int] input, converted to bytes
-pub fn readInts(Array[Int]) -> Array[Byte]
+fn readString(String) -> Array[Byte]
 
-/// Read from String input, converted to bytes
-pub fn readString(String) -> Array[Byte]
+fn writeBytes(Bytes, cap~ : Int = ..) -> Array[Byte]
 
-/// Write Bytes into buffer with flush, returns written result
-pub fn writeBytes(Bytes, cap~ : Int = ..) -> Array[Byte]
+fn writeBytesClear(Bytes, cap~ : Int = ..) -> Array[Byte]
 
-/// Write and flush Bytes input, clear buffer afterward
-pub fn writeBytesClear(Bytes, cap~ : Int = ..) -> Array[Byte]
+fn writeInt(Array[Int], cap~ : Int = ..) -> Array[Int]
 
-/// Write Int array as bytes and flush, return as Array[Int]
-pub fn writeInt(Array[Int], cap~ : Int = ..) -> Array[Int]
+fn writeIntClear(Array[Int], cap~ : Int = ..) -> Array[Int]
 
-/// Write and flush Int array, clear buffer afterward
-pub fn writeIntClear(Array[Int], cap~ : Int = ..) -> Array[Int]
+fn writeString(String, cap~ : Int = ..) -> Array[Byte]
 
-/// Write string input as bytes and flush
-pub fn writeString(String, cap~ : Int = ..) -> Array[Byte]
+fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
 
-/// Write and flush string input, clear buffer afterward
-pub fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
+// Types and methods
+type BufferError
 
-
-// ========== ERROR TYPE DEFINITIONS ==========
-
-type! BufferError {
-  /// Buffer write failed: attempt to write beyond the maximum capacity
-  Overflow(String)
-
-  /// Buffer read failed: position has reached the end or buffer is empty
-  Underflow(String)
-
-  /// Initialization failed: specified buffer capacity is invalid or negative
-  InvalidCapacity(String)
-
-  /// Flush failed: error occurred while trying to output buffered data
-  Flush(String)
+pub struct BufferReader {
+  buf : Bytes
+  mut pos : Int
 }
 
+pub struct BufferWriter {
+  mut buf : Array[Byte]
+  mut pos : Int
+  capacity : Int
+}
 
-// ===== Trait Definitions for BufferUtils =====
+// Type aliases
 
-// Trait for readable buffers
+// Traits
 pub trait BufReadable {
   read_byte(Self) -> Byte!BufferError
   peek(Self) -> Byte!BufferError
@@ -62,7 +47,6 @@ pub trait BufReadable {
   skip(Self, Int) -> Unit
 }
 
-// Trait for writable buffers
 pub trait BufWritable {
   write_byte(Self, Byte) -> Unit!BufferError
   write_all(Self, Array[Byte]) -> Unit!BufferError
@@ -72,36 +56,3 @@ pub trait BufWritable {
   writer_remaining(Self) -> Int
 }
 
-// ========== STRUCT DEFINITIONS ==========
-
-/// Buffer reader structure
-pub struct BufferReader {
-  buf: Bytes
-  mut pos: Int
-}
-
-// Implementation for BufferReader
-impl BufReadable for BufferReader with {
-  read_byte(self) { self.read_byte!() }
-  peek(self) { self.peek!() }
-  is_empty(self) { self.is_empty() }
-  rewind(self) { self.reader_rewind() }
-  remaining(self) { self.reader_remaining() }
-}
-
-/// Buffer writer structure
-pub struct BufferWriter {
-  mut buf: Array[Byte]
-  mut pos: Int
-  capacity: Int
-}
-
-// Implementation for BufferWriter
-impl BufWritable for BufferWriter with {
-  write_byte(self, b) { self.write_byte!(b) }
-  write_all(self, arr) { self.write_all!(arr) }
-  flush(self) { self.flush!() }
-  clear(self) { self.clear() }
-  rewind(self) { self.writer_rewind() }
-  remaining(self) { self.writer_remaining() }
-}
