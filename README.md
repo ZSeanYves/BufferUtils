@@ -36,6 +36,7 @@ Or manually in `moon.mod.json`:
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit") 
 // Optional parameter cap allows setting buffer size (default: 128)
 ///`write` functions can return values in their original input types.
+/// String' return Array[Byte], except for String.
 @ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
 @ZSeanYves/bufferutils.writeIntsClear([10,20,30])
 ```

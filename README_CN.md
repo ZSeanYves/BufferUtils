@@ -41,6 +41,7 @@ moon add ZSeanYves/bufferutils
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit")
 // 可选参 cap 用于设置缓冲容量，默认为 128
 /// write 函数可返回其输入时的类型值
+/// string除外，string返回的是Array[Byte]
 @ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
 @ZSeanYves/bufferutils.writeIntsClear([10, 20, 30])
 ```
