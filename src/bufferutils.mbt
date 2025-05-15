@@ -113,9 +113,9 @@ fn write_string(data: String, cap:Int) -> String!BufferError {
   write_process!(bytes, cap).map(fn(b) { b.to_string() }).join("")
 }
 /// Read from String and write+flush+clear
-fn write_string_and_clear(data: String, cap:Int) -> Array[Byte]!BufferError {
+fn write_string_and_clear(data: String, cap:Int) -> String!BufferError {
   let bytes = read_string!(data)
-  write_process_and_clear!(bytes,cap)
+  write_process_and_clear!(bytes,cap).map(fn(b) { b.to_string() }).join("")
 }
 /// ======================
 /// Unified Safe Wrappers for Buffer Reading and Writing
@@ -197,7 +197,7 @@ pub fn writeString(data: String, cap~: Int = 128) -> String {
   }
 }
 /// Write given String to buffer and flush+clear, return result or empty array
-pub fn writeStringClear(data: String, cap~: Int = 128) -> Array[Byte] {
+pub fn writeStringClear(data: String, cap~: Int = 128) -> String {
   match write_string_and_clear?(data, cap) {
     Ok(res) => res
     Err(_) => []
