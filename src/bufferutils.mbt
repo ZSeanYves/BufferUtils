@@ -108,10 +108,9 @@ fn write_int_and_clear(data: Array[Int], cap: Int) -> Array[Int]!BufferError {
   write_process_and_clear!(bytes,cap).map(fn(b) { b.to_int() })
 }
 /// Read from String and write with flush
-/// 目前无法实现将 Bytes 重新转换成 String 类型输出，需等待后续开发
-fn write_string(data: String, cap:Int) -> Array[Byte]!BufferError {
+fn write_string(data: String, cap:Int) -> String!BufferError {
   let bytes = read_string!(data)
-  write_process!(bytes, cap)
+  write_process!(bytes, cap).map(fn(b) { b.to_string() }).join("")
 }
 /// Read from String and write+flush+clear
 fn write_string_and_clear(data: String, cap:Int) -> Array[Byte]!BufferError {
@@ -191,7 +190,7 @@ pub fn writeIntClear(data: Array[Int], cap~: Int = 128) -> Array[Int] {
   }
 }
 /// Write given String to buffer and flush, return result or empty array
-pub fn writeString(data: String, cap~: Int = 128) -> Array[Byte] {
+pub fn writeString(data: String, cap~: Int = 128) -> String {
   match write_string?(data, cap) {
     Ok(res) => res
     Err(_) => []
@@ -257,7 +256,7 @@ test "write and flush buffer" {
 test "write and recover utf8 string" {
   let s = "MoonBit测试123"
   let result = write_string!(s,128)
-  assert_eq!(result, read_string!(s))
+  assert_eq!(result, s)
 }
 
 /// Trait-Based Interface Tests

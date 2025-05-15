@@ -35,9 +35,7 @@ Or manually in `moon.mod.json`:
 ```moonbit
 @ZSeanYves/bufferutils.writeStringClear("hello moonbit") 
 // Optional parameter cap allows setting buffer size (default: 128)
-/// Currently, Moonbit does not support converting the `Bytes` type back to `String`,  
-/// so the return type remains as `Array[Byte]`.  
-/// Other `write` functions can return values in their original input types.
+///`write` functions can return values in their original input types.
 @ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
 @ZSeanYves/bufferutils.writeIntsClear([10,20,30])
 ```
