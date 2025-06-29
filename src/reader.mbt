@@ -1,61 +1,58 @@
-/// The `BufferReader` struct
+///| The `BufferReader` struct
 /// A utility for sequentially reading bytes from a `Bytes` object.
 pub struct BufferReader {
-  buf: Bytes        /// Original byte buffer (immutable)
-  mut pos: Int      /// Current read position (byte offset)
+  /// Original byte buffer (immutable)
+  /// Current read position (byte offset)
+  buf : Bytes
+  mut pos : Int
 }
 
-
-
-/// Create a new `BufferReader`
+///| Create a new `BufferReader`
 /// Initializes the reader from a given byte sequence.
-fn new_reader(buf: Bytes) -> BufferReader {
-  let reader: BufferReader = {
-    buf: buf,
-    pos: 0
-  }
+fn new_reader(buf : Bytes) -> BufferReader {
+  let reader : BufferReader = { buf, pos: 0 }
   reader
 }
 
-/// Read the next byte from the buffer, advancing the position by 1.
+///| Read the next byte from the buffer, advancing the position by 1.
 /// Raises `BufferError::Underflow` if the current position is out of bounds.
-impl BufReadable for BufferReader with read_byte(self: BufferReader) -> Byte!BufferError {
+impl BufReadable for BufferReader with read_byte(self : BufferReader) -> Byte raise BufferError {
   if self.pos >= self.buf.length() {
     raise BufferError::Underflow("读取失败：到达缓冲区的末尾")
   }
-  let byte: Byte = self.buf[self.pos]
+  let byte : Byte = self.buf[self.pos]
   self.pos += 1
   byte
 }
 
-/// Peek at the byte at the current position without advancing it.
+///| Peek at the byte at the current position without advancing it.
 /// Raises `BufferError::Underflow` if the buffer is empty or position is invalid.
-impl BufReadable for BufferReader with peek(self: BufferReader) -> Byte!BufferError {
+impl BufReadable for BufferReader with peek(self : BufferReader) -> Byte raise BufferError {
   if self.pos >= self.buf.length() {
     raise BufferError::Underflow("读取失败：空缓冲区")
   }
   self.buf[self.pos]
 }
 
-/// Skip forward by `n` bytes in the buffer.
+///| Skip forward by `n` bytes in the buffer.
 /// Note: This does not perform bounds checking.
-impl BufReadable for BufferReader with skip(self: BufferReader, n: Int) -> Unit {
+impl BufReadable for BufferReader with skip(self : BufferReader, n : Int) -> Unit {
   self.pos += n
 }
 
-/// Check whether the buffer has been fully read (i.e., no remaining bytes).
-impl BufReadable for BufferReader with is_empty(self: BufferReader) -> Bool {
+///| Check whether the buffer has been fully read (i.e., no remaining bytes).
+impl BufReadable for BufferReader with is_empty(self : BufferReader) -> Bool {
   self.pos >= self.buf.length()
 }
 
-/// Return the number of remaining unread bytes in the buffer.
-impl BufReadable for BufferReader with reader_remaining(self: BufferReader) -> Int {
+///| Return the number of remaining unread bytes in the buffer.
+impl BufReadable for BufferReader with reader_remaining(self : BufferReader) -> Int {
   self.buf.length() - self.pos
 }
 
-/// Reset the read position back to the beginning of the buffer.
-impl BufReadable for BufferReader with reader_rewind(self: BufferReader) -> Unit {
+///| Reset the read position back to the beginning of the buffer.
+impl BufReadable for BufferReader with reader_rewind(self : BufferReader) -> Unit {
   self.pos = 0
 }
 
-/// 
+///
