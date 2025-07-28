@@ -50,6 +50,7 @@ pub fn string_to_utf8_bytes(s: String) -> Bytes {
 
 pub suberror Utf8DecodeError(String)
 
+///将字节数组转换为字符串，假设它是有效的UTF-8编码。
 pub fn utf8_bytes_to_string(b: Bytes) -> String raise Utf8DecodeError {
   let mut result = ""
   let mut i = 0

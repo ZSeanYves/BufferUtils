@@ -1,23 +1,25 @@
-# 📦 BufferUtils: A High-Performance Buffer Library for MoonBit
+# 📦 BufferUtils: A High-Performance Buffered I/O Utility for MoonBit
 
 [English](https://github.com/ZSeanYves/BufferUtils/blob/main/README.md) | [简体中文](https://github.com/ZSeanYves/BufferUtils/blob/main/README_zh_CN.md)
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/ZSeanYves/BufferUtils/bufferutils-ci.yml)](https://github.com/ZSeanYves/BufferUtils/actions)
 [![License](https://img.shields.io/github/license/ZSeanYves/BufferUtils)](LICENSE)
 
-**BufferUtils** is a high-performance buffer utility library for MoonBit, inspired by Rust's `BufReader` and `BufWriter`. It supports efficient, flexible, and composable buffered reading and writing with full error handling, file I/O support, UTF-8 encoding, and type interop.
+**BufferUtils** is a fast, lightweight buffer utility library for MoonBit, designed to simplify buffered reading, writing, and transformation of byte streams. Inspired by Rust’s `BufReader`/`BufWriter` and MoonBit's strong type system, it supports safe I/O, composable interfaces, multi-type input/output, and utility expansion for common tasks.
 
 ---
 
 ## 🚀 Features
 
-* **Buffer Reading & Writing**: Stream-style I/O with `peek`, `skip`, `rewind`, `flush`, `clear`.
-* **Multi-Type Interop**: Supports `Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
-* **UTF-8 Encoding**: Converts `String` to UTF-8 `Bytes` via `string_to_utf8_bytes`.
-* **File I/O Integration**: Write buffers directly to files using `writeBytes`, `writeString`, `writeInt`.
-* **Custom Capacity**: Define buffer capacity; check remaining space dynamically.
-* **Zero-Copy**: Avoid unnecessary copying.
-* **Unified Error System**: All read/write operations raise `BufferError` enums.
+* **Buffered Read/Write** with peek, skip, rewind, flush, clear
+* **Multi-Type Interop**: Works with `Bytes`, `Array[Byte]`, `Array[Int]`, `String`
+* **UTF-8 Encoding/Decoding**
+* **Customizable Buffer Capacity**
+* **File Output Support**
+* **Unified Error System**
+* **Zero-Copy Design**
+* **Safe Wrapper Variants**
+* **Utility Tools in `expand.mbt`** for Split, utf8 conversion, error handling
 
 ---
 
@@ -27,7 +29,7 @@
 moon add ZSeanYves/bufferutils
 ```
 
-Or manually in `moon.mod.json`:
+or edit `moon.mod.json`:
 
 ```json
 "import": ["ZSeanYves/bufferutils"]
@@ -35,73 +37,88 @@ Or manually in `moon.mod.json`:
 
 ---
 
-## 🔧 Basic Usage
+## 🔧 Quick Start
 
-### ✍️ Write Data to File
+### ✍️ Writing Data to File
 
 ```moonbit
 @ZSeanYves/bufferutils.writeString("output.txt", "hello moonbit")
-@ZSeanYves/bufferutils.writeBytes("out.bin", Bytes::from_array([72, 101, 108, 108, 111]))
-@ZSeanYves/bufferutils.writeInt("out_int.dat", [10, 20, 30])
+@ZSeanYves/bufferutils.writeBytes("data.bin", Bytes::from_array([72, 105]))
+@ZSeanYves/bufferutils.writeInt("data.int", [1, 2, 3])
 ```
 
-### 🧠 Handling Large Data Writes
+### 🧠 Buffered Processing
 
 ```moonbit
-let size = 1024 * 1024 * 100 #100MB
-let arr : Array[Byte] = []
-for i in 0..<size {
-  arr.push((i % 256).to_byte())
-}
-let path4 = "./src/examples/LargeBytes4.txt"
-let data = Bytes::from_array(arr)
-writeBytes(path4, data)
-# create BufferWriter
-let writer = new_writer(size + 1024)
-let written = write_bytes(writer, arr)
-# close the BufferWriter
-writer.clear()
-let read = readBytes(Bytes::from_array(written))
-assert_eq(read.length(), size)
+let arr = [104, 101, 108, 108, 111]  # "hello"
+let writer = new_writer(128)
+let _ = write_bytes(writer, arr)
+let flushed = writer.flush()
+let reader = new_reader(Bytes::from_array(flushed))
+let data = read_bytes(reader)  # returns Array[Byte]
 ```
 
-> new_writer(size). You choose a suitable size for your need
-
-### 🔍 Read from Input Buffer
+### 🔍 Reading with Type Conversion
 
 ```moonbit
-@ZSeanYves/bufferutils.readBytes(Bytes::from_array([72, 101, 108, 108, 111]))
-@ZSeanYves/bufferutils.readInts([72, 105])
-@ZSeanYves/bufferutils.readString("hello")
+readBytes(Bytes::from_array([72, 105]))     # → [72, 105]
+readABytes([97, 98, 99])                    # → [97, 98, 99]
+readInts([104, 101, 108])                   # → [104, 101, 108]
+readString("moon")                          # → [109, 111, 111, 110]
 ```
 
 ---
 
-## 📘 API Overview
+## 🧰 API Overview
 
-### Read Functions
+### 🔵 Reading Functions
 
-| Function                    | Description                   |
-| --------------------------- | ----------------------------- |
-| `readBytes(Bytes)`          | Read byte buffer              |
-| `readABytes([Byte])`        | Read from Array\[Byte]        |
-| `readInts([Int])`           | Read from Int array           |
-| `readString(String)`        | Read from UTF-8 string        |
-| `string_to_utf8_bytes(str)` | Convert String to UTF-8 Bytes |
+| Function             | Description                       |
+| -------------------- | --------------------------------- |
+| `readBytes(Bytes)`   | Read from MoonBit `Bytes`         |
+| `readABytes([Byte])` | Read from `Array[Byte]`           |
+| `readInts([Int])`    | Read and convert `Int` to `Byte`  |
+| `readString(String)` | Convert UTF-8 string to bytes     |
+| `read_from(reader)`  | Generalized interface using trait |
 
-### Write Functions
+### 🕠 Writing Functions
 
-| Function                    | Description                    |
-| --------------------------- | ------------------------------ |
-| `writeBytes(path, Bytes)`   | Write and flush to file        |
-| `writeInt(path, [Int])`     | Encode then write              |
-| `writeString(path, str)`    | Write UTF-8 string             |
-| `writeAbytes(path, AByte)`  | Write bytes into writer        |
-| `writer.clear()`            | close the BufferReader         |
+| Function                              | Description                        |
+| ------------------------------------- | ---------------------------------- |
+| `writeBytes(path, Bytes)`             | Write raw bytes to file            |
+| `writeInt(path, [Int])`               | Write array of integers            |
+| `writeString(path, str)`              | Write UTF-8 encoded string         |
+| `write_bytes(writer, AByte)`          | Write byte array via buffer writer |
+| `write_string_and_clear(writer, str)` | Write string then flush and clear  |
+
+### 🚣 Buffer Utilities (Reader/Writer)
+
+| Type / Method            | Description                     |
+| ------------------------ | ------------------------------- |
+| `BufferReader`           | Buffered reader struct          |
+| `peek`, `skip`, `rewind` | Inspect or navigate buffer      |
+| `is_empty`, `remaining`  | Check buffer state              |
+| `buffer()`               | Access internal buffer snapshot |
+| `BufferWriter`           | Buffered writer struct          |
+| `flush()`, `clear()`     | Finalize and reset buffer       |
+| `remaining_space()`      | Get available capacity          |
+
+---
+
+## 🌱 `expand.mbt`: Utility Tools
+
+| Function                                     | Description                                         |
+| ---------------------------------------------| --------------------------------------------------- |
+| `string_to_utf8_bytes(str)`                  | Convert string to UTF-8 encoded bytes               |
+| `split_bytes(buf: Bytes, a: Byte)`           | byte is divided  by a specific byte delimiter.      |
+| `utf8_bytes_to_string(b: Bytes)`             | Convert the UTF-8 encoded bytes to string           |
+| `split_array_bytes(a: Array[Byte], b: Byte)` | Divide the array [byte]` by delimiter.              |
 
 ---
 
 ## ⚠️ Error Handling
+
+All operations use a unified error enum:
 
 ```moonbit
 suberror BufferError {
@@ -112,47 +129,54 @@ suberror BufferError {
 }
 ```
 
-Use `!`, `?`, or `match` for graceful propagation.
-
----
-
-## 📂 Project Structure
-
-```
-BufferUtils/
-├── src/lib/
-│   ├── bufferutils.mbt          # High-level wrapper functions
-│   ├── bufferutils.mbti         # Interface and type declarations
-│   ├── reader.mbt               # BufferReader methods
-│   ├── writer.mbt               # BufferWriter methods
-│   ├── error.mbt                # Unified error types
-│   ├── expand.mbt               # Expand functions
-│   └── bufferutils_test.mbt     # Black-box & white-box tests
-├── moon.mod.json                # Module definition
-├── LICENSE
-└── README.md
-```
+Use `?`, `!`, or `match` to propagate or handle errors gracefully.
 
 ---
 
 ## 🧪 Testing
 
-Run all tests:
+Run full test suite:
 
 ```bash
 moon test -p ZSeanYves/bufferutils
 ```
 
-Or invoke simulation:
+Or run manually:
 
 ```bash
 moon run ZSeanYves/bufferutils_test
+```
+
+Tests cover:
+
+* Normal/boundary read-write
+* Empty buffer behavior
+* Capacity-limited writing
+* Unicode and binary strings
+* Utility function correctness
+
+---
+
+## 🗂 Project Structure
+
+```
+BufferUtils/
+├── src/
+│   ├── bufferutils.mbt          # Main wrapper functions
+│   ├── bufferutils.mbti         # Interface/type declarations
+│   ├── reader.mbt               # BufferReader methods
+│   ├── writer.mbt               # BufferWriter methods
+│   ├── error.mbt                # Unified error definitions
+│   ├── expand.mbt               # Extra utilities: print, safe wrappers, utf8
+│   └── bufferutils_test.mbt     # All tests (black-box & white-box)
+├── examples/                    # Sample input/output
+├── moon.mod.json                # MoonBit module manifest
+└── LICENSE
 ```
 
 ---
 
 ## 📜 License
 
-Apache-2.0 License. See [LICENSE](./LICENSE) for full details.
-
----
+Apache-2.0 License
+See [LICENSE](./LICENSE) for full terms.
