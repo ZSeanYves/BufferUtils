@@ -5,24 +5,30 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/ZSeanYves/BufferUtils/bufferutils-ci.yml)](https://github.com/ZSeanYves/BufferUtils/actions)
 [![License](https://img.shields.io/github/license/ZSeanYves/BufferUtils)](LICENSE)
 
-**BufferUtils** is a high-performance buffer utility library for MoonBit, inspired by Rust's `BufReader` and `BufWriter`. It supports efficient, flexible, and composable buffered reading and writing with full error handling and type interop.
+**BufferUtils** is a high-performance buffer utility library for MoonBit, inspired by Rust's `BufReader` and `BufWriter`. It supports efficient, flexible, and composable buffered reading and writing with full error handling, file I/O support, UTF-8 encoding, and type interop.
 
 ---
 
 ## 🚀 Features
-- **Buffer Reading & Writing**: Stream-style I/O with peek, skip, rewind, flush, and clear.
-- **Multi-Type Interop**: Support for Binary data ,Text data,`Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
-- **Dynamic Capacity Management**: Customize buffer capacity.
-- **Zero-Copy**: Minimized unnecessary copying.
-- **Unified Errors**: Clean enum-based error handling (`BufferError`).
+
+* **Buffer Reading & Writing**: Stream-style I/O with `peek`, `skip`, `rewind`, `flush`, `clear`.
+* **Multi-Type Interop**: Supports `Bytes`, `Array[Byte]`, `Array[Int]`, and `String`.
+* **UTF-8 Encoding**: Converts `String` to UTF-8 `Bytes` via `string_to_utf8_bytes`.
+* **File I/O Integration**: Write buffers directly to files using `writeBytes`, `writeString`, `writeInt`.
+* **Custom Capacity**: Define buffer capacity; check remaining space dynamically.
+* **Zero-Copy**: Avoid unnecessary copying.
+* **Unified Error System**: All read/write operations raise `BufferError` enums.
 
 ---
 
 ## 📦 Installation
+
 ```bash
 moon add ZSeanYves/bufferutils
 ```
+
 Or manually in `moon.mod.json`:
+
 ```json
 "import": ["ZSeanYves/bufferutils"]
 ```
@@ -31,54 +37,41 @@ Or manually in `moon.mod.json`:
 
 ## 🔧 Basic Usage
 
-### read ,Write and flush 
+### ✍️ Write Data to File
+
 ```moonbit
-@ZSeanYves/bufferutils.writeStringClear("hello moonbit") 
-// Optional parameter cap allows setting buffer size (default: 128)
-///`write` functions can return values in their original input types.
-/// String' return Array[Byte], except for String.
-@ZSeanYves/bufferutils.writeBytesClear(Bytes::from_array([72, 101, 108, 108, 111]))
-@ZSeanYves/bufferutils.writeIntsClear([10,20,30])
+@ZSeanYves/bufferutils.writeString("output.txt", "hello moonbit")
+@ZSeanYves/bufferutils.writeBytes("out.bin", Bytes::from_array([72, 101, 108, 108, 111]))
+@ZSeanYves/bufferutils.writeInt("out_int.dat", [10, 20, 30])
 ```
 
-### read ,Write
-```moonbit
-@ZSeanYves/bufferutils.writeString("hello moonbit") 
-@ZSeanYves/bufferutils.writeBytes(Bytes::from_array([72, 101, 108, 108, 111]))
-@ZSeanYves/bufferutils.writeInts([10,20,30])
-///You need to manually call clear() to reset the buffer.
-
-🧠 Handling Large Data Writes 
-
-When writing large binary or textual data to the buffer using `writeBytes`, it's **strongly recommended** to explicitly specify the buffer capacity (`cap~`) to avoid overflow or silent truncation:
+### 🧠 Handling Large Data Writes
 
 ```moonbit
-let size = 1024 * 1024  # 1MB
-let data: Array[Byte] = []
+let size = 1024 * 1024 * 100 #100MB
+let arr : Array[Byte] = []
 for i in 0..<size {
-  data.push((i % 256).to_byte())
+  arr.push((i % 256).to_byte())
 }
-let bytes = Bytes::from_array(data)
-
-# ✅ Correct usage: manually specify enough capacity
-let result = @ZSeanYves/bufferutils.writeBytes(bytes, cap~ = size + 128)
+let path4 = "./src/examples/LargeBytes4.txt"
+let data = Bytes::from_array(arr)
+writeBytes(path4, data)
+# create BufferWriter
+let writer = new_writer(size + 1024)
+let written = write_bytes(writer, arr)
+# close the BufferWriter
+writer.clear()
+let read = readBytes(Bytes::from_array(written))
+assert_eq(read.length(), size)
 ```
 
-> ⚠️ By default, `writeBytes` uses `cap~ = 128`. When handling large inputs (e.g., 1MB+), you **must** pass a larger `cap~` to avoid unexpected output.
+> new_writer(size). You choose a suitable size for your need
 
-Alternatively, if you're **reading from an existing buffer** (e.g., a file or input stream), you can use `read_bytes` to dynamically determine the data size and pass that to your writer:
+### 🔍 Read from Input Buffer
 
-```moonbit
-let read_data = @ZSeanYves/bufferutils.readBytes(file_input)
-let result = @ZSeanYves/bufferutils.writeBytes(read_data, cap~ = read_data.length() + 128)
-```
-
----
-
-### Read from byte array
 ```moonbit
 @ZSeanYves/bufferutils.readBytes(Bytes::from_array([72, 101, 108, 108, 111]))
-@ZSeanYves/bufferutils.readInts([72,105]) 
+@ZSeanYves/bufferutils.readInts([72, 105])
 @ZSeanYves/bufferutils.readString("hello")
 ```
 
@@ -87,50 +80,55 @@ let result = @ZSeanYves/bufferutils.writeBytes(read_data, cap~ = read_data.lengt
 ## 📘 API Overview
 
 ### Read Functions
-| Function                  | Description                            |
-|--------------------------|----------------------------------------|
-| `readBytes(Bytes)`       | Read byte buffer                       |
-| `readBytesArray([Byte])` | Read from Array[Byte]                  |
-| `readInts([Int])`        | Read from Int array                    |
-| `readString(String)`     | Read from UTF-8 string                 |
+
+| Function                    | Description                   |
+| --------------------------- | ----------------------------- |
+| `readBytes(Bytes)`          | Read byte buffer              |
+| `readABytes([Byte])`        | Read from Array\[Byte]        |
+| `readInts([Int])`           | Read from Int array           |
+| `readString(String)`        | Read from UTF-8 string        |
+| `string_to_utf8_bytes(str)` | Convert String to UTF-8 Bytes |
 
 ### Write Functions
-| Function                  | Description                            |
-|--------------------------|----------------------------------------|
-| `writeBytes(Bytes)`      | Write then flush                       |
-| `writeBytesClear(Bytes)` | Write, flush, then clear               |
-| `writeInts([Int])`       | Write Int array                        |
-| `writeIntsClear([Int])`  | Write then clear buffer                |
-| `writeString(String)`    | Write string                           |
-| `writeStringClear(String)` | Write string and clear               |
+
+| Function                    | Description                    |
+| --------------------------- | ------------------------------ |
+| `writeBytes(path, Bytes)`   | Write and flush to file        |
+| `writeInt(path, [Int])`     | Encode then write              |
+| `writeString(path, str)`    | Write UTF-8 string             |
+| `writeAbytes(path, AByte)`  | Write bytes into writer        |
+| `writer.clear()`            | close the BufferReader         |
 
 ---
 
-## ⚠️ Errors
+## ⚠️ Error Handling
 
 ```moonbit
-enum BufferError {
+suberror BufferError {
   Overflow(String)
   Underflow(String)
   Flush(String)
   InvalidCapacity(String)
 }
 ```
-Use `!`, `?`, or `match` for graceful error handling.
+
+Use `!`, `?`, or `match` for graceful propagation.
 
 ---
 
 ## 📂 Project Structure
+
 ```
 BufferUtils/
 ├── src/lib/
-│   ├── bufferutils.mbt          # High-level interface
-│   ├── bufferutils.mbti         # Public type + API
-│   ├── reader.mbt               # BufferReader
-│   ├── writer.mbt               # BufferWriter
-│   ├── error.mbt                # Error types
-│   └── bufferutils_test.mbt     # Tests (black + white box)
-|── moon.mod.json 
+│   ├── bufferutils.mbt          # High-level wrapper functions
+│   ├── bufferutils.mbti         # Interface and type declarations
+│   ├── reader.mbt               # BufferReader methods
+│   ├── writer.mbt               # BufferWriter methods
+│   ├── error.mbt                # Unified error types
+│   ├── expand.mbt               # Expand functions
+│   └── bufferutils_test.mbt     # Black-box & white-box tests
+├── moon.mod.json                # Module definition
 ├── LICENSE
 └── README.md
 ```
@@ -138,11 +136,15 @@ BufferUtils/
 ---
 
 ## 🧪 Testing
-Run full test suite:
+
+Run all tests:
+
 ```bash
 moon test -p ZSeanYves/bufferutils
 ```
-Run external simulation:
+
+Or invoke simulation:
+
 ```bash
 moon run ZSeanYves/bufferutils_test
 ```
@@ -150,8 +152,7 @@ moon run ZSeanYves/bufferutils_test
 ---
 
 ## 📜 License
+
 Apache-2.0 License. See [LICENSE](./LICENSE) for full details.
 
 ---
-
-

@@ -9,14 +9,14 @@ pub struct BufferReader {
 
 ///| Create a new `BufferReader`
 /// Initializes the reader from a given byte sequence.
-fn new_reader(buf : Bytes) -> BufferReader {
+pub fn new_reader(buf : Bytes) -> BufferReader {
   let reader : BufferReader = { buf, pos: 0 }
   reader
 }
 
 ///| Read the next byte from the buffer, advancing the position by 1.
 /// Raises `BufferError::Underflow` if the current position is out of bounds.
-impl BufReadable for BufferReader with read_byte(self : BufferReader) -> Byte raise BufferError {
+pub fn read_byte(self : BufferReader) -> Byte raise BufferError {
   if self.pos >= self.buf.length() {
     raise BufferError::Underflow("读取失败：到达缓冲区的末尾")
   }
@@ -27,7 +27,7 @@ impl BufReadable for BufferReader with read_byte(self : BufferReader) -> Byte ra
 
 ///| Peek at the byte at the current position without advancing it.
 /// Raises `BufferError::Underflow` if the buffer is empty or position is invalid.
-impl BufReadable for BufferReader with peek(self : BufferReader) -> Byte raise BufferError {
+pub fn peek(self : BufferReader) -> Byte raise BufferError {
   if self.pos >= self.buf.length() {
     raise BufferError::Underflow("读取失败：空缓冲区")
   }
@@ -36,23 +36,22 @@ impl BufReadable for BufferReader with peek(self : BufferReader) -> Byte raise B
 
 ///| Skip forward by `n` bytes in the buffer.
 /// Note: This does not perform bounds checking.
-impl BufReadable for BufferReader with skip(self : BufferReader, n : Int) -> Unit {
+pub fn skip(self : BufferReader, n : Int) -> Unit {
   self.pos += n
 }
 
 ///| Check whether the buffer has been fully read (i.e., no remaining bytes).
-impl BufReadable for BufferReader with is_empty(self : BufferReader) -> Bool {
+pub fn is_empty(self : BufferReader) -> Bool {
   self.pos >= self.buf.length()
 }
 
 ///| Return the number of remaining unread bytes in the buffer.
-impl BufReadable for BufferReader with reader_remaining(self : BufferReader) -> Int {
+pub fn reader_remaining(self : BufferReader) -> Int {
   self.buf.length() - self.pos
 }
 
 ///| Reset the read position back to the beginning of the buffer.
-impl BufReadable for BufferReader with reader_rewind(self : BufferReader) -> Unit {
+pub fn reader_rewind(self : BufferReader) -> Unit {
   self.pos = 0
 }
 
-///

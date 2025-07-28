@@ -1,25 +1,46 @@
+// Generated using `moon info`, DON'T EDIT IT
 package "ZSeanYves/bufferutils"
 
-// Values
-fn readBytes(Bytes) -> Array[Byte]
+import(
+  "moonbitlang/x/fs"
+)
 
-fn readBytesArray(Array[Byte]) -> Array[Byte]
+// Values
+fn new_reader(Bytes) -> BufferReader
+
+fn new_writer(Int) -> BufferWriter raise BufferError
+
+fn readABytes(Array[Byte]) -> Array[Byte]
+
+fn readBytes(Bytes) -> Array[Byte]
 
 fn readInts(Array[Int]) -> Array[Byte]
 
 fn readString(String) -> Array[Byte]
 
-fn writeBytes(Bytes, cap~ : Int = ..) -> Array[Byte]
+fn read_abytes(Array[Byte]) -> BufferReader
 
-fn writeBytesClear(Bytes, cap~ : Int = ..) -> Array[Byte]
+fn read_bytes(BufferReader) -> Array[Byte] raise BufferError
 
-fn writeInt(Array[Int], cap~ : Int = ..) -> Array[Int]
+fn read_ints(Array[Int]) -> BufferReader
 
-fn writeIntClear(Array[Int], cap~ : Int = ..) -> Array[Int]
+fn read_string(String) -> BufferReader
 
-fn writeString(String, cap~ : Int = ..) -> Array[Byte]
+fn string_to_utf8_bytes(String) -> Bytes
 
-fn writeStringClear(String, cap~ : Int = ..) -> Array[Byte]
+fn writeBytes(String, Bytes) -> Unit raise @fs.IOError
+
+fn writeInt(String, Array[Int], encoding~ : String = ..) -> Unit raise @fs.IOError
+
+fn writeString(String, String, encoding~ : String = ..) -> Unit raise @fs.IOError
+
+fn write_Abyte(BufferWriter, Array[Byte]) -> Array[Byte] raise BufferError
+
+fn write_bytes(BufferWriter, Array[Byte]) -> Array[Byte] raise BufferError
+
+fn write_int(BufferWriter, Array[Byte]) -> Array[Byte] raise BufferError
+
+fn write_string(BufferWriter, Array[Byte]) -> Array[Byte] raise BufferError
 
 // Types and methods
 type BufferError
@@ -28,31 +49,26 @@ pub struct BufferReader {
   buf : Bytes
   mut pos : Int
 }
+fn BufferReader::is_empty(Self) -> Bool
+fn BufferReader::peek(Self) -> Byte raise BufferError
+fn BufferReader::read_byte(Self) -> Byte raise BufferError
+fn BufferReader::reader_remaining(Self) -> Int
+fn BufferReader::reader_rewind(Self) -> Unit
+fn BufferReader::skip(Self, Int) -> Unit
 
 pub struct BufferWriter {
   mut buf : Array[Byte]
   mut pos : Int
   capacity : Int
 }
+fn BufferWriter::clear(Self) -> Unit
+fn BufferWriter::flush(Self) -> Array[Byte] raise BufferError
+fn BufferWriter::write_all(Self, Array[Byte]) -> Unit raise BufferError
+fn BufferWriter::write_byte(Self, Byte) -> Unit raise BufferError
+fn BufferWriter::writer_remaining(Self) -> Int
+fn BufferWriter::writer_rewind(Self) -> Unit
 
 // Type aliases
 
 // Traits
-pub trait BufReadable {
-  read_byte(Self) -> Byte!BufferError
-  peek(Self) -> Byte!BufferError
-  is_empty(Self) -> Bool
-  reader_rewind(Self) -> Unit
-  reader_remaining(Self) -> Int
-  skip(Self, Int) -> Unit
-}
-
-pub trait BufWritable {
-  write_byte(Self, Byte) -> Unit!BufferError
-  write_all(Self, Array[Byte]) -> Unit!BufferError
-  flush(Self) -> Array[Byte]!BufferError
-  clear(Self) -> Unit
-  writer_rewind(Self) -> Unit
-  writer_remaining(Self) -> Int
-}
 
