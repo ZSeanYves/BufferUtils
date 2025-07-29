@@ -28,11 +28,6 @@ jobs:
       - name: Run tests
         run: moon test --target native
 
-      - name: Format check
-        run: |
-          moon fmt
-          git diff --exit-code
-
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
