@@ -15,7 +15,7 @@ pub fn string_to_utf8_bytes(s: String) -> Bytes {
         // 组合 surrogate pair 得到 Unicode code point
         let high = cu1 - 0xD800
         let low = cu2 - 0xDC00
-        let code_point = 0x10000 + ((high << 10) | low)
+        let code_point = 0x10000 + ((high.to_int() << 10) | low.to_int())
 
         // 编码成 UTF-8 (4 bytes)
         result.push((0xF0 | (code_point >> 18)).to_byte())
@@ -32,12 +32,12 @@ pub fn string_to_utf8_bytes(s: String) -> Bytes {
     if cu1 <= 0x7F {
       result.push(cu1.to_byte())
     } else if cu1 <= 0x7FF {
-      result.push((0xC0 | (cu1 >> 6)).to_byte())
-      result.push((0x80 | (cu1 & 0x3F)).to_byte())
+      result.push((0xC0 | (cu1.to_int() >> 6)).to_byte())
+      result.push((0x80 | (cu1.to_int() & 0x3F)).to_byte())
     } else {
-      result.push((0xE0 | (cu1 >> 12)).to_byte())
-      result.push((0x80 | ((cu1 >> 6) & 0x3F)).to_byte())
-      result.push((0x80 | (cu1 & 0x3F)).to_byte())
+      result.push((0xE0 | (cu1.to_int() >> 12)).to_byte())
+      result.push((0x80 | ((cu1.to_int() >> 6) & 0x3F)).to_byte())
+      result.push((0x80 | (cu1.to_int() & 0x3F)).to_byte())
     }
 
     i += 1
@@ -153,13 +153,13 @@ test "string_to_utf8_bytes and utf8_bytes_to_string - round trip" {
 test "utf8_bytes_to_string - invalid continuation byte" {
   let bad_bytes = Bytes::from_array([0xE4, 0x7F]) // E4 should be followed by 2 continuation bytes
   let result = (try? utf8_bytes_to_string(bad_bytes))
-  assert_eq(result.is_err(),true)
+  assert_eq(result is Err(_),true)
 }
 
 test "utf8_bytes_to_string - unexpected end of input" {
   let bad_bytes = Bytes::from_array([0xF0, 0x9F]) // Incomplete 4-byte sequence
   let result = (try? utf8_bytes_to_string(bad_bytes))
-  assert_eq(result.is_err(),true)
+  assert_eq(result is Err(_),true)
 }
 
 test "split_bytes and split_array_bytes produce same result" {
