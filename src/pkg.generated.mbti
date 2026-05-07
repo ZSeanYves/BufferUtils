@@ -1,0 +1,182 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils"
+
+// Values
+pub fn array_to_bytes(Array[Byte]) -> Bytes
+
+pub fn bytes_to_array(Bytes) -> Array[Byte]
+
+pub fn ints_to_bytes(Array[Int]) -> Array[Byte] raise BufferError
+
+pub fn new_buf_reader(MemorySource, Int) -> BufReader raise BufferError
+
+pub fn new_buf_writer(MemorySink, Int) -> BufWriter raise BufferError
+
+pub fn new_file_buf_reader(String, Int) -> BufReader raise BufferError
+
+pub fn new_file_buf_writer(String, Int) -> FileBufWriter raise BufferError
+
+pub fn new_file_sink(String) -> FileSink raise BufferError
+
+pub fn new_file_source(String) -> FileSource raise BufferError
+
+pub fn new_fixed_writer(Int) -> BufferWriter raise BufferError
+
+pub fn new_growing_writer(Int) -> BufferWriter raise BufferError
+
+pub fn new_memory_sink() -> MemorySink
+
+pub fn new_memory_source(Bytes) -> MemorySource
+
+pub fn new_memory_source_from_array(Array[Byte]) -> MemorySource
+
+pub fn new_reader(Bytes) -> BufferReader
+
+pub fn new_writer(Int) -> BufferWriter raise BufferError
+
+pub fn split_array_bytes(Array[Byte], Byte) -> Array[Array[Byte]]
+
+pub fn split_bytes(Bytes, Byte) -> Array[Array[Byte]]
+
+pub fn string_to_utf8_bytes(String) -> Bytes
+
+pub fn utf8_bytes_to_string(Bytes) -> String raise Utf8DecodeError
+
+// Errors
+type BufferError
+
+pub suberror Utf8DecodeError {
+  Utf8DecodeError(String)
+}
+
+// Types and methods
+pub struct BufReader {
+  source : MemorySource
+  buf : Array[Byte]
+  mut pos : Int
+  mut end : Int
+  capacity : Int
+  mut reached_eof : Bool
+}
+pub fn BufReader::buffered_len(Self) -> Int
+pub fn BufReader::capacity(Self) -> Int
+pub fn BufReader::consume(Self, Int) -> Unit raise BufferError
+pub fn BufReader::fill_buf(Self) -> Int
+pub fn BufReader::is_eof(Self) -> Bool
+pub fn BufReader::read_byte(Self) -> Byte raise BufferError
+pub fn BufReader::read_exact(Self, Int) -> Array[Byte] raise BufferError
+pub fn BufReader::read_to_end(Self) -> Array[Byte]
+
+pub struct BufWriter {
+  sink : MemorySink
+  buf : Array[Byte]
+  mut pos : Int
+  capacity : Int
+}
+pub fn BufWriter::buffered_len(Self) -> Int
+pub fn BufWriter::capacity(Self) -> Int
+pub fn BufWriter::flush(Self) -> Unit
+pub fn BufWriter::into_inner(Self) -> MemorySink
+pub fn BufWriter::write_all(Self, Array[Byte]) -> Unit
+pub fn BufWriter::write_byte(Self, Byte) -> Unit
+
+pub struct BufferReader {
+  buf : Bytes
+  mut pos : Int
+}
+pub fn BufferReader::is_empty(Self) -> Bool
+pub fn BufferReader::len(Self) -> Int
+pub fn BufferReader::peek_byte(Self) -> Byte raise BufferError
+pub fn BufferReader::position(Self) -> Int
+pub fn BufferReader::read_byte(Self) -> Byte raise BufferError
+pub fn BufferReader::read_exact(Self, Int) -> Array[Byte] raise BufferError
+pub fn BufferReader::read_remaining(Self) -> Array[Byte]
+pub fn BufferReader::remaining(Self) -> Int
+pub fn BufferReader::rewind(Self) -> Unit
+pub fn BufferReader::skip(Self, Int) -> Unit raise BufferError
+
+pub struct BufferWriter {
+  buf : Array[Byte]
+  mut pos : Int
+  mut capacity : Int
+  growth : GrowthPolicy
+}
+pub fn BufferWriter::capacity(Self) -> Int
+pub fn BufferWriter::clear(Self) -> Unit
+pub fn BufferWriter::ensure_capacity(Self, Int) -> Unit raise BufferError
+pub fn BufferWriter::flush_to_bytes(Self) -> Array[Byte]
+pub fn BufferWriter::is_empty(Self) -> Bool
+pub fn BufferWriter::len(Self) -> Int
+pub fn BufferWriter::remaining_capacity(Self) -> Int
+pub fn BufferWriter::reserve(Self, Int) -> Unit raise BufferError
+pub fn BufferWriter::write_all(Self, Array[Byte]) -> Unit raise BufferError
+pub fn BufferWriter::write_byte(Self, Byte) -> Unit raise BufferError
+
+pub struct FileBufWriter {
+  sink : FileSink
+  buf : Array[Byte]
+  mut pos : Int
+  capacity : Int
+}
+pub fn FileBufWriter::buffered_len(Self) -> Int
+pub fn FileBufWriter::capacity(Self) -> Int
+pub fn FileBufWriter::flush(Self) -> Unit raise BufferError
+pub fn FileBufWriter::path(Self) -> String
+pub fn FileBufWriter::pending_len(Self) -> Int
+pub fn FileBufWriter::write_all(Self, Array[Byte]) -> Unit raise BufferError
+pub fn FileBufWriter::write_byte(Self, Byte) -> Unit raise BufferError
+
+pub struct FileSink {
+  path : String
+  data : Array[Byte]
+  mut flushed_len : Int
+}
+pub fn FileSink::clear(Self) -> Unit
+pub fn FileSink::flush(Self) -> Unit raise BufferError
+pub fn FileSink::path(Self) -> String
+pub fn FileSink::pending_len(Self) -> Int
+pub fn FileSink::to_bytes(Self) -> Array[Byte]
+pub fn FileSink::write(Self, Array[Byte]) -> Unit
+
+pub struct FileSource {
+  path : String
+  data : Bytes
+  mut pos : Int
+}
+pub fn FileSource::is_empty(Self) -> Bool
+pub fn FileSource::len(Self) -> Int
+pub fn FileSource::path(Self) -> String
+pub fn FileSource::position(Self) -> Int
+pub fn FileSource::read(Self, Array[Byte]) -> Int
+pub fn FileSource::read_to_end(Self) -> Array[Byte]
+pub fn FileSource::remaining(Self) -> Int
+pub fn FileSource::rewind(Self) -> Unit
+
+type GrowthPolicy
+
+pub struct MemorySink {
+  data : Array[Byte]
+}
+pub fn MemorySink::clear(Self) -> Unit
+pub fn MemorySink::flush(Self) -> Unit
+pub fn MemorySink::is_empty(Self) -> Bool
+pub fn MemorySink::len(Self) -> Int
+pub fn MemorySink::to_bytes(Self) -> Array[Byte]
+pub fn MemorySink::write(Self, Array[Byte]) -> Unit
+
+pub struct MemorySource {
+  data : Bytes
+  mut pos : Int
+}
+pub fn MemorySource::is_empty(Self) -> Bool
+pub fn MemorySource::len(Self) -> Int
+pub fn MemorySource::position(Self) -> Int
+pub fn MemorySource::read(Self, Array[Byte]) -> Int
+pub fn MemorySource::read_to_end(Self) -> Array[Byte]
+pub fn MemorySource::remaining(Self) -> Int
+pub fn MemorySource::rewind(Self) -> Unit
+
+// Type aliases
+
+// Traits
+

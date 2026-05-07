@@ -1,0 +1,10 @@
+import {
+  "moonbitlang/x/fs" @fs,
+  "moonbitlang/core/encoding/utf8" @utf8,
+}
+
+warnings = "-deprecated"
+
+options(
+  "is-main": false,
+)
