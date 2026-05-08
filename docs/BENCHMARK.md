@@ -15,7 +15,7 @@ Its job is to help compare relative behavior across:
 The benchmark is intentionally conservative. It is for local trend tracking,
 not for benchmark-proven performance claims.
 
-## How To Run
+## How to Run
 
 From the repository root:
 
@@ -44,14 +44,36 @@ Field meanings:
 - `name`: benchmark case name
 - `size`: human-readable size label
 - `bytes`: byte length of the case
-- `temp_file`: `true` when the case reads or writes benchmark files under `.tmp/`
+- `temp_file`: `true` when the case reads or writes benchmark files under
+  `.tmp/`
 - `mean_us`: mean elapsed time in microseconds across measured runs
 - `throughput_mib_per_s`: simple MiB/s figure derived from `bytes / mean_us`
 - `runs`: repeat count used for `mean_us`
 
-## Benchmark Groups
+## Benchmark Methodology
 
-The current benchmark suite groups cases by backend and API shape.
+The current runner uses:
+
+- `1` warmup run per benchmark case and size
+- `5` measured runs per benchmark case and size
+- `mean_us` as the arithmetic mean across measured runs only
+
+Current benchmark sizes:
+
+- `1KB`
+- `64KB`
+- `1MB`
+- `10MB`
+
+Temporary benchmark files live under:
+
+```text
+.tmp/bufferutils-bench/
+```
+
+This directory is ignored by Git.
+
+## Benchmark Groups
 
 ### memory_buffer
 
@@ -87,8 +109,8 @@ These cover the stable file convenience layer:
 - `native_file_source_read_chunk_experimental`
 - `native_file_sink_write_flush_experimental`
 
-These cover direct native `FILE*`-handle reads and writes in the experimental
-native package.
+These cover direct native `FILE*` reads and writes in the experimental native
+package.
 
 ### native_buffered_experimental
 
@@ -112,33 +134,8 @@ These cover buffered wrappers over native file handles.
 - `native_mmap_view_slice_crc32_experimental`
 - `native_mmap_view_slice_copy_range_explicit_copy`
 
-These cover `NativeByteView` research operations over mmap-backed native memory.
-
-## Methodology
-
-The current runner uses:
-
-- `1` warmup run per benchmark case and size
-- `5` measured runs per benchmark case and size
-- `mean_us` as the arithmetic mean across measured runs only
-
-This is a lightweight repeated-run baseline, not a statistically rigorous
-benchmark harness.
-
-Current benchmark sizes:
-
-- `1KB`
-- `64KB`
-- `1MB`
-- `10MB`
-
-Temporary benchmark files live under:
-
-```text
-.tmp/bufferutils-bench/
-```
-
-This directory is ignored by Git.
+These cover `NativeByteView` research operations over mmap-backed native
+memory.
 
 ## Local Observations
 
@@ -147,21 +144,21 @@ repository. They are local observations, not portable throughput claims.
 
 | Case | 10MB local observation | Interpretation |
 |---|---:|---|
-| `file_memory_source_read_snapshot` | ~674 MiB/s | Memory-backed `FileSource` snapshot read |
-| `file_memory_sink_flush_write` | ~112 MiB/s | Memory-backed `FileSink` flush write |
-| `native_file_source_read_chunk_experimental` | ~2656 MiB/s | Native chunked read path; strongly cache-sensitive |
-| `native_file_sink_write_flush_experimental` | ~188 MiB/s | Native direct write + flush |
-| `native_buffered_reader_read_to_end_experimental` | ~224 MiB/s | Buffered native reader path |
-| `native_buffered_writer_write_flush_experimental` | ~187 MiB/s | Buffered native writer path |
-| `native_mmap_view_find_byte_experimental` | ~3363 MiB/s | C-side mmap scan with small result only |
-| `native_mmap_view_count_byte_experimental` | ~12139 MiB/s | C-side full scan/count; highly cache-sensitive |
-| `native_mmap_view_checksum_experimental` | ~922 MiB/s | C-side checksum over mmap-backed memory |
+| `file_memory_source_read_snapshot` | ~550-670 MiB/s | Memory-backed `FileSource` snapshot read |
+| `file_memory_sink_flush_write` | ~100-110 MiB/s | Memory-backed `FileSink` flush write |
+| `native_file_source_read_chunk_experimental` | ~2200-2600 MiB/s | Native chunked read path; strongly cache-sensitive |
+| `native_file_sink_write_flush_experimental` | ~175-190 MiB/s | Native direct write + flush |
+| `native_buffered_reader_read_to_end_experimental` | ~205-215 MiB/s | Buffered native reader path |
+| `native_buffered_writer_write_flush_experimental` | ~170-190 MiB/s | Buffered native writer path |
+| `native_mmap_view_find_byte_experimental` | ~3200-3400 MiB/s | C-side mmap scan with small result only |
+| `native_mmap_view_count_byte_experimental` | ~10800-11900 MiB/s | C-side full scan/count; highly cache-sensitive |
+| `native_mmap_view_checksum_experimental` | ~920 MiB/s | C-side checksum over mmap-backed memory |
 | `native_mmap_view_crc32_experimental` | ~150 MiB/s | C-side CRC32 checksum |
-| `native_mmap_view_copy_range_explicit_copy` | ~2827 MiB/s | Explicit copy into a MoonBit array |
-| `native_mmap_view_copy_to_file_experimental` | ~4046 MiB/s | Native-side transfer to another file |
-| `native_mmap_view_slice_count_byte_experimental` | ~16551 MiB/s | C-side count on a child slice handle |
-| `native_mmap_view_slice_crc32_experimental` | ~201 MiB/s | C-side CRC32 on a child slice handle |
-| `native_mmap_view_slice_copy_range_explicit_copy` | ~3602 MiB/s | Explicit copy from a child slice handle |
+| `native_mmap_view_copy_range_explicit_copy` | ~2650-2860 MiB/s | Explicit copy into a MoonBit array |
+| `native_mmap_view_copy_to_file_experimental` | ~3940-4040 MiB/s | Native-side transfer to another file |
+| `native_mmap_view_slice_count_byte_experimental` | ~16500-16700 MiB/s | C-side count on a child slice handle |
+| `native_mmap_view_slice_crc32_experimental` | ~185-200 MiB/s | C-side CRC32 on a child slice handle |
+| `native_mmap_view_slice_copy_range_explicit_copy` | ~2500-3800 MiB/s | Explicit copy from a child slice handle |
 
 ## Interpreting Results
 
@@ -176,19 +173,19 @@ What the numbers are good for:
 Important interpretation notes:
 
 - `read_byte_scan` mainly measures MoonBit-to-C per-byte FFI overhead
-- `count_byte`, `find_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64`
-  better represent C-side zero-copy-style processing
+- `count_byte`, `find_byte`, `index_of`, `equals`, `crc32`, and
+  `checksum_u64` better represent C-side zero-copy-style processing
 - `copy_range` is an explicit-copy baseline, not a borrowed-view guarantee
 - `copy_to_file` is a native-side transfer path that avoids materializing a
   large MoonBit array in MoonBit code
-- the `slice_*` cases additionally exercise the MoonBit-managed external owner
-  plus shared live-view path of `NativeByteView`
+- the `slice_*` cases additionally exercise the shared-owner/live-view path of
+  `NativeByteView`
 - experimental root `BytesView` cases may still copy depending on MoonBit
   runtime behavior
 
 ## Caveats
 
-These benchmarks do **not** prove:
+These benchmarks do not prove:
 
 - stable zero-copy behavior
 - stable mmap throughput across machines
@@ -215,23 +212,12 @@ The root file benchmarks also include the current stable semantics:
 - `FileSink` still writes the full accumulated buffer with overwrite semantics
 - an empty first `FileSink.flush()` still materializes an empty file
 
-## Historical Context
-
-The benchmark suite has grown over several releases:
-
-- `v0.11.0`: initial local regression baseline
-- `v0.12.0` to `v0.15.0`: reduced-copy tracking and reader/source view experiments
-- `v0.17.0` to `v0.20.0`: experimental native file-handle and buffered-native cases
-- `v0.23.0`: experimental `NativeByteView` mmap research cases
-
-The output format has intentionally remained stable so local runs can still be
-compared across those iterations.
-
-## Adding New Benchmark Cases
+## Adding Benchmark Cases
 
 When adding a new benchmark case:
 
-- keep the CSV output fields stable unless there is a strong reason to change them
+- keep the CSV output fields stable unless there is a strong reason to change
+  them
 - choose a case name that clearly reflects its backend group
 - prefer adding to an existing backend family such as `memory_buffer_*`,
   `native_file_*`, or `native_mmap_view_*`
@@ -241,4 +227,5 @@ When adding a new benchmark case:
   - explicit-copy
   - native-side transfer
   - or C-side processing
-- update this guide so readers know how to interpret the new case conservatively
+- update this guide so readers know how to interpret the new case
+  conservatively

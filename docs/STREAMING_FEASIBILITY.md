@@ -1,22 +1,48 @@
 # OS-level Streaming Feasibility
 
-## Current File Model
+## Scope
 
-- `FileSource`: memory-backed snapshot
-- `FileSink`: memory-backed accumulation + flush-time overwrite
+This document records the pure-MoonBit feasibility investigation for stable
+OS-level file streaming in the root package.
+
+It is intentionally separate from the experimental native package:
+
+- the stable root file layer remains memory-backed
+- the experimental native package now provides C-backed file-handle APIs for
+  native targets
+- this document explains why the stable root package still does not expose
+  handle-based streaming file APIs
+
+## Current Stable File Model
+
+The stable root package keeps file convenience APIs simple and memory-backed:
+
+- `FileSource`: reads a file into a byte snapshot
+- `FileSink`: accumulates bytes in memory and materializes the full content on
+  `flush()`
+- `new_file_buf_reader(...)`: builds a buffered reader over a memory-backed file
+  snapshot
+- `FileBufWriter`: buffers in MoonBit and eventually flushes through
+  `FileSink`
+
+This is convenient, predictable, and portable, but it is not OS-level streaming.
 
 ## Motivation
 
-- avoid full-file memory snapshots
-- support larger files
-- support append / incremental writing
-- reduce repeated full-buffer writes
+A stable root streaming file layer would ideally provide:
+
+- chunked reads without full-file snapshot allocation
+- incremental writes without rewriting the entire accumulated file image
+- explicit flush / close lifecycle
+- append / overwrite control at the handle layer
+- better scaling for very large files
 
 ## MoonBit File API Investigation
 
-### APIs Found
+### Stable APIs Found
 
-The local `moonbitlang/x/fs` interface currently exposes:
+The locally available `moonbitlang/x/fs` interface is path-and-content oriented.
+It currently exposes operations such as:
 
 - `read_file_to_bytes`
 - `read_file_to_string`
@@ -30,9 +56,10 @@ The local `moonbitlang/x/fs` interface currently exposes:
 - `read_dir`
 - `remove_dir`
 
-### APIs Missing
+### Stable Handle APIs Not Found
 
-I did not find stable exported file-handle APIs in the currently available local MoonBit interfaces:
+The local interface survey did not find a stable root-package file-handle API
+surface for operations such as:
 
 - `open`
 - `close`
@@ -43,51 +70,64 @@ I did not find stable exported file-handle APIs in the currently available local
 - `append`
 - `flush`
 
-### Constraints
+## Why Stable Root Streaming Is Deferred
 
-- the current exported `fs` surface is path-and-content oriented, not handle oriented
-- there is no stable exported flush/close lifecycle for file handles in the local interface survey
-- append semantics are not exposed as a dedicated stable API
-- target/runtime differences would matter a lot for handle lifetime and resource release
+The root package keeps OS-level streaming deferred because the current pure
+MoonBit file surface does not provide a stable, portable, handle-oriented
+contract for:
 
-## Possible Future Design
+- handle lifetime and explicit release
+- append semantics
+- flush semantics
+- partial read / write error reporting
+- cross-target behavior consistency
 
-### StreamingFileSource
+Those are exactly the areas where resource ownership and runtime differences
+start to matter more.
 
-Expected behavior:
+## Current Experimental Alternative
 
-- open a file handle
-- read chunks
-- EOF returns `0`
-- close or release the handle
+The experimental native package now provides a separate native-target path for
+handle-based file I/O:
 
-### StreamingFileSink
+- `NativeFileSource`
+- `NativeFileSink`
+- `NativeBufReader`
+- `NativeBufWriter`
 
-Expected behavior:
+That package is:
 
-- open a file handle
-- write chunks
-- flush
-- close
-- append or overwrite mode
+- experimental
+- native-target only
+- C-toolchain dependent
+- explicit-close based
+
+It exists to explore real file-handle semantics without changing the stable root
+API contract.
 
 ## Compatibility With Existing APIs
 
-These future types would not replace the existing memory-backed convenience layer:
+If stable root streaming is ever added in the future, it should remain additive.
+It would not replace the current convenience layer:
 
-- `FileSource` stays a snapshot source
-- `FileSink` stays a memory-backed accumulator
+- `FileSource` should remain a memory-backed snapshot API
+- `FileSink` should remain a memory-backed accumulator with overwrite
+  materialization on `flush()`
+- root stable users should not be forced onto native-only behavior
 
 ## Recommendation
 
-Keep the stable root file layer memory-backed for `1.0`, and route real file-handle experimentation through a separate native backend package.
+Keep the stable root file layer memory-backed.
+
+Continue to treat real file-handle streaming as experimental native work until
+MoonBit exposes a stronger stable contract for handle ownership, flush, close,
+and cross-target semantics.
 
 ## Risks
 
-- runtime differences
-- resource lifetime
-- error handling
+- runtime differences across targets
+- resource lifetime complexity
 - append semantics
+- partial I/O error handling
 - CI portability
-- no stable handle API to rely on today
-- the current native backend remains experimental and C-toolchain dependent
+- C-toolchain dependence for current native experimentation

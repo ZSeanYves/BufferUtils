@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.0.0
+
+### Changed
+- Replaced the previous C registry owner model for `NativeByteView` with a MoonBit-managed external object owner.
+- Preserved the experimental native `NativeByteView` public API while improving owner lifecycle management.
+- Clarified README and docs around stable root APIs, experimental native APIs, NativeByteView zero-copy research, and benchmark interpretation.
+
+### Native
+- `NativeByteView` now holds a MoonBit-managed `NativeByteOwner` with a C payload and finalizer fallback.
+- `slice_handle(...)` continues to share the same owner without copying mmap memory.
+- `close()` still provides explicit cleanup, while the finalizer acts as a fallback if callers forget to close.
+
+### Documentation
+- Reworked README and docs to clarify supported scope, limitations, performance observations, and stable/experimental boundaries.
+- Added clearer explanations for why BufferUtils does not expose C memory as MoonBit `BytesView`.
+
+### Notes
+- This release does not claim stable zero-copy behavior.
+- `NativeByteView` remains experimental, native-only, and not MoonBit `BytesView`.
+- Windows mmap support and thread-safety guarantees are still not provided.
+
 ## v0.23.0
 
 ### Added

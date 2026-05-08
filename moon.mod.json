@@ -1,6 +1,6 @@
 {
   "name": "ZSeanYves/bufferutils",
-  "version": "0.23.0",
+  "version": "1.0.0",
   "deps": {
     "moonbitlang/x": "0.4.38"
   },
@@ -11,6 +11,6 @@
     "reader",
     "writer"
   ],
-  "description": "A byte-buffer utility library for MoonBit.",
+  "description": "Stable byte-buffer utilities for MoonBit with experimental native I/O extensions.",
   "source": "src"
 }

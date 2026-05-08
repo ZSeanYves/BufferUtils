@@ -4,10 +4,10 @@ A byte-buffer utility library for MoonBit.
 
 BufferUtils provides stable pure-MoonBit byte-buffer APIs for reading, writing,
 conversion, splitting, memory-backed streaming, and file convenience
-workflows. It also includes experimental native-target extensions for C-backed
-file handles and mmap-backed `NativeByteView` research, now backed by a
-MoonBit-managed external owner bridge with explicit close and finalizer
-fallback.
+workflows.
+
+It also includes experimental native-target extensions for C-backed file
+handles and mmap-backed `NativeByteView` zero-copy-style processing.
 
 BufferUtils does not claim stable zero-copy behavior. `NativeByteView` is an
 experimental native-only research API, not MoonBit `BytesView`.
@@ -22,10 +22,25 @@ experimental native-only research API, not MoonBit `BytesView`.
 - Memory-backed `BufReader` / `BufWriter`
 - File convenience APIs with overwrite-materialization flush semantics
 - Experimental native C backend for native-target file handles
-- Experimental mmap-backed `NativeByteView` for C-side zero-copy-style processing
+- Experimental mmap-backed `NativeByteView` with a MoonBit-managed external owner model
+- C-side search, count, checksum, equality, and file-transfer operations over mmap-backed native memory
 - CI coverage for Ubuntu/macOS, root package tests, native package tests, and benchmark smoke
 
-## What Is Stable In 1.0
+## Status At A Glance
+
+| Area | Status | Notes |
+|---|---|---|
+| Root byte-buffer API | Stable | Pure MoonBit |
+| Memory streaming | Stable | Memory-backed concrete types |
+| File convenience APIs | Stable | Memory-backed snapshot/accumulator |
+| Reader/source `BytesView` inspection | Experimental | MoonBit-managed memory only |
+| Native C file handles | Experimental | `--target native` only |
+| NativeByteView mmap research | Experimental | Unix-like verified, explicit close |
+| Stable zero-copy | Not claimed | No stable C-memory-backed MoonBit `BytesView` |
+| Windows mmap | Not supported | Future work |
+| Thread-safe mmap owner model | Not guaranteed | Single-thread assumption |
+
+## What Is Stable
 
 The stable root package is the pure MoonBit API surface:
 
@@ -43,6 +58,9 @@ The stable root package intentionally keeps file support honest:
 - `FileSource` is a memory-backed snapshot created at construction time
 - `FileSink` is a memory-backed accumulator that persists on `flush()`
 - `FileSink.flush()` uses overwrite-materialization semantics, including creating or overwriting an empty file when the accumulated data is empty
+
+BufferUtils 1.x stabilizes this root API boundary, not the experimental native
+extensions.
 
 ## What Is Experimental
 
@@ -65,7 +83,7 @@ BufferUtils keeps several capabilities outside the stable root API boundary:
   - `NativeByteView` C-side operations
 
 Experimental does not mean hidden. It means the API is available, documented,
-and tested, but it is not part of the stable 1.0 compatibility promise.
+and tested, but it is not part of the stable root compatibility promise.
 
 ## Installation
 
@@ -78,7 +96,7 @@ Or add it to `moon.mod.json`:
 ```json
 {
   "deps": {
-    "ZSeanYves/bufferutils": "0.23.0"
+    "ZSeanYves/bufferutils": "0.24.0"
   }
 }
 ```
@@ -128,9 +146,9 @@ let sink = writer.into_inner()
 let out = sink.to_bytes()
 ```
 
-`BufReader` and `BufWriter` are streaming-style APIs over concrete memory-backed
-types. BufferUtils does not currently expose a stable trait-based custom
-source/sink abstraction.
+`BufReader` and `BufWriter` are streaming-style APIs over concrete
+memory-backed types. BufferUtils does not currently expose a stable trait-based
+custom source/sink abstraction.
 
 ### File Convenience APIs
 
@@ -148,7 +166,7 @@ let rest = reader.read_to_end()
 handles. `FileSource` snapshots the file into memory. `FileSink` and
 `FileBufWriter` accumulate in memory and materialize to disk on `flush()`.
 
-### Native File-handle Backend Experimental
+### Experimental Native File-handle Backend
 
 ```moonbit
 import {
@@ -172,7 +190,7 @@ The native backend is experimental and native-target only. It requires
 `--target native`, a working C toolchain, and explicit `close()`. It does not
 replace the stable pure MoonBit file convenience layer.
 
-### NativeByteView Zero-copy Research Experimental
+### Experimental NativeByteView Zero-copy Research
 
 ```moonbit
 import {
@@ -190,26 +208,20 @@ view.close()
 ```
 
 `NativeByteView` is an experimental native-only research handle for read-only
-mmap-backed access on Unix-like targets. Its owner is a MoonBit-managed
-external object with explicit close plus finalizer fallback, not a stable
-MoonBit `BytesView` bridge.
+mmap-backed access on Unix-like targets.
 
-It is important to be precise about what this means:
+Its owner is a MoonBit-managed external object created through the documented
+MoonBit external-object FFI path. That improves owner lifetime management, but
+it still does not create a stable MoonBit `BytesView` bridge.
 
-- it is not MoonBit `BytesView`
-- it is not a stable zero-copy API
-- it requires explicit `close()`
-- it has no deterministic automatic destructor contract; finalizer is fallback only
-- it does not provide a thread-safety guarantee
+Important boundaries:
+
+- `NativeByteView` is not MoonBit `BytesView`
+- this is not a stable zero-copy API
+- explicit `close()` is still recommended
+- the finalizer is a fallback, not a prompt-release guarantee
+- thread safety is not guaranteed
 - Windows mmap support is currently unsupported
-
-The performance advantage of this path is not that it turns C memory into
-MoonBit `BytesView`. It does not. The advantage is that large data can stay in
-native or mmap memory while C performs operations such as search, count,
-checksums, prefix checks, equality checks, and file transfer. MoonBit receives
-small results such as `Int` or `Bool`, or explicitly requests a copy through
-`copy_range(...)`. The owner itself is MoonBit-managed, so forgotten close
-calls can still be cleaned up by the runtime finalizer.
 
 ## Performance Overview
 
@@ -245,40 +257,36 @@ The current benchmark runner uses:
 It is designed for repeatable local regression tracking, not for publishable
 performance claims.
 
-### Local Benchmark Observations
+### Local Observations
 
-The table below comes from a current local native-target benchmark run on this
-repository. These numbers are local observations, not guaranteed throughput.
+These are representative local observations from recent native-target runs on
+this repository, not portable throughput guarantees.
 
-| Case | 10MB local observation | Interpretation |
+| Case | 10MB local observation | Meaning |
 |---|---:|---|
-| `native_file_source_read_chunk_experimental` | ~2656 MiB/s | Native chunked read path; strongly affected by filesystem cache |
-| `native_file_sink_write_flush_experimental` | ~188 MiB/s | Native file sink write + flush |
-| `native_buffered_reader_read_to_end_experimental` | ~224 MiB/s | Buffered native reader path |
-| `native_buffered_writer_write_flush_experimental` | ~187 MiB/s | Buffered native writer path |
-| `native_mmap_view_find_byte_experimental` | ~3363 MiB/s | C-side mmap scan; no large MoonBit array materialization |
-| `native_mmap_view_count_byte_experimental` | ~12139 MiB/s | C-side full scan/count; highly cache-sensitive |
-| `native_mmap_view_checksum_experimental` | ~922 MiB/s | C-side checksum over mmap-backed memory |
-| `native_mmap_view_crc32_experimental` | ~150 MiB/s | C-side CRC32 checksum |
-| `native_mmap_view_copy_range_explicit_copy` | ~2827 MiB/s | Explicit copy from native view into MoonBit array |
-| `native_mmap_view_copy_to_file_experimental` | ~4046 MiB/s | Native-side transfer to another file path |
+| `native_file_source_read_chunk_experimental` | ~2200-2600 MiB/s | Native chunked read, cache-sensitive |
+| `native_file_sink_write_flush_experimental` | ~175-190 MiB/s | Native write + flush path |
+| `native_buffered_reader_read_to_end_experimental` | ~205-215 MiB/s | Native buffered reader |
+| `native_buffered_writer_write_flush_experimental` | ~170-190 MiB/s | Native buffered writer |
+| `native_mmap_view_find_byte_experimental` | ~3200-3400 MiB/s | C-side mmap scan |
+| `native_mmap_view_count_byte_experimental` | ~10800-11900 MiB/s | C-side full scan/count |
+| `native_mmap_view_checksum_experimental` | ~920 MiB/s | C-side checksum |
+| `native_mmap_view_crc32_experimental` | ~150 MiB/s | C-side CRC32 |
+| `native_mmap_view_copy_range_explicit_copy` | ~2650-2860 MiB/s | Explicit copy into MoonBit array |
+| `native_mmap_view_copy_to_file_experimental` | ~3940-4040 MiB/s | Native-side transfer |
+| `native_mmap_view_slice_count_byte_experimental` | ~16500-16700 MiB/s | Slice-view C-side count |
 
-### What The Numbers Mean
+### Where the Performance Advantage Comes From
 
-The benchmark numbers are most useful as:
+The native zero-copy research path does not turn C memory into MoonBit
+`BytesView`.
 
-- regression signals across releases
-- relative comparisons between memory-backed, native-file, and mmap-backed paths
-- a way to see where work stays in C and where it crosses back into MoonBit
+Its advantage is that large data can stay in mmap/native memory while C-side
+operations perform search, counting, equality checks, checksums, and file
+transfer. MoonBit receives small results such as `Int` or `Bool`, or
+explicitly requests a copy through `copy_range(...)`.
 
-For example:
-
-- `native_mmap_view_read_byte_scan_experimental` mainly measures per-byte FFI overhead
-- `find_byte`, `count_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64` better represent C-side zero-copy-style processing
-- `copy_range` is an explicit-copy baseline
-- `copy_to_file` is a native-side transfer path that avoids materializing a large MoonBit array in MoonBit code
-
-### What The Numbers Do Not Mean
+### What the Numbers Do Not Mean
 
 These numbers are not performance guarantees. Native file and mmap benchmarks
 are strongly affected by page cache, filesystem cache, CPU, OS, compiler,
@@ -308,57 +316,40 @@ BufferUtils currently has four user-facing layers:
 4. Experimental native zero-copy research API
    - `NativeByteView` and `new_mmap_file_view(...)`
 
-The stable 1.0 boundary is the root pure-MoonBit API. The experimental layers
+The stable 1.x boundary is the root pure-MoonBit API. The experimental layers
 remain available, but they are not part of that stability promise.
 
-## Error Handling
-
-BufferUtils uses:
-
-- `BufferError` for buffer, capacity, validation, flush, and file I/O errors
-- `Utf8DecodeError` for UTF-8 decoding failures
-
-Common cases include:
-
-- `Underflow` when a read goes past available bytes
-- `Overflow` when a fixed-capacity writer cannot accept more data
-- `InvalidInput` for negative lengths or out-of-range integers
-- `Io` or `Flush` for file-related failures
-
-The native package reuses the same `BufferError` family rather than exposing
-raw platform-specific errno values as part of the public API.
-
-## Safety And Limitations
+## Safety and Limitations
 
 - `FileSource` is still a memory-backed snapshot
 - `FileSink` is still a memory-backed accumulator plus flush-time overwrite
 - experimental reader/source `BytesView` APIs return `BytesView`, but BufferUtils does not guarantee runtime-level shared-storage behavior
 - native APIs require `--target native`, a C toolchain, and explicit `close()`
 - `NativeByteView` is native-only research API, not MoonBit `BytesView`
-- `NativeByteView` is validated on Unix-like native targets; Windows mmap support is currently unsupported
 - `NativeByteView` uses a MoonBit-managed external owner with finalizer fallback, but still has no deterministic automatic destructor contract
+- `NativeByteView` is currently verified on Unix-like native targets; Windows mmap support remains unsupported
 - the native shared-owner bookkeeping does not provide a thread-safety guarantee
 - BufferUtils does not claim stable zero-copy or stable mmap behavior
-- there is no async I/O layer in the stable root package
+- the stable root package does not provide async I/O
 
-## Documentation
+## Documentation Map
 
 - [docs/API.md](./docs/API.md): API reference and stable/experimental layering
 - [docs/DESIGN.md](./docs/DESIGN.md): current architecture and design boundaries
 - [docs/BENCHMARK.md](./docs/BENCHMARK.md): benchmark guide, methodology, and caveats
-- [docs/VIEW_API.md](./docs/VIEW_API.md): experimental root `BytesView` notes
-- [docs/NATIVE_BACKEND.md](./docs/NATIVE_BACKEND.md): experimental native backend overview
+- [docs/VIEW_API.md](./docs/VIEW_API.md): experimental root `BytesView` inspection notes
+- [docs/NATIVE_BACKEND.md](./docs/NATIVE_BACKEND.md): experimental native file-handle backend overview
 - [docs/NATIVE_SAFETY.md](./docs/NATIVE_SAFETY.md): native lifecycle and safety notes
-- [docs/MMAP_FEASIBILITY.md](./docs/MMAP_FEASIBILITY.md): mmap feasibility background
-- [docs/ZERO_COPY_RESEARCH.md](./docs/ZERO_COPY_RESEARCH.md): `NativeByteView` zero-copy research design notes
-- [docs/STREAMING_FEASIBILITY.md](./docs/STREAMING_FEASIBILITY.md): earlier OS-level streaming feasibility study
+- [docs/MMAP_FEASIBILITY.md](./docs/MMAP_FEASIBILITY.md): mmap feasibility and current status
+- [docs/ZERO_COPY_RESEARCH.md](./docs/ZERO_COPY_RESEARCH.md): `NativeByteView` research design notes
+- [docs/STREAMING_FEASIBILITY.md](./docs/STREAMING_FEASIBILITY.md): pure-MoonBit streaming feasibility background
 
 ## Roadmap
 
-- stabilize the root pure-MoonBit API
+- keep the stable root pure-MoonBit API small and predictable
 - keep experimental `BytesView` APIs under observation before any stabilization decision
-- continue experimental native backend hardening across more targets and CI environments
-- keep `NativeByteView` explicitly research-only until ownership, portability, and concurrency questions are better answered
+- continue native backend hardening across more targets and CI environments
+- keep `NativeByteView` explicitly experimental until ownership, portability, and concurrency questions are better answered
 - continue reduced-copy and benchmark-regression tracking without overstating zero-copy claims
 
 ## License

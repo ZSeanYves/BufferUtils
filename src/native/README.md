@@ -2,18 +2,19 @@
 
 `src/native` contains the experimental native-target backend for BufferUtils.
 
-It is built with MoonBit C FFI and a small `FILE*`-based C stub.
-
-The stable default package remains pure MoonBit. This package exists to explore:
+The stable default package remains pure MoonBit. This package exists to provide
+and evaluate native-target-only extensions such as:
 
 - real file-handle reads
 - real file-handle writes
 - buffered file-handle reads
 - buffered file-handle writes
-- native-only read-only mmap research handles
 - overwrite and append modes
-- explicit flush and close behavior
-- explicit native lifecycle and error-path handling
+- explicit flush / close lifecycle
+- read-only mmap-backed `NativeByteView` research handles
+
+It is built with MoonBit C FFI plus small C shims for native file-handle and
+mmap-backed behavior.
 
 Run native-only tests with:
 
@@ -27,28 +28,58 @@ Run the shared benchmark runner with native cases enabled via:
 moon run src/bench --target native --release
 ```
 
-This package is experimental. It requires explicit `close()`, does not replace
-the stable memory-backed file helpers, and now includes a native-only
-`NativeByteView` / `new_mmap_file_view(...)` research path for read-only
-mmap-backed access on Unix-like native targets. That research path uses a
-MoonBit-managed external owner object with explicit close plus finalizer
-fallback, not a stable MoonBit `BytesView` bridge.
+## Scope
 
-The mmap research path does not expose a stable MoonBit `BytesView` bridge and
-does not claim stable zero-copy behavior.
-`read_byte_at(...)` is useful for explicit indexed access, but full scans through
-that method mainly measure per-call FFI overhead. The more meaningful
-zero-copy-style research paths here are C-side operations like `find_byte`,
-`count_byte`, `index_of`, `equals`, `crc32`, `checksum_u64`, `starts_with`, and
-`copy_to_file(...)`.
+This package is experimental.
 
-`slice_handle(...)` is now available only as research-only native API. It uses
-an explicit shared-owner / ref-count model so parent and child views can close
-independently without causing use-after-`munmap`.
-`owner_ref_count()` stays available only as a research/debug helper and is not
-part of the recommended quick-usage path.
+- it requires `--target native`
+- it requires a C toolchain
+- it does not replace the stable memory-backed file helpers
+- it does not change the stable root API
 
-## NativeByteView Ownership Model
+The file-handle layer includes:
+
+- `NativeFileSource`
+- `NativeFileSink`
+- `NativeBufReader`
+- `NativeBufWriter`
+
+The mmap research layer includes:
+
+- `NativeByteView`
+- `new_mmap_file_view(...)`
+
+## NativeByteView Research Scope
+
+`NativeByteView` is a native-only research handle over read-only mmap-backed
+memory on Unix-like native targets.
+
+It is:
+
+- experimental
+- explicit-close based
+- not MoonBit `BytesView`
+- not a stable zero-copy guarantee
+- not a writable mmap API
+
+The current implementation uses a MoonBit-managed external owner object with a
+C payload. That owner keeps the mapped region alive and provides finalizer
+fallback if callers forget to close every live view.
+
+`read_byte_at(...)` is useful for explicit indexed access, but large sequential
+scans through that method mostly measure per-call FFI overhead. The more
+meaningful zero-copy-style research paths are C-side operations such as:
+
+- `find_byte`
+- `count_byte`
+- `index_of`
+- `equals`
+- `crc32`
+- `checksum_u64`
+- `starts_with`
+- `copy_to_file(...)`
+
+## Ownership Model
 
 `NativeByteView` is an explicit-close handle, not a lifetime-tracked borrowed
 MoonBit view.
@@ -58,40 +89,25 @@ MoonBit view.
 - the external owner payload keeps the mmap region alive and carries the live
   view count
 - child slices share one owner and raise the owner's live-view count
-- `close()` closes only the current view, and the owner is released
-  when its live-view count reaches zero
+- `close()` closes only the current view
+- the owner is released when its live-view count reaches zero
 - repeated `close()` is safe
-- if `munmap()` fails, the view is still treated as closed and cannot be reused
-- the owner finalizer is a fallback so forgotten closes still release resources
+- if cleanup fails, the view is still treated as closed and cannot be reused
+- the owner finalizer is a fallback, not a prompt-release guarantee
 
-## Single-thread Assumption
+`owner_ref_count()` remains available only as a research/debug helper and is
+not part of the recommended quick-usage path.
 
-This mmap research path assumes single-threaded use.
+## Safety Notes
 
-- the shared-owner bookkeeping is not thread-safe
-- there is no cross-thread safety guarantee
-- no locking or atomic ref-counting is provided yet
-- future work would need mutexes and/or atomic ref-count updates before this
-  could claim any concurrency story
+- explicit `close()` is still recommended
+- the mmap research path assumes single-threaded use
+- there is no thread-safety guarantee
+- Windows mmap support is not implemented
+- the package does not expose a stable public `C memory -> MoonBit BytesView`
+  bridge
 
-## slice_handle Status
-
-`slice_handle(...)` is intentionally still research-only.
-
-- it is backed by a native shared owner plus ref-counted child views
-- it is not a MoonBit borrowed-lifetime feature
-- it remains single-threaded and explicit-close only
-- it is still not a stable zero-copy contract
-
-## Merge Criteria
-
-This experimental research track should only move closer to broader mainline
-experimental status if:
-
-- ownership and close semantics stay clearly documented
-- after-close behavior stays fully tested
-- `NativeByteView` continues to be described as native-only research API
-- docs continue to state that it is not MoonBit `BytesView` and not a stable zero-copy guarantee
-
-Read-only mmap investigation notes live in [../../docs/MMAP_FEASIBILITY.md](../../docs/MMAP_FEASIBILITY.md).
-Zero-copy research notes live in [../../docs/ZERO_COPY_RESEARCH.md](../../docs/ZERO_COPY_RESEARCH.md).
+Read-only mmap investigation notes live in
+[../../docs/MMAP_FEASIBILITY.md](../../docs/MMAP_FEASIBILITY.md).
+Zero-copy research notes live in
+[../../docs/ZERO_COPY_RESEARCH.md](../../docs/ZERO_COPY_RESEARCH.md).
