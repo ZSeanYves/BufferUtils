@@ -111,7 +111,7 @@ This does not change the overall design boundary:
 - `to_bytes()` accessors still return copies
 - `FileSource` still creates a memory snapshot
 - `FileSink` still persists by flush-time overwrite
-- repeated flushes without pending data should not change observable output
+- repeated flushes without new pending bytes preserve file contents, but an empty first flush still materializes an empty file
 
 ## View / Slice Experiment
 

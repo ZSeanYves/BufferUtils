@@ -118,7 +118,7 @@ Notes:
 ### FileSink
 - `new_file_sink(path)`: create a file sink that accumulates bytes in memory.
 - `write(src)`: append bytes into the accumulated in-memory output.
-- `flush()`: overwrite the target file with all accumulated bytes when pending bytes exist.
+- `flush()`: overwrite the target file with the current accumulated bytes, creating or overwriting an empty file when the accumulated data is empty.
 - `pending_len()`: return bytes not yet persisted to disk.
 - `clear()`: clear accumulated output and reset flush state.
 - `path()`: return the target file path.

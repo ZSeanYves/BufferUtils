@@ -74,11 +74,8 @@ pub fn FileSink::write(self : FileSink, src : Array[Byte]) -> Unit {
 
 ///|
 /// Flush the accumulated bytes to the target file path using overwrite semantics.
-/// If no bytes are pending, this is a no-op and does not rewrite the file.
+/// Flushing an empty sink creates or overwrites the target file as an empty file.
 pub fn FileSink::flush(self : FileSink) -> Unit raise BufferError {
-  if self.pending_len() == 0 {
-    return
-  }
   try @fs.write_bytes_to_file(self.path, array_to_bytes(self.data)) catch {
     _ => raise BufferError::Flush("failed to write buffered bytes to file")
   } noraise {
