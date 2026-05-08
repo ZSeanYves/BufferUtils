@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.0
+## v0.24.0
 
 ### Changed
 - Replaced the previous C registry owner model for `NativeByteView` with a MoonBit-managed external object owner.
