@@ -2,15 +2,16 @@
 
 ## Summary
 
-BufferUtils includes an experimental native-only research subsystem built
-around `NativeByteView`.
+BufferUtils includes an experimental native-only research subsystem built around
+`NativeByteView`.
 
 This research partially achieves zero-copy-style processing by keeping large
-file data in native or mmap-backed memory for supported operations. It does
-not expose native memory as MoonBit `BytesView`.
+file data in native or mmap-backed memory for supported operations. It does not
+expose native memory as MoonBit `BytesView`.
 
-The current goal is to explore a safe, explicit, testable native borrowed-handle
-model without changing the stable pure MoonBit root API.
+The current owner model is a MoonBit-managed external object created through
+`moonbit_make_external_object(...)`, combined with explicit view state, manual
+live-view counting, and finalizer fallback.
 
 ## What “Zero-copy” Means Here
 
@@ -28,6 +29,33 @@ That is different from:
 - the stable root package's copy-returning APIs
 - reduced-copy internal optimizations
 - a stable public MoonBit `BytesView` bridge over foreign memory
+
+## MoonBit FFI Basis
+
+This experiment is intentionally aligned with the currently documented MoonBit
+C FFI model:
+
+- MoonBit supports a C backend FFI surface for native interop
+- a plain `#external type` maps to an opaque foreign pointer shape on the C
+  side and does not give BufferUtils a MoonBit-managed lifetime
+- an abstract type can instead be backed by a MoonBit-managed object
+- `moonbit_make_external_object(finalize, payload_size)` creates that kind of
+  MoonBit-managed external object and allows a finalizer to release foreign
+  resources held in the payload
+- raw C pointers cannot simply be returned as MoonBit `Bytes` or `String`
+  because those values require MoonBit-managed object layout
+- this makes an external owner object a good fit for `NativeByteView` owner
+  state
+- it still does not provide a stable public bridge from arbitrary C memory to
+  MoonBit `BytesView`
+
+This is why the research path prefers:
+
+- `C mmap memory -> NativeByteOwner external object -> NativeByteView`
+
+instead of pretending it can safely provide:
+
+- `C mmap memory -> MoonBit BytesView`
 
 ## What Is Implemented
 
@@ -64,6 +92,9 @@ The research path currently uses read-only mmap on Unix-like native targets.
 
 The borrowed native memory is kept behind a shared-owner model instead of being
 exposed as MoonBit `BytesView`.
+
+That shared owner is now a MoonBit-managed external object rather than a pure C
+ID registry owner.
 
 ### C-side Processing
 
@@ -122,7 +153,7 @@ Windows mmap support is currently unsupported.
 
 ### No Thread-safety Guarantee
 
-The native owner/view registry is not thread-safe.
+The native shared-owner bookkeeping is not thread-safe.
 
 This subsystem currently assumes single-threaded use and does not provide a
 concurrency guarantee.
@@ -131,38 +162,33 @@ concurrency guarantee.
 
 `NativeByteView` uses an explicit owner/view split.
 
-MoonBit-visible `NativeByteView` values hold logical handle state:
+MoonBit-visible `NativeByteView` values hold:
 
-- `handle_id`
+- `owner`
+- `offset`
 - `byte_len`
 - `closed`
 
 Those fields are intentionally private implementation details and are not part
 of the intended supported API surface.
 
-The real native memory owner lives in C:
+The real native memory owner lives inside a MoonBit-managed external object:
 
 - `NativeByteOwner`
-  - `id`
   - `data`
   - `len`
-  - `ref_count`
+  - `live_views`
   - `closed`
   - `mapped`
-- `NativeByteViewEntry`
-  - `id`
-  - `owner_id`
-  - `offset`
-  - `len`
-  - `closed`
 
 Important properties of the model:
 
 - `new_mmap_file_view(...)` creates one owner plus one root view
 - `slice_handle(...)` creates child views over the same owner
-- child slices increase the owner ref-count
-- `close()` removes only the current view entry
-- the owner is released only when its ref-count reaches zero
+- child slices increase the owner's live-view count
+- `close()` closes only the current view
+- the owner is released when its live-view count reaches zero
+- the external-object finalizer is a fallback if callers forget to close
 
 ## State Transitions
 
@@ -170,14 +196,16 @@ The lifecycle is intentionally explicit:
 
 ```text
 open / mmap success
-    -> owner(ref_count = 1) + root view
+    -> owner(live_views = 1) + root view
 slice_handle(...)
-    -> owner(ref_count += 1) + child view
+    -> owner(live_views += 1) + child view
 close(view)
-    -> remove current view entry
-    -> owner(ref_count -= 1)
-owner ref_count == 0
-    -> munmap + free owner
+    -> mark current view closed
+    -> owner(live_views -= 1)
+owner live_views == 0
+    -> munmap + cleanup owner payload
+finalizer fallback
+    -> munmap + cleanup owner payload if a surviving view was not explicitly closed
 after-close operation on a closed view
     -> error
 ```
@@ -221,12 +249,14 @@ Notes:
   through this method mainly measure per-byte FFI overhead
 - `copy_range(...)` is the explicit-copy boundary
 - `copy_to_file(...)` is a native-side transfer path
+- the shared owner is a MoonBit-managed external object with finalizer fallback
 
 ## Safety Model
 
 The safety story is explicit and conservative:
 
-- the mapping is valid only until `close()`
+- the mapping is valid only while at least one open view still references the
+  shared owner
 - repeated `close()` is safe
 - after `close()`, later operations raise `BufferError::Io`
 - out-of-bounds reads map to `BufferError::Underflow`
@@ -234,12 +264,8 @@ The safety story is explicit and conservative:
 - external file truncate or rewrite after mapping is outside the safety contract
 - this research track still does not try to expose borrowed MoonBit `BytesView`
   over the shared native owner
-
-The current registry also uses monotonic IDs that are not reused. The research
-backend now guards those counters against exhaustion instead of silently
-wrapping identifiers. Extremely long-running processes that create very large
-numbers of owners/views could still hit this guard; that is treated as a
-research-backend limitation rather than a stable production guarantee.
+- the owner finalizer is a safety fallback, not a deterministic prompt-release
+  contract
 
 ## Benchmark Interpretation
 
@@ -258,36 +284,33 @@ The native benchmark suite includes experimental mmap research cases such as:
 - `native_mmap_view_slice_crc32_experimental`
 - `native_mmap_view_slice_copy_range_explicit_copy`
 
-Interpret these results carefully:
+Interpret the results conservatively:
 
 - `read_byte_scan` mainly measures MoonBit-to-C per-byte FFI overhead
-- `find_byte`, `count_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64`
-  are better indicators of C-side zero-copy-style work
+- `count_byte`, `find_byte`, `index_of`, `equals`, `crc32`, and
+  `checksum_u64` better represent C-side zero-copy-style processing
 - `copy_range` is an explicit-copy baseline
 - `copy_to_file` is a native-side transfer path
-- `slice_*` cases additionally exercise the shared-owner/ref-count path
-- filesystem cache and page-fault behavior can dominate results
-- none of these results prove stable zero-copy semantics
+- `slice_*` cases additionally exercise the shared-owner/live-view path
+- all native file and mmap results are strongly affected by page cache,
+  filesystem cache, page faults, CPU, OS, compiler, and runtime version
+
+The benchmark suite is for local regression tracking, not throughput
+guarantees.
 
 ## Merge / Stabilization Criteria
 
-If this subsystem ever moves beyond research-only status, the minimum bar
-should be:
+This research track should only move closer to broader experimental status if:
 
-- ownership and explicit-close rules are documented clearly
-- close / after-close / double-close tests remain complete
-- C-side handle invalidation stays explicit and repeatable
-- `slice_handle(...)` continues to use the documented shared-owner/ref-count model
-- docs continue to state that `NativeByteView` is not MoonBit `BytesView`
-- docs continue to state that this is not a stable zero-copy guarantee
-- Unix-like-only and no-Windows constraints remain explicit
-- benchmark notes remain local observations rather than performance promises
-- single-thread assumptions remain documented until a real concurrency story exists
+- ownership and close semantics stay clearly documented
+- after-close behavior stays fully tested
+- `NativeByteView` continues to be described as native-only research API
+- docs continue to state that it is not MoonBit `BytesView`
+- docs continue to state that it is not a stable zero-copy guarantee
+- Unix-like-only and single-thread assumptions stay explicit
 
 Current recommendation:
 
-- keep the root package unchanged
-- keep `BytesView` APIs experimental
-- keep the native backend experimental
-- keep `NativeByteView` explicitly marked as experimental native zero-copy research
-- do not present this subsystem as a stable release-time zero-copy promise
+- keep the stable root API unchanged
+- keep `NativeByteView` experimental and native-only
+- do not present this as a stable MoonBit view bridge

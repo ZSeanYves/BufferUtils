@@ -11,7 +11,7 @@
 
 ### Changed
 - Reframed mmap from documented-only feasibility into a native-only research prototype that still does not expose a stable MoonBit `BytesView` bridge.
-- Clarified that the mmap research path now uses a self-managed native safe bridge with explicit owner/view separation instead of a direct MoonBit `BytesView` bridge.
+- Clarified that the mmap research path now uses a MoonBit-managed external-owner safe bridge with explicit view state, manual live-view counting, and finalizer fallback instead of a direct MoonBit `BytesView` bridge.
 - Clarified across README, native backend docs, safety notes, and benchmark notes that the new mmap path is experimental, Unix-like native-target only, and not a zero-copy guarantee.
 - Kept the stable root package and the existing experimental `FILE*`-based native APIs unchanged while adding the research-only byte-view handle.
 - Kept `NativeByteView.owner_ref_count()` positioned as a research/debug helper instead of a recommended usage API.

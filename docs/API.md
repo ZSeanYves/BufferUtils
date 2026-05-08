@@ -208,7 +208,7 @@ Warning:
 - `new_mmap_file_view(path)`: open an experimental native-only read-only mmap handle.
 - `NativeByteView.len()`: return mapped byte length.
 - `NativeByteView.is_closed()`: report whether the mapped handle has already been closed.
-- `NativeByteView.owner_ref_count()`: Experimental research/debug helper that reports the shared owner reference count for the current view.
+- `NativeByteView.owner_ref_count()`: Experimental research/debug helper that reports the shared owner's current live-view count for the current view.
 - `NativeByteView.slice_handle(start, len)`: create a child native view over a subrange of the mapped bytes while sharing the same native owner.
 - `NativeByteView.read_byte_at(index)`: read one byte directly from the mapped region without copying the whole file into MoonBit.
 - `NativeByteView.copy_range(start, len)`: explicitly copy a byte range out of the mapped region.
@@ -220,7 +220,7 @@ Warning:
 - `NativeByteView.checksum_u64()`: compute a checksum in C over the mapped region and return the 64-bit result.
 - `NativeByteView.starts_with(data)`: compare a MoonBit byte prefix against the mapped region in C.
 - `NativeByteView.copy_to_file(path)`: copy the mapped region to a file in the native layer without materializing a large MoonBit array.
-- `NativeByteView.close()`: unmap and release the native view. Repeated close is safe.
+- `NativeByteView.close()`: close the current view. The shared owner is released when the last open view closes. Repeated close is safe.
 
 Notes:
 
@@ -232,14 +232,14 @@ Notes:
 - these APIs do not replace `FileSource` / `FileSink`, which remain memory-backed convenience layers
 - this backend does not claim zero-copy behavior
 - `NativeByteView` is a native-only research handle, not a stable MoonBit `BytesView` bridge
-- `NativeByteView` uses a native shared-owner/ref-count model for parent/child slices and still requires explicit `close()`
+- `NativeByteView` uses a MoonBit-managed external owner plus manual live-view counting for parent/child slices and still requires explicit `close()`
 - `NativeByteView.owner_ref_count()` is kept only as a research/debug helper and is not part of the recommended quick-usage path
 - `copy_range(...)` is an explicit-copy API by design
 - `copy_to_file(...)` is a native-layer transfer and not a stable zero-copy guarantee
 - `new_mmap_file_view(...)` is currently intended for Unix-like native targets only
 - Windows mmap support is currently unsupported
-- no automatic destructor contract is provided for native mmap handles
-- no thread-safety guarantee is provided for the native mmap registry
+- no deterministic automatic destructor contract is provided for native mmap handles; the owner finalizer is fallback only
+- no thread-safety guarantee is provided for the native shared-owner bookkeeping
 - the intended `NativeByteView` surface is its documented constructor and methods, not manual field construction or mutation
 - see `docs/MMAP_FEASIBILITY.md` and `docs/ZERO_COPY_RESEARCH.md` for the current feasibility and research conclusions
 

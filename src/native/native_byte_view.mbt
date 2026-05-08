@@ -49,8 +49,8 @@ fn raise_native_byte_view_error(
 /// This is a research API: it provides explicit access operations without
 /// claiming a stable MoonBit `BytesView` bridge.
 pub struct NativeByteView {
-  priv path : String
-  priv mut handle_id : Int
+  priv owner : NativeByteOwner
+  priv offset : Int
   priv byte_len : Int
   priv mut closed : Bool
 }
@@ -61,19 +61,20 @@ pub fn new_mmap_file_view(
 ) -> NativeByteView raise @bufferutils.BufferError {
   validate_native_path(path)
   let path_bytes = native_utf8_path_bytes(path)
-  let handle_id = native_open_mmap_view_ffi(path_bytes, path_bytes.length())
-  if handle_id <= 0 {
-    raise_native_mmap_open_error(native_last_status_ffi())
+  let owner = native_open_mmap_owner_ffi(path_bytes, path_bytes.length())
+  let open_status = native_last_status_ffi()
+  if open_status != 0 {
+    raise_native_mmap_open_error(open_status)
   }
-  let byte_len = native_mmap_len_ffi(handle_id)
+  let byte_len = native_mmap_owner_len_ffi(owner)
   let len_status = native_last_status_ffi()
   if len_status != 0 {
-    ignore(native_mmap_close_ffi(handle_id))
+    ignore(native_mmap_owner_release_view_ffi(owner))
     raise_native_byte_view_error(
       "native mmap view length query failed", len_status,
     )
   }
-  { path, handle_id, byte_len, closed: false }
+  { owner, offset: 0, byte_len, closed: false }
 }
 
 ///|
@@ -91,7 +92,7 @@ pub fn NativeByteView::owner_ref_count(
   self : NativeByteView,
 ) -> Int raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
-  let count = native_mmap_owner_ref_count_ffi(self.handle_id)
+  let count = native_mmap_owner_ref_count_obj_ffi(self.owner)
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error(
@@ -118,14 +119,23 @@ pub fn NativeByteView::slice_handle(
       "slice handle length must be non-negative",
     )
   }
-  let child_handle = native_mmap_slice_handle_ffi(self.handle_id, start, len)
-  let status = native_last_status_ffi()
-  if status != 0 || child_handle <= 0 {
+  if start > self.byte_len || len > self.byte_len - start {
+    @bufferutils.raise_buffer_underflow(
+      "slice handle range exceeded native byte view bounds",
+    )
+  }
+  let status = native_mmap_owner_acquire_view_ffi(self.owner)
+  if status != 0 {
     raise_native_byte_view_error(
       "native byte view slice creation failed", status,
     )
   }
-  { path: self.path, handle_id: child_handle, byte_len: len, closed: false }
+  {
+    owner: self.owner,
+    offset: self.offset + start,
+    byte_len: len,
+    closed: false,
+  }
 }
 
 ///|
@@ -137,7 +147,12 @@ pub fn NativeByteView::read_byte_at(
   if index < 0 {
     @bufferutils.raise_buffer_invalid_input("byte index must be non-negative")
   }
-  let value = native_mmap_read_byte_at_ffi(self.handle_id, index)
+  let value = native_mmap_owner_read_byte_at_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    index,
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view read failed", status)
@@ -165,7 +180,13 @@ pub fn NativeByteView::copy_range(
   if len == 0 && start <= self.byte_len {
     return []
   }
-  let bytes = native_mmap_copy_range_ffi(self.handle_id, start, len)
+  let bytes = native_mmap_owner_copy_range_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    start,
+    len,
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view copy failed", status)
@@ -179,7 +200,12 @@ pub fn NativeByteView::find_byte(
   b : Byte,
 ) -> Int raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
-  let index = native_mmap_find_byte_ffi(self.handle_id, b.to_int())
+  let index = native_mmap_owner_find_byte_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    b.to_int(),
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view search failed", status)
@@ -193,7 +219,12 @@ pub fn NativeByteView::count_byte(
   b : Byte,
 ) -> Int raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
-  let count = native_mmap_count_byte_ffi(self.handle_id, b.to_int())
+  let count = native_mmap_owner_count_byte_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    b.to_int(),
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view count failed", status)
@@ -208,7 +239,13 @@ pub fn NativeByteView::index_of(
 ) -> Int raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
   let bytes = @bufferutils.array_to_bytes(data)
-  let index = native_mmap_index_of_ffi(self.handle_id, bytes, bytes.length())
+  let index = native_mmap_owner_index_of_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    bytes,
+    bytes.length(),
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error(
@@ -225,7 +262,13 @@ pub fn NativeByteView::equals(
 ) -> Bool raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
   let bytes = @bufferutils.array_to_bytes(data)
-  let matched = native_mmap_equals_ffi(self.handle_id, bytes, bytes.length())
+  let matched = native_mmap_owner_equals_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+    bytes,
+    bytes.length(),
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error(
@@ -240,7 +283,11 @@ pub fn NativeByteView::crc32(
   self : NativeByteView,
 ) -> Int raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
-  let checksum = native_mmap_crc32_ffi(self.handle_id)
+  let checksum = native_mmap_owner_crc32_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view crc32 failed", status)
@@ -253,7 +300,11 @@ pub fn NativeByteView::checksum_u64(
   self : NativeByteView,
 ) -> UInt64 raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
-  let checksum = native_mmap_checksum_ffi(self.handle_id)
+  let checksum = native_mmap_owner_checksum_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
+  )
   let status = native_last_status_ffi()
   if status != 0 {
     raise_native_byte_view_error("native byte view checksum failed", status)
@@ -268,8 +319,10 @@ pub fn NativeByteView::starts_with(
 ) -> Bool raise @bufferutils.BufferError {
   ensure_native_byte_view_open(self)
   let bytes = @bufferutils.array_to_bytes(data)
-  let matched = native_mmap_starts_with_ffi(
-    self.handle_id,
+  let matched = native_mmap_owner_starts_with_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
     bytes,
     bytes.length(),
   )
@@ -288,8 +341,10 @@ pub fn NativeByteView::copy_to_file(
   ensure_native_byte_view_open(self)
   validate_native_path(path)
   let path_bytes = native_utf8_path_bytes(path)
-  let status = native_mmap_copy_to_file_ffi(
-    self.handle_id,
+  let status = native_mmap_owner_copy_to_file_ffi(
+    self.owner,
+    self.offset,
+    self.byte_len,
     path_bytes,
     path_bytes.length(),
   )
@@ -305,9 +360,8 @@ pub fn NativeByteView::close(
   if self.closed {
     return
   }
-  let status = native_mmap_close_ffi(self.handle_id)
+  let status = native_mmap_owner_release_view_ffi(self.owner)
   self.closed = true
-  self.handle_id = 0
   if status != 0 {
     raise_native_byte_view_error("native byte view close failed", status)
   }
