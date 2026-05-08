@@ -1,78 +1,53 @@
-# Zero-copy Research
+# Native Zero-copy Research
 
-## Goal
+## Summary
 
-This branch investigates what "true zero-copy" could realistically mean for
-BufferUtils without rewriting the stable pure MoonBit root package.
+BufferUtils includes an experimental native-only research subsystem built
+around `NativeByteView`.
 
-The focus is native-target only:
+This research partially achieves zero-copy-style processing by keeping large
+file data in native or mmap-backed memory for supported operations. It does
+not expose native memory as MoonBit `BytesView`.
 
-- experimental C-backed borrowed-byte access
-- read-only mmap file views
-- C-side operations that avoid copying file contents back into MoonBit
+The current goal is to explore a safe, explicit, testable native borrowed-handle
+model without changing the stable pure MoonBit root API.
 
-This document does **not** claim that BufferUtils already exposes a stable
-zero-copy API.
+## What “Zero-copy” Means Here
 
-## What Zero-copy Means Here
-
-For this research branch, "zero-copy" means trying to avoid copying file data
-into owned MoonBit `Bytes` or `Array[Byte]` when the caller only needs:
+In this document, zero-copy means trying to avoid materializing a large owned
+MoonBit `Bytes` or `Array[Byte]` when the caller only needs:
 
 - indexed byte reads
-- explicit bounded copies
-- C-side scanning or prefix checks
+- bounded explicit copies
+- C-side search and counting
 - C-side checksum-style processing
+- native-side file transfer
 
 That is different from:
 
 - the stable root package's copy-returning APIs
-- the existing reduced-copy internal optimizations
-- a stable public `BytesView` bridge over foreign memory
+- reduced-copy internal optimizations
+- a stable public MoonBit `BytesView` bridge over foreign memory
 
-## What Is Possible Today
+## What Is Implemented
 
-### BytesView over MoonBit Bytes
+### NativeByteView
 
-BufferUtils already exposes experimental reader/source-side `BytesView` APIs
-over MoonBit-managed memory:
-
-- `BufferReader.peek_slice`
-- `BufferReader.remaining_slice`
-- `MemorySource.peek_remaining`
-- `FileSource.peek_remaining`
-
-Those are still experimental and are not presented as stable zero-copy
-contracts.
-
-### Native FILE* Streaming
-
-`ZSeanYves/bufferutils/native` already provides experimental `FILE*`-based I/O:
-
-- `NativeFileSource`
-- `NativeFileSink`
-- `NativeBufReader`
-- `NativeBufWriter`
-
-These APIs avoid root-package snapshots, but they still materialize chunk data
-as owned MoonBit `Bytes` / `Array[Byte]`.
-
-### NativeByteView Handle
-
-`v0.23.0` adds a new experimental native-only research type:
+The current experimental native-only research type is:
 
 - `NativeByteView`
 - `new_mmap_file_view(path)`
 
-`NativeByteView` does **not** pretend to be a MoonBit `BytesView`. Instead, it
-holds a native read-only mapping handle and exposes explicit operations:
+It is a handle-based API, not a MoonBit borrowed view type.
+
+Supported operations:
 
 - `len()`
 - `is_closed()`
 - `owner_ref_count()` as a research/debug helper
 - `slice_handle(start, len)`
 - `read_byte_at(index)`
-- `copy_range(start, len)` as an explicit-copy boundary
+- `copy_range(start, len)`
 - `find_byte(b)`
 - `count_byte(b)`
 - `index_of(pattern)`
@@ -83,40 +58,17 @@ holds a native read-only mapping handle and exposes explicit operations:
 - `copy_to_file(path)`
 - `close()`
 
-This lets the project explore borrowed native memory access without pretending
-that MoonBit currently supports a stable foreign-memory `BytesView` bridge.
+### mmap-backed Owner / View Model
 
-Important boundaries:
+The research path currently uses read-only mmap on Unix-like native targets.
 
-- `NativeByteView` is not an ordinary MoonBit `Bytes`
-- it is not a MoonBit `BytesView`
-- `copy_range(...)` is the explicit-copy escape hatch
-- `read_byte_at(...)` may be expensive for full scans because each call crosses the MoonBit/C FFI boundary
+The borrowed native memory is kept behind a shared-owner model instead of being
+exposed as MoonBit `BytesView`.
 
-### mmap Read-only Handle
+### C-side Processing
 
-The current prototype uses read-only mmap on Unix-like native targets:
-
-- `open`
-- `fstat`
-- `mmap(PROT_READ, MAP_PRIVATE)`
-- `munmap`
-- `close`
-
-This prototype is:
-
-- experimental
-- native-target only
-- Unix-like only
-- read-only only
-- explicit-close only
-- no Windows support
-- no writable mappings
-
-### C-side Operations
-
-The most credible zero-copy-like benefit in this branch comes from C-side
-operations that inspect mmap-backed memory and return only small results:
+The most meaningful zero-copy-style benefit in this subsystem comes from
+C-side operations that inspect native memory and return only small results:
 
 - `find_byte`
 - `count_byte`
@@ -125,46 +77,122 @@ operations that inspect mmap-backed memory and return only small results:
 - `crc32`
 - `checksum_u64`
 - `starts_with`
-- `copy_to_file`
 
-These avoid copying the whole file into MoonBit just to answer a query.
+These avoid copying the full payload back into MoonBit just to answer a query.
 
-## What Is Not Possible Yet
+### Explicit-copy Boundaries
 
-### Stable C Memory -> BytesView Bridge
+`copy_range(...)` is intentionally explicit.
 
-Current MoonBit public C FFI exposes owned-byte constructors such as:
+It copies a byte range out of native memory into a MoonBit `Array[Byte]`.
+That makes the copy boundary visible to callers instead of pretending the
+result is borrowed.
 
-- `moonbit_make_bytes`
-- `moonbit_make_bytes_raw`
+### Native-side Transfer
 
-But it does not expose a stable public way to construct MoonBit `BytesView`
-directly from arbitrary foreign memory.
+`copy_to_file(...)` copies the mapped region to another file path in the native
+layer without first materializing a large MoonBit array.
 
-The builtin `%bytesview.make` path exists internally, but this branch does not
-use undocumented runtime hooks as a stable implementation strategy.
+This is still data movement. It is not a claim that “nothing is copied”. The
+important distinction is that the transfer stays in the native layer instead of
+round-tripping the payload through MoonBit-owned arrays.
 
-### Safe Lifetime-bound mmap BytesView
+## What Is Not Implemented
 
-Without a supported borrowed-byte bridge, the project cannot safely expose:
+### No Stable C Memory -> MoonBit BytesView Bridge
 
-- a MoonBit `BytesView` that points at mmap memory
-- documented invalidation after `close()` / `munmap()`
-- a guarantee that old views cannot outlive their mapping
+BufferUtils still does not expose a stable public bridge from arbitrary C
+memory into MoonBit `BytesView`.
 
-### Writer / Sink Borrowed View
+`NativeByteView` is therefore not MoonBit `BytesView`, and this research track
+does not use undocumented runtime hooks to fake such a bridge.
 
-This branch still does not expose writer-side or sink-side borrowed views.
-Those remain riskier because of:
+### No Writable mmap
 
-- mutation
-- growth
-- flush state transitions
-- close invalidation
+The research subsystem is read-only only:
 
-## Prototype APIs
+- no writable mappings
+- no resizable mappings
+- no mutable writer/sink borrowed views
 
-Experimental native-only research APIs in this branch:
+### No Windows Support Yet
+
+The current mmap-backed path is validated on Unix-like native targets only.
+Windows mmap support is currently unsupported.
+
+### No Thread-safety Guarantee
+
+The native owner/view registry is not thread-safe.
+
+This subsystem currently assumes single-threaded use and does not provide a
+concurrency guarantee.
+
+## Ownership Model
+
+`NativeByteView` uses an explicit owner/view split.
+
+MoonBit-visible `NativeByteView` values hold logical handle state:
+
+- `handle_id`
+- `byte_len`
+- `closed`
+
+Those fields are intentionally private implementation details and are not part
+of the intended supported API surface.
+
+The real native memory owner lives in C:
+
+- `NativeByteOwner`
+  - `id`
+  - `data`
+  - `len`
+  - `ref_count`
+  - `closed`
+  - `mapped`
+- `NativeByteViewEntry`
+  - `id`
+  - `owner_id`
+  - `offset`
+  - `len`
+  - `closed`
+
+Important properties of the model:
+
+- `new_mmap_file_view(...)` creates one owner plus one root view
+- `slice_handle(...)` creates child views over the same owner
+- child slices increase the owner ref-count
+- `close()` removes only the current view entry
+- the owner is released only when its ref-count reaches zero
+
+## State Transitions
+
+The lifecycle is intentionally explicit:
+
+```text
+open / mmap success
+    -> owner(ref_count = 1) + root view
+slice_handle(...)
+    -> owner(ref_count += 1) + child view
+close(view)
+    -> remove current view entry
+    -> owner(ref_count -= 1)
+owner ref_count == 0
+    -> munmap + free owner
+after-close operation on a closed view
+    -> error
+```
+
+Operational rules:
+
+- `close()` is idempotent at the MoonBit layer
+- parent close does not invalidate already-created child views
+- child close does not invalidate surviving parent or sibling views
+- if final `munmap()` fails, the owner is still treated as closed and cannot be reused
+- operations check open state before crossing into C
+
+## API Reference
+
+Experimental native-only research APIs:
 
 ```moonbit
 new_mmap_file_view(path : String) -> NativeByteView raise BufferError
@@ -186,165 +214,36 @@ NativeByteView.copy_to_file(path : String) -> Unit raise BufferError
 NativeByteView.close() -> Unit raise BufferError
 ```
 
-These APIs belong to `ZSeanYves/bufferutils/native`, not the stable root
-package.
+Notes:
 
-`owner_ref_count()` is intentionally kept as a research/debug helper. It is
-useful for lifecycle tests and admission review, but it is not part of the
-recommended quick-usage path for `NativeByteView`.
+- `owner_ref_count()` is kept as a research/debug helper
+- `read_byte_at(...)` is useful for indexed access and debugging, but full scans
+  through this method mainly measure per-byte FFI overhead
+- `copy_range(...)` is the explicit-copy boundary
+- `copy_to_file(...)` is a native-side transfer path
 
 ## Safety Model
 
-The current safety model is explicit and conservative:
+The safety story is explicit and conservative:
 
 - the mapping is valid only until `close()`
 - repeated `close()` is safe
 - after `close()`, later operations raise `BufferError::Io`
 - out-of-bounds reads map to `BufferError::Underflow`
 - invalid arguments map to `BufferError::InvalidInput`
-- `slice_handle(...)` can keep child views alive after a parent handle is closed
-  because the native owner remains alive until the last child closes
 - external file truncate or rewrite after mapping is outside the safety contract
-- the branch still does not try to expose borrowed MoonBit `BytesView` over that
-  shared native owner
+- this research track still does not try to expose borrowed MoonBit `BytesView`
+  over the shared native owner
 
-This is why the prototype stays as a handle-based API instead of a public
-MoonBit `BytesView`.
+The current registry also uses monotonic IDs that are not reused. The research
+backend now guards those counters against exhaustion instead of silently
+wrapping identifiers. Extremely long-running processes that create very large
+numbers of owners/views could still hit this guard; that is treated as a
+research-backend limitation rather than a stable production guarantee.
 
-## NativeByteView Ownership Model
+## Benchmark Interpretation
 
-The current owner model is explicit and split into owners and views:
-
-- MoonBit code stores a `NativeByteView` value with:
-  - `handle_id`
-  - `byte_len`
-  - `closed`
-- those fields are intentionally private in the source package and are not part
-  of the intended supported API surface
-- the actual mmap-backed memory is owned by a C-side `NativeByteOwner`
-- each MoonBit-visible view corresponds to a C-side `NativeByteViewEntry`
-- `slice_handle(...)` creates child views that point at the same owner with a
-  different `offset` / `len` window
-- `close()` removes only the current view entry; the owner is released only
-  when its `ref_count` reaches zero
-
-The important owner split is:
-
-- MoonBit `NativeByteView`
-  - `handle_id`
-  - `byte_len`
-  - `closed`
-- C owner registry entry
-  - `id`
-  - `data`
-  - `len`
-  - `ref_count`
-  - `closed`
-  - `mapped`
-- C view registry entry
-  - `id`
-  - `owner_id`
-  - `offset`
-  - `len`
-  - `closed`
-
-The real owner of the mapped memory is the C owner registry entry, not the
-MoonBit value.
-
-The intended API surface is:
-
-- `new_mmap_file_view(...)`
-- documented `NativeByteView` methods
-
-Users must not manually construct or mutate `NativeByteView` values.
-
-## State Transition
-
-The lifecycle is now intentionally split between owner and view state:
-
-```text
-open / mmap success
-    -> owner(ref_count = 1) + root view
-slice_handle(...)
-    -> owner(ref_count += 1) + child view
-close(view)
-    -> remove current view entry
-    -> owner(ref_count -= 1)
-owner ref_count == 0
-    -> munmap + free owner
-after-close operation on a closed view
-    -> error
-```
-
-Important notes:
-
-- `close()` is idempotent at the MoonBit layer
-- a successful close removes only the current view entry
-- parent close does not invalidate already-created child views
-- a failed final `munmap()` / close still leaves the owner logically closed
-- repeated close does not double `munmap()` because owner release only happens
-  on the final ref-count transition to zero
-- operations check the MoonBit-side open state before calling into C
-- internal native tests additionally verify final owner/view release through
-  non-public debug counters instead of widening the documented research API
-
-## Single-thread Assumption
-
-The current mmap registry is not thread-safe.
-
-This research backend assumes single-threaded use:
-
-- no lock-protected registry
-- no atomic reference counting
-- no concurrency guarantee across multiple threads
-- future work would need mutexes and/or atomic ref-count updates before sharing this model across threads
-
-## Monotonic ID Allocation
-
-Native mmap owners and views use monotonic native IDs and do not reuse them.
-
-This branch now guards those counters against exhaustion. If a very long-running
-process were ever to exhaust the available owner/view ID space, new native mmap
-view creation would fail and the backend would report an explicit native error
-instead of silently wrapping identifiers.
-
-That limitation is acceptable for research, but it is a real admission
-criterion if this work ever moves toward a broader experimental module.
-
-## slice_handle Status
-
-`slice_handle(...)` is now implemented, but only as research-only native API.
-
-What it gives this branch:
-
-- slice-local bounds over the same mmap-backed memory
-- parent/child independent close semantics
-- shared owner release only after the final close
-
-What it still does **not** give:
-
-- a MoonBit borrowed-lifetime type
-- a stable public zero-copy contract
-- thread-safe shared ownership
-- Windows portability
-
-## Merge Criteria
-
-If this work ever leaves the research branch, the minimum safety bar should be:
-
-- ownership and explicit-close rules are documented clearly
-- close / after-close / double-close tests are complete
-- C-side handle invalidation is explicit and repeatable
-- `slice_handle(...)` keeps using the documented shared-owner/ref-count model
-- docs keep stating that `NativeByteView` is not MoonBit `BytesView`
-- docs keep stating that this is not a stable zero-copy guarantee
-- Unix-like-only and no-Windows constraints remain explicit
-- benchmark notes remain local observations rather than performance promises
-- single-thread assumptions remain documented until a real concurrency story exists
-
-## Benchmark Caveats
-
-The native benchmark now includes experimental mmap research cases:
+The native benchmark suite includes experimental mmap research cases such as:
 
 - `native_mmap_view_read_byte_scan_experimental`
 - `native_mmap_view_find_byte_experimental`
@@ -359,57 +258,36 @@ The native benchmark now includes experimental mmap research cases:
 - `native_mmap_view_slice_crc32_experimental`
 - `native_mmap_view_slice_copy_range_explicit_copy`
 
-These numbers must be read carefully:
+Interpret these results carefully:
 
 - `read_byte_scan` mainly measures MoonBit-to-C per-byte FFI overhead
-- `find_byte`, `count_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64` are better indicators of C-side zero-copy-style work
-- `copy_range` is an explicit-copy baseline, not a borrowed-view API
-- `copy_to_file` is a native-side transfer path that still avoids MoonBit large-array materialization
-- the `slice_*` cases additionally exercise the shared-owner/ref-count path by
-  closing the root view before operating on the child slice
+- `find_byte`, `count_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64`
+  are better indicators of C-side zero-copy-style work
+- `copy_range` is an explicit-copy baseline
+- `copy_to_file` is a native-side transfer path
+- `slice_*` cases additionally exercise the shared-owner/ref-count path
 - filesystem cache and page-fault behavior can dominate results
 - none of these results prove stable zero-copy semantics
 
-## Recommendation for 1.0
+## Merge / Stabilization Criteria
 
-Recommendation for the stable `1.0` line:
+If this subsystem ever moves beyond research-only status, the minimum bar
+should be:
+
+- ownership and explicit-close rules are documented clearly
+- close / after-close / double-close tests remain complete
+- C-side handle invalidation stays explicit and repeatable
+- `slice_handle(...)` continues to use the documented shared-owner/ref-count model
+- docs continue to state that `NativeByteView` is not MoonBit `BytesView`
+- docs continue to state that this is not a stable zero-copy guarantee
+- Unix-like-only and no-Windows constraints remain explicit
+- benchmark notes remain local observations rather than performance promises
+- single-thread assumptions remain documented until a real concurrency story exists
+
+Current recommendation:
 
 - keep the root package unchanged
 - keep `BytesView` APIs experimental
 - keep the native backend experimental
-- do not merge this branch into a stable release as a zero-copy promise
-
-Recommendation for follow-up research:
-
-- keep this work on a research branch
-- continue only if native-only borrowed-handle workflows prove useful
-- wait for safer MoonBit support before attempting a public foreign-memory
-  `BytesView` bridge
-
-## Merge Decision Matrix
-
-### keep branch
-
-Use this when:
-
-- the work is still best described as research-only
-- lifetime safety still depends on explicit close plus branch-local discipline
-- Windows support is still absent
-- there is still no stable C-memory-to-`BytesView` bridge
-
-### merge as experimental native module
-
-Use this only if:
-
-- docs fully explain ownership, close, and after-close semantics
-- tests cover the key lifecycle and correctness boundaries
-- the API surface is small and intentionally frozen
-- users are unlikely to confuse it with a stable zero-copy root API
-
-### discard
-
-Use this if:
-
-- mmap behavior proves too fragile to explain safely
-- test stability becomes poor
-- the maintenance cost is higher than the research value
+- keep `NativeByteView` explicitly marked as experimental native zero-copy research
+- do not present this subsystem as a stable release-time zero-copy promise

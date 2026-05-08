@@ -81,7 +81,8 @@ This mmap research path assumes single-threaded use.
 
 ## Merge Criteria
 
-This branch should only move closer to mainline experimental status if:
+This experimental research track should only move closer to broader mainline
+experimental status if:
 
 - ownership and close semantics stay clearly documented
 - after-close behavior stays fully tested

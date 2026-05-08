@@ -13,7 +13,7 @@ The next obvious reduced-copy investigation is a read-only file mapping path:
 - explore whether a file-backed read-only view can fit the current API model
 
 This document records the original `v0.21.0` feasibility conclusion and the
-`v0.23.0` research-branch follow-up.
+`v0.23.0` research-track follow-up.
 
 ## Scope
 
@@ -46,7 +46,7 @@ The stable root package remains unchanged:
 Decision progression:
 
 - `v0.21.0`: documented-only
-- `v0.23.0` research branch: native-only `NativeByteView` prototype, but still
+- `v0.23.0` research track: native-only `NativeByteView` prototype, but still
   no stable MoonBit `BytesView` bridge
 
 Reason:
@@ -102,7 +102,7 @@ MmapFileSource.is_closed() -> Bool
 That sketch remains experimental-only and native-only. It is not part of the
 stable API surface today.
 
-The current research-branch prototype instead looks like:
+The current research-track prototype instead looks like:
 
 ```moonbit
 new_mmap_file_view(path : String) -> NativeByteView raise BufferError

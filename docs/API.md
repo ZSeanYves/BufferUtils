@@ -1,6 +1,8 @@
 # BufferUtils API Reference
 
-## 1. Low-Level Buffers
+## Stable Root API
+
+### Low-Level Buffers
 
 ### BufferReader
 - `new_reader(buf)`: create a reader over immutable `Bytes`.
@@ -41,7 +43,7 @@ Notes:
 - `BufferWriter` is a low-level in-memory accumulator, not a streaming sink.
 - `new_writer(capacity)` is retained as a compatibility constructor for fixed writers and is documented under the legacy section below.
 
-## 2. Conversion and Split Utilities
+### Conversion and Split Utilities
 
 - `bytes_to_array(data)`: copy `Bytes` into `Array[Byte]`.
 - `array_to_bytes(data)`: copy `Array[Byte]` into `Bytes`.
@@ -51,7 +53,7 @@ Notes:
 - `split_bytes(buf, delimiter)`: split `Bytes` by delimiter and preserve empty segments.
 - `split_array_bytes(arr, delimiter)`: split `Array[Byte]` by delimiter and preserve empty segments.
 
-## 3. Memory Streaming API
+### Memory Streaming API
 
 ### MemorySource
 - `new_memory_source(data)`: create a source from `Bytes`.
@@ -101,7 +103,7 @@ Notes:
 - `BufReader.read_exact(n)` is streaming-style: if EOF is reached after partial progress, some already-consumed buffered bytes may remain consumed before `Underflow` is raised.
 - BufferUtils does not expose trait-based pluggable source/sink backends in the stable default package.
 
-## 4. File Convenience Layer
+### File Convenience Layer
 
 ### FileSource
 - `new_file_source(path)`: read the file into memory and create a snapshot source.
@@ -142,7 +144,19 @@ Notes:
 - Experimental `peek_*` / `*_slice()` APIs return `BytesView`, but BufferUtils does not currently guarantee that MoonBit runtime slicing is always shared-storage or no-copy.
 - These APIs are not part of the stable copy-returning API family. They are intended for read-only, non-consuming inspection.
 
-## 5. Experimental Native Backend
+## Experimental Root BytesView API
+
+These APIs are experimental, non-consuming, and read-only:
+
+- `BufferReader.peek_slice`
+- `BufferReader.remaining_slice`
+- `MemorySource.peek_remaining`
+- `FileSource.peek_remaining`
+
+They return MoonBit `BytesView`, but BufferUtils does not guarantee
+runtime-level shared-storage or stable zero-copy behavior.
+
+## Experimental Native Backend
 
 Package: `ZSeanYves/bufferutils/native`
 
@@ -179,6 +193,18 @@ These APIs are experimental and native-target only. They are not part of the sta
 - `NativeBufWriter.capacity()`: return configured local buffer capacity.
 - `NativeBufWriter.close()`: attempt a final flush and then close the wrapped native sink. Repeated close is safe.
 - `NativeBufWriter.is_closed()`: report whether the writer has already been closed.
+
+### Experimental Native Zero-copy Research APIs
+
+Warning:
+
+- `NativeByteView` is not MoonBit `BytesView`
+- this is not a stable zero-copy API
+- this is native-target only and Unix-like mmap support is the currently
+  validated path
+- `owner_ref_count()` is a research/debug helper, not a recommended
+  quick-usage API
+
 - `new_mmap_file_view(path)`: open an experimental native-only read-only mmap handle.
 - `NativeByteView.len()`: return mapped byte length.
 - `NativeByteView.is_closed()`: report whether the mapped handle has already been closed.
@@ -211,6 +237,9 @@ Notes:
 - `copy_range(...)` is an explicit-copy API by design
 - `copy_to_file(...)` is a native-layer transfer and not a stable zero-copy guarantee
 - `new_mmap_file_view(...)` is currently intended for Unix-like native targets only
+- Windows mmap support is currently unsupported
+- no automatic destructor contract is provided for native mmap handles
+- no thread-safety guarantee is provided for the native mmap registry
 - the intended `NativeByteView` surface is its documented constructor and methods, not manual field construction or mutation
 - see `docs/MMAP_FEASIBILITY.md` and `docs/ZERO_COPY_RESEARCH.md` for the current feasibility and research conclusions
 

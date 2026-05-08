@@ -15,9 +15,11 @@
 - Clarified across README, native backend docs, safety notes, and benchmark notes that the new mmap path is experimental, Unix-like native-target only, and not a zero-copy guarantee.
 - Kept the stable root package and the existing experimental `FILE*`-based native APIs unchanged while adding the research-only byte-view handle.
 - Kept `NativeByteView.owner_ref_count()` positioned as a research/debug helper instead of a recommended usage API.
+- Reworked README and documentation around the stable root API, the experimental native backend, and `NativeByteView` zero-copy research.
+- Added more concrete local benchmark observation tables with explicit caveats instead of broad performance wording.
 
 ### Notes
-- v0.23.0 is a research-branch release for native zero-copy exploration.
+- v0.23.0 is a research-track release for native zero-copy exploration.
 - No stable root API is changed.
 - BufferUtils still does not claim stable zero-copy behavior.
 

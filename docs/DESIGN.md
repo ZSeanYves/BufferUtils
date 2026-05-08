@@ -1,197 +1,250 @@
-# BufferUtils Design Notes
+# Design
 
 ## Design Goals
 
+BufferUtils is designed around a small, concrete, honest byte-buffer API.
+
+Current design goals:
+
 - safe byte-buffer operations
-- predictable error behavior
-- a small concrete public API that is easy to maintain
-- memory-backed streaming-style APIs without pretending to be full OS-level I/O
-- file convenience helpers that stay honest about their limits
+- predictable boundary and error behavior
+- a stable pure MoonBit root API with low maintenance overhead
+- memory-backed streaming abstractions that do not pretend to be full OS-level I/O
+- file convenience helpers that stay explicit about snapshot and flush semantics
+- experimental native extensions that do not pollute the stable root package boundary
 
-## Layered Architecture
+## API Layers
 
-### Layer 1: Low-Level Buffers
+BufferUtils is intentionally layered.
 
-`BufferReader` and `BufferWriter` are the most direct APIs.
+### Stable Root Package
 
-- `BufferReader` is a cursor over immutable `Bytes`.
-- `BufferWriter` is an in-memory accumulator with fixed or growing capacity behavior.
+The stable root package is the primary 1.0-facing API:
 
-This layer is intentionally explicit and close to raw byte manipulation.
+- `BufferReader`
+- `BufferWriter`
+- `MemorySource`
+- `MemorySink`
+- `BufReader`
+- `BufWriter`
+- `FileSource`
+- `FileSink`
+- `FileBufWriter`
+- `new_file_buf_reader`
+- conversion helpers
+- split helpers
+- `BufferError`
 
-### Layer 2: Growing Writer Behavior
+This layer is pure MoonBit and does not require a native target or C toolchain.
 
-`new_growing_writer` extends the low-level writer model with automatic capacity growth while preserving the fixed-capacity option.
+### Experimental Root Package
 
-This keeps predictable protocol-style writing available while still supporting unknown output sizes.
+The root package also contains a small experimental `BytesView` inspection
+layer:
 
-### Layer 3: Memory Streaming
+- `BufferReader.peek_slice`
+- `BufferReader.remaining_slice`
+- `MemorySource.peek_remaining`
+- `FileSource.peek_remaining`
 
-`MemorySource`, `MemorySink`, `BufReader`, and `BufWriter` provide streaming-style behavior over concrete memory-backed types.
+These APIs return MoonBit `BytesView`, but BufferUtils does not promise
+runtime-level shared-storage or stable zero-copy behavior.
 
-- `MemorySource` and `MemorySink` are the backing storage types.
-- `BufReader` batches refills from `MemorySource`.
-- `BufWriter` batches flushes into `MemorySink`.
+### Experimental Native Backend
 
-This layer does not expose a trait-based extension point in the stable default package.
+`ZSeanYves/bufferutils/native` is a separate experimental package for native
+file-handle APIs:
 
-### Layer 4: File Convenience Layer
+- `NativeFileSource`
+- `NativeFileSink`
+- `NativeBufReader`
+- `NativeBufWriter`
 
-`FileSource`, `FileSink`, `new_file_buf_reader`, and `FileBufWriter` provide file-oriented convenience APIs.
+This layer requires `--target native`, a C toolchain, and explicit close.
 
-- `FileSource` reads file bytes into memory at construction time.
-- `FileSink` accumulates bytes in memory and overwrites the target file on flush.
-- `new_file_buf_reader` reuses `BufReader` over a `FileSource` snapshot.
-- `FileBufWriter` batches writes before sending them into `FileSink`.
+### Experimental NativeByteView Research
 
-This is deliberately a convenience layer, not a claim of OS-level streaming file-handle support.
+The same native package also contains experimental `NativeByteView` research:
 
-### Layer 5: Experimental Native C Backend
+- `new_mmap_file_view`
+- `NativeByteView`
+- `slice_handle(...)`
+- C-side processing operations
 
-`ZSeanYves/bufferutils/native` introduces an experimental native-only package for file-handle based streaming.
+This is not part of the stable root API and is not presented as stable
+zero-copy.
 
-- `NativeFileSource` opens a native `FILE*` and reads chunk by chunk.
-- `NativeFileSink` opens a native `FILE*`, writes directly, and supports explicit flush/close.
-- `NativeBufReader` layers a refill buffer over `NativeFileSource`.
-- `NativeBufWriter` layers a small-write buffer over `NativeFileSink`.
-- `NativeByteView` adds a native-only research handle for read-only mmap-backed access without pretending to be a stable MoonBit `BytesView`
-- the implementation uses MoonBit C FFI plus a small C stub layer
-- the C stub uses explicit status codes so MoonBit code does not need to guess from ambiguous return values
-- the stable root package does not depend on this backend at runtime
+## Stable Root Package
 
-This lets the project explore real file handles without changing the stable semantics of `FileSource` and `FileSink`.
+### Low-level Buffers
 
-## mmap Feasibility and Research Handle
+`BufferReader` and `BufferWriter` provide direct in-memory byte manipulation.
 
-`v0.21.0` documented mmap feasibility. `v0.23.0` keeps that conclusion about
-MoonBit `BytesView`, but adds a narrower native-only research handle:
-`NativeByteView`.
+- `BufferReader` is a cursor over immutable `Bytes`
+- `BufferWriter` is an in-memory accumulator with fixed or growing behavior
 
-The important distinction is:
+This layer is intentionally explicit and close to raw byte handling.
 
-- the OS-facing mmap side is feasible on Unix-like native targets
-- the stable MoonBit-facing borrowed-`BytesView` side is still **not** solved
+### Growing Writers
 
-This branch therefore does **not** export an mmap-backed MoonBit `BytesView`.
-Instead it exports a native-only handle with explicit operations such as:
+`new_growing_writer(...)` extends the low-level writer model with automatic
+capacity growth while preserving the fixed-capacity path.
 
-- `read_byte_at(index)`
-- `copy_range(start, len)`
-- `find_byte(b)`
-- `count_byte(b)`
-- `index_of(pattern)`
-- `equals(data)`
-- `crc32()`
-- `checksum_u64()`
-- `starts_with(data)`
-- `copy_to_file(path)`
+This allows both:
 
-That keeps the borrowed memory behind an explicit native lifetime boundary
-instead of pretending the project already has a safe lifetime-bound
-`BytesView`.
+- protocol-style fixed-capacity writing
+- unknown-size output accumulation
 
-The research branch now keeps mmap-backed subviews behind a shared-owner
-`NativeByteView` handle model with explicit close and ref-counted native owner
-release. This still remains native-only research API, not a stable MoonBit
-`BytesView` bridge.
+### Memory-backed Streaming
 
-## Reduced-Copy Direction
+`MemorySource`, `MemorySink`, `BufReader`, and `BufWriter` provide
+streaming-style APIs over concrete memory-backed types.
 
-`v0.12.0` improves several hot paths with reduced-copy techniques while preserving the public API.
+This is intentionally not a trait-based pluggable backend design in 1.0.
 
-The current direction is:
+## Memory-backed File Convenience Layer
 
-- prefer chunk-oriented append or blit paths over repeated per-byte `push`
-- avoid redundant conversions when a memory-backed snapshot can be reused directly
-- keep explicit-copy APIs explicit in both implementation and documentation
+The root file APIs are convenience helpers, not OS-level streaming handles.
 
-This does not change the overall design boundary:
+### FileSource
 
-- `flush_to_bytes()` still returns a copy
-- `to_bytes()` accessors still return copies
-- `FileSource` still creates a memory snapshot
-- `FileSink` still persists by flush-time overwrite
-- repeated flushes without new pending bytes preserve file contents, but an empty first flush still materializes an empty file
+`FileSource` reads file bytes into memory at construction time and behaves as a
+snapshot.
 
-## View / Slice Experiment
+Consequences:
 
-`v0.14.0` explores a narrow view/slice-style API on reader-side immutable data only, and `v0.15.0` hardens its semantics and documentation without expanding the API surface.
+- later external file changes do not affect an existing `FileSource`
+- large files incur snapshot memory cost up front
 
-The current experiment focuses on:
+### FileSink
 
-- `BufferReader.peek_slice(n)`
-- `BufferReader.remaining_slice()`
-- `MemorySource.peek_remaining()`
-- `FileSource.peek_remaining()`
+`FileSink` accumulates bytes in memory and persists them on `flush()`.
 
-The design constraints are:
+Its semantics are:
 
-- only immutable or snapshot-backed reader/source types participate
-- writer and sink internals are not exposed as borrowed views
-- existing copy-returning APIs keep their original semantics
-- returned `BytesView` values are documented as experimental read-only views, not as guaranteed no-copy contracts
+- flush-time overwrite
+- current accumulated bytes are materialized to the file path
+- an empty first flush still creates or overwrites an empty file
 
-This keeps the experiment small and reversible while the project evaluates how MoonBit runtime slicing behaves in practice.
+### FileBufWriter
 
-For now, the project treats these methods as experimental public APIs:
+`FileBufWriter` layers a local write buffer over `FileSink`.
 
-- callable and documented
-- safe to rely on for non-consuming inspection and bounds/error semantics
-- not positioned as stable zero-copy guarantees before `1.0`
+This keeps the root API easy to use for buffered file output without claiming
+native file-handle streaming semantics.
 
-## API Narrowing Principles
+## Experimental Native Backend
 
-`v0.10.0` narrows the public API in preparation for `1.0`.
+The native backend explores real file handles through MoonBit C FFI plus a
+small C stub layer.
 
-The rules are:
+It currently provides:
 
-- constructors use `new_*`
-- behavior methods live on concrete types
-- standalone helpers are limited to conversion and split utilities
-- compatibility APIs should be few and clearly documented
-- internal helpers should not be public just to make the surface feel larger
+- `NativeFileSource` for chunked `FILE*` reads
+- `NativeFileSink` for direct `FILE*` writes with explicit flush/close
+- `NativeBufReader` as a refill buffer over `NativeFileSource`
+- `NativeBufWriter` as a local write buffer over `NativeFileSink`
 
-This release removes redundant aliases and keeps the public surface focused on APIs with a clear user-facing purpose.
+Important boundaries:
 
-## Concrete Types Over Traits
+- native APIs are experimental
+- they are native-target only
+- they do not replace `FileSource` / `FileSink`
+- they require explicit `close()`
+- native sink `close()` attempts a final flush, but explicit `flush()` remains
+  the clearer error boundary when callers need to distinguish flush and close
 
-BufferUtils intentionally remains concrete-type based for `1.0`.
+## Experimental NativeByteView Research
 
-Why trait-based custom backends are deferred:
+`NativeByteView` is a narrower research path over read-only mmap-backed native
+memory.
 
-- MoonBit trait integration would force a larger public redesign right before `1.0`
-- the current concrete types already cover the implemented behavior clearly
-- avoiding half-finished abstraction keeps docs and behavior aligned
+Its design goal is not “turn C memory into MoonBit `BytesView`”. Its goal is:
 
-Trait-based custom source/sink abstraction stays on the roadmap rather than being rushed into the release surface.
+- keep large data in native memory
+- expose an explicit handle with bounds checks
+- provide C-side operations that avoid full MoonBit array materialization
+- keep ownership and invalidation explicit
 
-## Current Limitations
+This lets BufferUtils explore zero-copy-style processing without overstating
+what MoonBit currently supports.
 
-- not zero-copy
-- the stable root package does not use OS-level streaming file handles
-- `FileSource` is a memory snapshot
-- `FileSink` is memory accumulation plus flush-time overwrite
-- the experimental native backend is native-target only
-- native resources require explicit `close()`
-- native sink `close()` attempts a final flush, but explicit `flush()` remains the recommended durability boundary
-- native buffered readers and writers are still experimental wrappers over native handles, not stable root APIs
-- no stable borrowed `BytesView` bridge from C memory
-- `NativeByteView` is still experimental native-only research API
-- no append mode for stable root file sinks
-- no async I/O
-- no benchmark claims yet
+## Error Model
 
-## Roadmap
+BufferUtils uses concrete error types with conservative semantics.
 
-- native backend hardening across more targets and CI environments
-- native borrowed-byte view research, gated on safer MoonBit borrowed-byte FFI support
-- trait-based custom source/sink abstraction
-- borrowed byte views
-- read-only slice API stabilization
-- true zero-copy investigation
-- reduced-copy APIs
-- benchmark baseline refinement and historical comparison tooling
+### Stable Root Package
 
-## Feasibility Link
+- `Overflow`: fixed-capacity write exceeded capacity
+- `Underflow`: read requested more bytes than available
+- `InvalidCapacity`: constructor received a non-positive capacity
+- `InvalidInput`: caller supplied an invalid count or value
+- `Io`: file or native operation failed
+- `Flush`: memory-backed file sink flush failed
 
-See [docs/NATIVE_BACKEND.md](./NATIVE_BACKEND.md), [docs/NATIVE_SAFETY.md](./NATIVE_SAFETY.md), [docs/STREAMING_FEASIBILITY.md](./STREAMING_FEASIBILITY.md), [docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md), and [docs/ZERO_COPY_RESEARCH.md](./ZERO_COPY_RESEARCH.md) for the file-handle investigation history and the current experimental native backend direction.
+### Experimental Native Package
+
+The native package reuses the same `BufferError` family instead of exposing
+platform-specific errno details as part of the public API.
+
+## Copy And Ownership Semantics
+
+The design intentionally keeps copy boundaries explicit.
+
+Stable root API:
+
+- `flush_to_bytes()` returns a copy
+- `MemorySink.to_bytes()` returns a copy
+- `FileSink.to_bytes()` returns a copy
+- `FileSource` is a full-memory snapshot
+
+Experimental root `BytesView` API:
+
+- returns MoonBit `BytesView`
+- is still experimental
+- does not claim runtime-level zero-copy guarantees
+
+Experimental `NativeByteView` API:
+
+- is a native-only handle
+- is not MoonBit `BytesView`
+- keeps ownership in native owner/view registries
+- uses `copy_range(...)` as the explicit-copy boundary
+- uses `copy_to_file(...)` as native-side transfer
+
+## Why Trait-based Source / Sink Is Deferred
+
+Trait-based custom backends remain deferred because:
+
+- they would enlarge the stable root API surface before 1.0
+- the current concrete types already explain implemented behavior clearly
+- keeping the surface small makes docs and behavior easier to keep aligned
+
+## Why Stable Zero-copy Is Not Claimed
+
+BufferUtils does not claim stable zero-copy because:
+
+- stable root file APIs are still memory-backed
+- copy-returning APIs are still intentionally copy-returning
+- reader/source `BytesView` APIs are experimental only
+- there is still no stable public `C memory -> MoonBit BytesView` bridge
+- `NativeByteView` remains explicit-close native research API
+
+The native research path can achieve zero-copy-style processing for supported
+C-side operations, but that is not the same as a stable library-wide zero-copy
+contract.
+
+## 1.0 Stability Boundary
+
+BufferUtils 1.0 stabilizes the root pure MoonBit API.
+
+It does **not** stabilize:
+
+- experimental reader/source `BytesView` APIs
+- experimental native file-handle APIs
+- experimental `NativeByteView` zero-copy research APIs
+- stable mmap behavior
+- stable foreign-memory-backed MoonBit `BytesView`
+
+That boundary is intentional. It allows the root byte-buffer library to remain
+small and stable while experimental native work continues separately.

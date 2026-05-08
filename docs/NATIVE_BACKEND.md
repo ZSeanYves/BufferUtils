@@ -5,8 +5,8 @@
 `v0.23.0` keeps the experimental native-only backend package introduced in
 `v0.17.0`, hardened in `v0.18.0`, extended with experimental buffered wrappers
 in `v0.19.0`, audited for mmap feasibility in `v0.21.0`, reviewed again in
-the `v0.22.0` release-candidate audit, and extended on this research branch
-with a native-only mmap handle experiment:
+the `v0.22.0` release-candidate audit, and extended on the current research
+track with a native-only mmap handle experiment:
 
 - package path: `ZSeanYves/bufferutils/native`
 - target: `native`
@@ -61,11 +61,18 @@ The native backend explores that capability without rewriting the stable API sur
 - `new_mmap_file_view(path)`
 - `NativeByteView.len()`
 - `NativeByteView.is_closed()`
+- `NativeByteView.owner_ref_count()`
+- `NativeByteView.slice_handle(start, len)`
 - `NativeByteView.read_byte_at(index)`
 - `NativeByteView.copy_range(start, len)`
 - `NativeByteView.find_byte(b)`
+- `NativeByteView.count_byte(b)`
+- `NativeByteView.index_of(pattern)`
+- `NativeByteView.equals(data)`
+- `NativeByteView.crc32()`
 - `NativeByteView.checksum_u64()`
 - `NativeByteView.starts_with(data)`
+- `NativeByteView.copy_to_file(path)`
 - `NativeByteView.close()`
 
 ## What It Does Today
@@ -127,7 +134,7 @@ Why:
 - BufferUtils therefore cannot yet express a clear lifetime contract between
   a public MoonBit view and explicit `close()` / `munmap()`
 
-The research branch therefore stops at a more honest boundary:
+The current research track therefore stops at a more honest boundary:
 
 - keep borrowed native memory behind `NativeByteView`
 - allow explicit copy through `copy_range(...)`
@@ -164,8 +171,16 @@ The benchmark runner now includes experimental native cases:
 - `native_buffered_writer_write_flush_experimental`
 - `native_mmap_view_read_byte_scan_experimental`
 - `native_mmap_view_find_byte_experimental`
+- `native_mmap_view_count_byte_experimental`
+- `native_mmap_view_index_of_experimental`
+- `native_mmap_view_equals_experimental`
+- `native_mmap_view_crc32_experimental`
 - `native_mmap_view_checksum_experimental`
 - `native_mmap_view_copy_range_explicit_copy`
+- `native_mmap_view_copy_to_file_experimental`
+- `native_mmap_view_slice_count_byte_experimental`
+- `native_mmap_view_slice_crc32_experimental`
+- `native_mmap_view_slice_copy_range_explicit_copy`
 
 Run them with:
 
@@ -175,7 +190,7 @@ moon run src/bench --target native --release
 
 ## Recommendation
 
-Treat the native backend as a mainline experimental branch of the architecture:
+Treat the native backend as a mainline experimental track in the architecture:
 
 - keep the stable root package pure and portable
 - evolve native file-handle behavior in a separate package
