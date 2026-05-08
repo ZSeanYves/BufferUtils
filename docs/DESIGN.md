@@ -54,28 +54,46 @@ This is deliberately a convenience layer, not a claim of OS-level streaming file
 - `NativeFileSink` opens a native `FILE*`, writes directly, and supports explicit flush/close.
 - `NativeBufReader` layers a refill buffer over `NativeFileSource`.
 - `NativeBufWriter` layers a small-write buffer over `NativeFileSink`.
+- `NativeByteView` adds a native-only research handle for read-only mmap-backed access without pretending to be a stable MoonBit `BytesView`
 - the implementation uses MoonBit C FFI plus a small C stub layer
 - the C stub uses explicit status codes so MoonBit code does not need to guess from ambiguous return values
 - the stable root package does not depend on this backend at runtime
 
 This lets the project explore real file handles without changing the stable semantics of `FileSource` and `FileSink`.
 
-## mmap Feasibility
+## mmap Feasibility and Research Handle
 
-`v0.21.0` adds an mmap feasibility study, but not an exported experimental mmap
-API.
+`v0.21.0` documented mmap feasibility. `v0.23.0` keeps that conclusion about
+MoonBit `BytesView`, but adds a narrower native-only research handle:
+`NativeByteView`.
 
-The main blocker is not the OS call itself. A Unix-like C stub could map and
-unmap file ranges. The blocker is the MoonBit-facing lifetime model:
+The important distinction is:
 
-- the current runtime/FFI surface exposes owned `Bytes` allocation
-- `BytesView::make(...)` exists inside MoonBit builtin code, but not as a stable
-  public C FFI hook
-- BufferUtils therefore lacks a safe public path to expose mmap-backed memory as
-  a MoonBit `BytesView` with explicit `close()` / `munmap()` invalidation
+- the OS-facing mmap side is feasible on Unix-like native targets
+- the stable MoonBit-facing borrowed-`BytesView` side is still **not** solved
 
-That means the project can responsibly document the direction, but should not
-export a misleading "mmap view" API that quietly copies into owned bytes.
+This branch therefore does **not** export an mmap-backed MoonBit `BytesView`.
+Instead it exports a native-only handle with explicit operations such as:
+
+- `read_byte_at(index)`
+- `copy_range(start, len)`
+- `find_byte(b)`
+- `count_byte(b)`
+- `index_of(pattern)`
+- `equals(data)`
+- `crc32()`
+- `checksum_u64()`
+- `starts_with(data)`
+- `copy_to_file(path)`
+
+That keeps the borrowed memory behind an explicit native lifetime boundary
+instead of pretending the project already has a safe lifetime-bound
+`BytesView`.
+
+The research branch now keeps mmap-backed subviews behind a shared-owner
+`NativeByteView` handle model with explicit close and ref-counted native owner
+release. This still remains native-only research API, not a stable MoonBit
+`BytesView` bridge.
 
 ## Reduced-Copy Direction
 
@@ -157,7 +175,8 @@ Trait-based custom source/sink abstraction stays on the roadmap rather than bein
 - native resources require explicit `close()`
 - native sink `close()` attempts a final flush, but explicit `flush()` remains the recommended durability boundary
 - native buffered readers and writers are still experimental wrappers over native handles, not stable root APIs
-- no exported mmap API yet; see `docs/MMAP_FEASIBILITY.md`
+- no stable borrowed `BytesView` bridge from C memory
+- `NativeByteView` is still experimental native-only research API
 - no append mode for stable root file sinks
 - no async I/O
 - no benchmark claims yet
@@ -165,7 +184,7 @@ Trait-based custom source/sink abstraction stays on the roadmap rather than bein
 ## Roadmap
 
 - native backend hardening across more targets and CI environments
-- read-only mmap feasibility study, gated on safer MoonBit borrowed-byte FFI support
+- native borrowed-byte view research, gated on safer MoonBit borrowed-byte FFI support
 - trait-based custom source/sink abstraction
 - borrowed byte views
 - read-only slice API stabilization
@@ -175,4 +194,4 @@ Trait-based custom source/sink abstraction stays on the roadmap rather than bein
 
 ## Feasibility Link
 
-See [docs/NATIVE_BACKEND.md](./NATIVE_BACKEND.md), [docs/NATIVE_SAFETY.md](./NATIVE_SAFETY.md), [docs/STREAMING_FEASIBILITY.md](./STREAMING_FEASIBILITY.md), and [docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md) for the file-handle investigation history and the current experimental native backend direction.
+See [docs/NATIVE_BACKEND.md](./NATIVE_BACKEND.md), [docs/NATIVE_SAFETY.md](./NATIVE_SAFETY.md), [docs/STREAMING_FEASIBILITY.md](./STREAMING_FEASIBILITY.md), [docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md), and [docs/ZERO_COPY_RESEARCH.md](./ZERO_COPY_RESEARCH.md) for the file-handle investigation history and the current experimental native backend direction.

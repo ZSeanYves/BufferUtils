@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.23.0
+
+### Added
+- Added an experimental native-only `NativeByteView` research API for explicit borrowed-byte access over read-only mmap mappings.
+- Added `new_mmap_file_view(path)` plus native-only mmap tests and benchmark cases.
+- Added more C-side mmap research operations for counting, pattern search, equality checks, CRC32, and native-side file copy.
+- Added a shared-owner / ref-count model for `NativeByteView` slices, including research-only `slice_handle(...)` and owner-ref-count inspection.
+- Added `docs/ZERO_COPY_RESEARCH.md` for the zero-copy research branch findings.
+
+### Changed
+- Reframed mmap from documented-only feasibility into a native-only research prototype that still does not expose a stable MoonBit `BytesView` bridge.
+- Clarified that the mmap research path now uses a self-managed native safe bridge with explicit owner/view separation instead of a direct MoonBit `BytesView` bridge.
+- Clarified across README, native backend docs, safety notes, and benchmark notes that the new mmap path is experimental, Unix-like native-target only, and not a zero-copy guarantee.
+- Kept the stable root package and the existing experimental `FILE*`-based native APIs unchanged while adding the research-only byte-view handle.
+- Kept `NativeByteView.owner_ref_count()` positioned as a research/debug helper instead of a recommended usage API.
+
+### Notes
+- v0.23.0 is a research-branch release for native zero-copy exploration.
+- No stable root API is changed.
+- BufferUtils still does not claim stable zero-copy behavior.
+
+### Fixed
+- Hid `NativeByteView` implementation fields behind private package fields so generated interface summaries no longer expose them as intended public API surface.
+- Removed duplicate `slice_*` mmap benchmark entries from the benchmark documentation.
+- Added monotonic native mmap ID exhaustion guards and stronger internal owner/view release verification tests for the safe bridge.
+
 ## v0.22.0
 
 ### Changed

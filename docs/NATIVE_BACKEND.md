@@ -2,16 +2,23 @@
 
 ## Status
 
-`v0.22.0` keeps the experimental native-only backend package introduced in
+`v0.23.0` keeps the experimental native-only backend package introduced in
 `v0.17.0`, hardened in `v0.18.0`, extended with experimental buffered wrappers
-in `v0.19.0`, audited for mmap feasibility in `v0.21.0`, and reviewed again in
-the `v0.22.0` release-candidate audit:
+in `v0.19.0`, audited for mmap feasibility in `v0.21.0`, reviewed again in
+the `v0.22.0` release-candidate audit, and extended on this research branch
+with a native-only mmap handle experiment:
 
 - package path: `ZSeanYves/bufferutils/native`
 - target: `native`
 - implementation style: MoonBit C FFI + a small C `FILE*` stub
 
 The stable default package remains pure MoonBit and keeps its existing semantics.
+
+The new mmap research path is narrower than the rest of the native backend:
+
+- native target only
+- Unix-like platforms only
+- read-only only
 
 ## Why This Exists
 
@@ -51,6 +58,15 @@ The native backend explores that capability without rewriting the stable API sur
 - `NativeBufWriter.flush()`
 - `NativeBufWriter.close()`
 - `NativeBufWriter.is_closed()`
+- `new_mmap_file_view(path)`
+- `NativeByteView.len()`
+- `NativeByteView.is_closed()`
+- `NativeByteView.read_byte_at(index)`
+- `NativeByteView.copy_range(start, len)`
+- `NativeByteView.find_byte(b)`
+- `NativeByteView.checksum_u64()`
+- `NativeByteView.starts_with(data)`
+- `NativeByteView.close()`
 
 ## What It Does Today
 
@@ -87,9 +103,19 @@ The native backend explores that capability without rewriting the stable API sur
 - `close()` attempts a final flush before closing the wrapped sink
 - requires explicit `close()`
 
-## mmap Feasibility Outcome
+### NativeByteView
 
-`v0.21.0` does not export an experimental `MmapFileSource`.
+- opens a read-only mmap-backed native handle on Unix-like native targets
+- does not snapshot the entire file into MoonBit-owned memory
+- does not expose a stable MoonBit `BytesView`
+- supports explicit-copy extraction through `copy_range(...)`
+- supports C-side scans and checks such as `find_byte`, `checksum_u64`, and `starts_with`
+- requires explicit `close()`
+
+## mmap Research Outcome
+
+`v0.23.0` still does **not** export a stable mmap-backed MoonBit `BytesView`,
+but it does add a native-only research handle: `NativeByteView`.
 
 Why:
 
@@ -99,15 +125,20 @@ Why:
   a stable public constructor for a `BytesView` borrowed from arbitrary mmap
   memory
 - BufferUtils therefore cannot yet express a clear lifetime contract between
-  `as_view()` and explicit `close()` / `munmap()`
+  a public MoonBit view and explicit `close()` / `munmap()`
 
-The current recommendation is to keep mmap in feasibility-study mode rather than
-ship a copied API under a misleading mmap/view name. See
-[docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md).
+The research branch therefore stops at a more honest boundary:
+
+- keep borrowed native memory behind `NativeByteView`
+- allow explicit copy through `copy_range(...)`
+- allow C-side operations that avoid copying whole file contents into MoonBit
+
+See [docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md) and
+[docs/ZERO_COPY_RESEARCH.md](./ZERO_COPY_RESEARCH.md).
 
 ## What It Does Not Do Yet
 
-- no exported mmap API yet
+- no stable borrowed MoonBit `BytesView` over mmap memory
 - no vectored I/O
 - no stable cross-target promise
 - no automatic integration into the stable root package
@@ -131,6 +162,10 @@ The benchmark runner now includes experimental native cases:
 - `native_file_sink_write_flush_experimental`
 - `native_buffered_reader_read_to_end_experimental`
 - `native_buffered_writer_write_flush_experimental`
+- `native_mmap_view_read_byte_scan_experimental`
+- `native_mmap_view_find_byte_experimental`
+- `native_mmap_view_checksum_experimental`
+- `native_mmap_view_copy_range_explicit_copy`
 
 Run them with:
 
@@ -159,6 +194,11 @@ The C stub now uses explicit status codes instead of ambiguous negative returns:
 - `BUFFERUTILS_NATIVE_CLOSE_FAILED`
 - `BUFFERUTILS_NATIVE_INVALID_HANDLE`
 - `BUFFERUTILS_NATIVE_INVALID_ARGUMENT`
+- `BUFFERUTILS_NATIVE_MMAP_FAILED`
+- `BUFFERUTILS_NATIVE_MUNMAP_FAILED`
+- `BUFFERUTILS_NATIVE_OUT_OF_BOUNDS`
+- `BUFFERUTILS_NATIVE_CLOSED`
+- `BUFFERUTILS_NATIVE_UNSUPPORTED`
 
 MoonBit-side mapping intentionally stays small:
 
@@ -172,4 +212,6 @@ MoonBit-side mapping intentionally stays small:
 - repeated read benchmarks can be heavily affected by filesystem cache
 - small benchmark cases are noisy because fixture setup and FFI call overhead matter more
 - the current runner uses a light warmup before timed runs
+- mmap read-byte scans are dominated by MoonBit-to-C FFI overhead, not raw mmap capability
+- mmap checksum/find-byte cases are better indicators of C-side zero-copy-style processing
 - native numbers are experimental local observations, not release claims

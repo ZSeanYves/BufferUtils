@@ -44,6 +44,13 @@ fn pattern_bytes(len : Int) -> Array[Byte] {
 }
 
 ///|
+fn repeated_bytes(len : Int, value : Byte) -> Array[Byte] {
+  let data : Array[Byte] = []
+  data.resize(len, value)
+  data
+}
+
+///|
 fn default_stream_capacity(bytes_len : Int) -> Int {
   if bytes_len < 8192 {
     1024
@@ -185,6 +192,17 @@ fn prepare_file_source_fixture(
 }
 
 ///|
+fn prepare_mmap_find_fixture(
+  size_label : String,
+  bytes_len : Int,
+) -> String raise {
+  let path = bench_path("mmap_find_\{size_label}.bin")
+  let data = repeated_bytes(bytes_len, (0).to_byte())
+  @fs.write_bytes_to_file(path, @bufferutils.array_to_bytes(data))
+  path
+}
+
+///|
 fn bench_file_source_snapshot(path : String) -> Unit raise {
   let source = @bufferutils.new_file_source(path)
   ignore(source.read_to_end().length())
@@ -220,6 +238,118 @@ fn bench_native_buf_reader_read_to_end(
   )
   ignore(reader.read_to_end().length())
   reader.close()
+}
+
+///|
+fn bench_native_mmap_view_read_byte_scan(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  let mut total = 0
+  for i in 0..<view.len() {
+    total += view.read_byte_at(i).to_int()
+  }
+  view.close()
+  ignore(total)
+}
+
+///|
+fn bench_native_mmap_view_find_byte(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.find_byte((255).to_byte()))
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_count_byte(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.count_byte((0).to_byte()))
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_index_of(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.index_of([(255).to_byte()]))
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_equals(path : String, bytes_len : Int) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.equals(pattern_bytes(bytes_len)))
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_checksum(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.checksum_u64())
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_crc32(path : String) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.crc32())
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_copy_range(
+  path : String,
+  bytes_len : Int,
+) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  ignore(view.copy_range(0, bytes_len).length())
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_copy_to_file(
+  source_path : String,
+  target_path : String,
+) -> Unit raise {
+  let view = @native.new_mmap_file_view(source_path)
+  view.copy_to_file(target_path)
+  view.close()
+}
+
+///|
+fn bench_native_mmap_view_slice_count_byte(
+  path : String,
+  bytes_len : Int,
+) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  let start = bytes_len / 4
+  let slice = view.slice_handle(start, bytes_len - start)
+  view.close()
+  ignore(slice.count_byte((0).to_byte()))
+  slice.close()
+}
+
+///|
+fn bench_native_mmap_view_slice_crc32(
+  path : String,
+  bytes_len : Int,
+) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  let start = bytes_len / 4
+  let slice = view.slice_handle(start, bytes_len - start)
+  view.close()
+  ignore(slice.crc32())
+  slice.close()
+}
+
+///|
+fn bench_native_mmap_view_slice_copy_range(
+  path : String,
+  bytes_len : Int,
+) -> Unit raise {
+  let view = @native.new_mmap_file_view(path)
+  let start = bytes_len / 4
+  let slice = view.slice_handle(start, bytes_len - start)
+  view.close()
+  ignore(slice.copy_range(0, bytes_len - start).length())
+  slice.close()
 }
 
 ///|
@@ -388,6 +518,119 @@ fn run_all_benchmarks() -> Unit raise {
       true,
       fn() raise {
         bench_native_buf_reader_read_to_end(file_source_path, bytes_len)
+      },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_read_byte_scan_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_read_byte_scan(file_source_path) },
+    )
+
+    let mmap_find_path = prepare_mmap_find_fixture(size_label, bytes_len)
+
+    run_benchmark_case(
+      "native_mmap_view_find_byte_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_find_byte(mmap_find_path) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_count_byte_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_count_byte(file_source_path) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_index_of_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_index_of(mmap_find_path) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_equals_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_equals(file_source_path, bytes_len) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_checksum_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_checksum(file_source_path) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_crc32_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise { bench_native_mmap_view_crc32(file_source_path) },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_copy_range_explicit_copy",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise {
+        bench_native_mmap_view_copy_range(file_source_path, bytes_len)
+      },
+    )
+
+    let mmap_copy_to_file_path = bench_path(
+      "native_mmap_copy_to_file_\{size_label}.bin",
+    )
+    run_benchmark_case(
+      "native_mmap_view_copy_to_file_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise {
+        bench_native_mmap_view_copy_to_file(
+          file_source_path, mmap_copy_to_file_path,
+        )
+      },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_slice_count_byte_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise {
+        bench_native_mmap_view_slice_count_byte(file_source_path, bytes_len)
+      },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_slice_crc32_experimental",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise {
+        bench_native_mmap_view_slice_crc32(file_source_path, bytes_len)
+      },
+    )
+
+    run_benchmark_case(
+      "native_mmap_view_slice_copy_range_explicit_copy",
+      size_label,
+      bytes_len,
+      true,
+      fn() raise {
+        bench_native_mmap_view_slice_copy_range(file_source_path, bytes_len)
       },
     )
 

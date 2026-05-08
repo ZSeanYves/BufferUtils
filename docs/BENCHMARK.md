@@ -2,7 +2,7 @@
 
 ## Status
 
-Benchmark coverage remains experimental in `v0.22.0`.
+Benchmark coverage remains experimental in `v0.23.0`.
 
 The goal of this baseline is repeatability and trend tracking, not marketing claims.
 BufferUtils still does not claim benchmark-proven high performance.
@@ -25,6 +25,18 @@ The current benchmark runner covers:
 - `native_file_sink_write_flush_experimental`
 - `native_buffered_reader_read_to_end_experimental`
 - `native_buffered_writer_write_flush_experimental`
+- `native_mmap_view_read_byte_scan_experimental`
+- `native_mmap_view_find_byte_experimental`
+- `native_mmap_view_count_byte_experimental`
+- `native_mmap_view_index_of_experimental`
+- `native_mmap_view_equals_experimental`
+- `native_mmap_view_crc32_experimental`
+- `native_mmap_view_checksum_experimental`
+- `native_mmap_view_copy_range_explicit_copy`
+- `native_mmap_view_copy_to_file_experimental`
+- `native_mmap_view_slice_count_byte_experimental`
+- `native_mmap_view_slice_crc32_experimental`
+- `native_mmap_view_slice_copy_range_explicit_copy`
 
 The current sizes are:
 
@@ -92,10 +104,16 @@ This benchmark is intended as a baseline, so read the numbers conservatively:
 - `file_memory_*` benchmarks cover the stable memory-backed file convenience layer
 - `native_file_*` benchmarks cover direct native `FILE*`-handle reads and writes
 - `native_buffered_*` benchmarks cover buffered wrappers over those native file handles
+- `native_mmap_view_*` benchmarks cover experimental native-only zero-copy research handles
 - experimental view/slice benchmark cases may still copy depending on MoonBit runtime behavior
 - file-system cache can significantly affect repeated native read results
 - small native file cases are sensitive to fixture allocation and per-call overhead
 - native file read results are strongly affected by filesystem cache and should not be treated as raw disk throughput
+- `native_mmap_view_read_byte_scan_experimental` mainly reflects MoonBit-to-C per-byte FFI overhead
+- `native_mmap_view_find_byte_experimental` and `native_mmap_view_checksum_experimental` are better indicators of C-side zero-copy-style processing
+- `native_mmap_view_count_byte_experimental`, `native_mmap_view_index_of_experimental`, `native_mmap_view_equals_experimental`, and `native_mmap_view_crc32_experimental` are C-side processing cases that avoid copying the full payload back into MoonBit
+- `native_mmap_view_copy_range_explicit_copy` is an explicit-copy baseline, not a borrowed-view guarantee
+- `native_mmap_view_copy_to_file_experimental` measures native-side transfer to disk without materializing a large MoonBit array
 
 ## Current Hotspots
 
@@ -268,6 +286,44 @@ This release-candidate audit confirms that benchmark positioning remains:
 - local-observation oriented
 - sensitive to runtime noise and filesystem cache
 - unsuitable for marketing-style performance claims
+
+## v0.23.0 Zero-copy Research Note
+
+`v0.23.0` adds native-only research cases around `NativeByteView` and read-only
+mmap-backed access:
+
+- `native_mmap_view_read_byte_scan_experimental`
+- `native_mmap_view_find_byte_experimental`
+- `native_mmap_view_count_byte_experimental`
+- `native_mmap_view_index_of_experimental`
+- `native_mmap_view_equals_experimental`
+- `native_mmap_view_crc32_experimental`
+- `native_mmap_view_checksum_experimental`
+- `native_mmap_view_copy_range_explicit_copy`
+- `native_mmap_view_copy_to_file_experimental`
+
+Interpret these carefully:
+
+- `read_byte_scan` is intentionally a worst-case FFI-overhead probe, not a pure mmap speed test
+- `find_byte` uses a no-match fixture so it scans the full mapped region instead of exiting early
+- `find_byte`, `count_byte`, `index_of`, `equals`, `crc32`, and `checksum_u64` better represent C-side operations that avoid copying the whole file into MoonBit
+- `copy_range_explicit_copy` is the explicit-copy comparison point for the research handle
+- `copy_to_file_experimental` is a native-side transfer case, not proof of stable zero-copy semantics
+- the `slice_*` cases additionally exercise the shared-owner model by closing the
+  root view before operating on the child slice
+- page cache and first-touch page faults can dominate mmap results
+- none of these cases prove a stable zero-copy contract
+
+One local `v0.23.0` native-target run on this repository observed:
+
+- `native_mmap_view_read_byte_scan_experimental`, `10MB`: around `304 MiB/s`
+- `native_mmap_view_find_byte_experimental`, `10MB`: around `3322 MiB/s`
+- `native_mmap_view_count_byte_experimental`, `10MB`: around `11819 MiB/s`
+- `native_mmap_view_checksum_experimental`, `10MB`: around `918 MiB/s`
+- `native_mmap_view_copy_range_explicit_copy`, `10MB`: around `2811 MiB/s`
+- `native_mmap_view_slice_count_byte_experimental`, `10MB`: around `16554 MiB/s`
+- `native_mmap_view_slice_crc32_experimental`, `10MB`: around `200 MiB/s`
+- `native_mmap_view_slice_copy_range_explicit_copy`, `10MB`: around `3689 MiB/s`
 
 ## Suggested Workflow
 
