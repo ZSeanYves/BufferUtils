@@ -1,35 +1,93 @@
-name: moonbit-ci
+name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  validate:
+    name: validate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-      - name: Setup MoonBit
-        uses: hustcer/setup-moonbit@v1
-
-      - name: Install dependencies
+      - name: Install MoonBit
         run: |
-          moon update
-          moon install
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Check code (deny warnings)
-        run: moon check --deny-warn
+      - name: Show MoonBit version
+        run: |
+          moon version || true
+          moonc -v || true
 
-      - name: Run tests
-        run: moon test --target native
+      - name: Update MoonBit registry
+        run: moon update
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: ZSeanYves/SimplexNoise
+      - name: Check formatting
+        run: |
+          moon fmt
+          git diff --exit-code
+
+      - name: Check root package
+        run: moon check
+
+      - name: Test root package
+        run: moon test
+
+      - name: Test root package by package name
+        run: moon test -p ZSeanYves/bufferutils
+
+      - name: Build native target
+        run: moon build --target native
+
+      - name: Test experimental native package
+        run: moon test -p ZSeanYves/bufferutils/native --target native
+
+  bench-smoke:
+    name: bench smoke (manual ubuntu)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Show MoonBit version
+        run: |
+          moon version || true
+          moonc -v || true
+
+      - name: Update MoonBit registry
+        run: moon update
+
+      - name: Build native target
+        run: moon build --target native
+
+      - name: Run benchmark smoke
+        run: moon run src/bench --target native --release
