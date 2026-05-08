@@ -1,0 +1,12 @@
+import {
+  "ZSeanYves/bufferutils" @bufferutils,
+  "moonbitlang/core/encoding/utf8" @utf8,
+  "moonbitlang/x/fs" @fs,
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": false,
+  "native-stub": [ "bufferutils_native.c" ],
+)

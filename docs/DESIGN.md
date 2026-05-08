@@ -33,7 +33,7 @@ This keeps predictable protocol-style writing available while still supporting u
 - `BufReader` batches refills from `MemorySource`.
 - `BufWriter` batches flushes into `MemorySink`.
 
-This layer does not expose a trait-based extension point in `v0.10.0`.
+This layer does not expose a trait-based extension point in the stable default package.
 
 ### Layer 4: File Convenience Layer
 
@@ -45,6 +45,81 @@ This layer does not expose a trait-based extension point in `v0.10.0`.
 - `FileBufWriter` batches writes before sending them into `FileSink`.
 
 This is deliberately a convenience layer, not a claim of OS-level streaming file-handle support.
+
+### Layer 5: Experimental Native C Backend
+
+`ZSeanYves/bufferutils/native` introduces an experimental native-only package for file-handle based streaming.
+
+- `NativeFileSource` opens a native `FILE*` and reads chunk by chunk.
+- `NativeFileSink` opens a native `FILE*`, writes directly, and supports explicit flush/close.
+- `NativeBufReader` layers a refill buffer over `NativeFileSource`.
+- `NativeBufWriter` layers a small-write buffer over `NativeFileSink`.
+- the implementation uses MoonBit C FFI plus a small C stub layer
+- the C stub uses explicit status codes so MoonBit code does not need to guess from ambiguous return values
+- the stable root package does not depend on this backend at runtime
+
+This lets the project explore real file handles without changing the stable semantics of `FileSource` and `FileSink`.
+
+## mmap Feasibility
+
+`v0.21.0` adds an mmap feasibility study, but not an exported experimental mmap
+API.
+
+The main blocker is not the OS call itself. A Unix-like C stub could map and
+unmap file ranges. The blocker is the MoonBit-facing lifetime model:
+
+- the current runtime/FFI surface exposes owned `Bytes` allocation
+- `BytesView::make(...)` exists inside MoonBit builtin code, but not as a stable
+  public C FFI hook
+- BufferUtils therefore lacks a safe public path to expose mmap-backed memory as
+  a MoonBit `BytesView` with explicit `close()` / `munmap()` invalidation
+
+That means the project can responsibly document the direction, but should not
+export a misleading "mmap view" API that quietly copies into owned bytes.
+
+## Reduced-Copy Direction
+
+`v0.12.0` improves several hot paths with reduced-copy techniques while preserving the public API.
+
+The current direction is:
+
+- prefer chunk-oriented append or blit paths over repeated per-byte `push`
+- avoid redundant conversions when a memory-backed snapshot can be reused directly
+- keep explicit-copy APIs explicit in both implementation and documentation
+
+This does not change the overall design boundary:
+
+- `flush_to_bytes()` still returns a copy
+- `to_bytes()` accessors still return copies
+- `FileSource` still creates a memory snapshot
+- `FileSink` still persists by flush-time overwrite
+- repeated flushes without pending data should not change observable output
+
+## View / Slice Experiment
+
+`v0.14.0` explores a narrow view/slice-style API on reader-side immutable data only, and `v0.15.0` hardens its semantics and documentation without expanding the API surface.
+
+The current experiment focuses on:
+
+- `BufferReader.peek_slice(n)`
+- `BufferReader.remaining_slice()`
+- `MemorySource.peek_remaining()`
+- `FileSource.peek_remaining()`
+
+The design constraints are:
+
+- only immutable or snapshot-backed reader/source types participate
+- writer and sink internals are not exposed as borrowed views
+- existing copy-returning APIs keep their original semantics
+- returned `BytesView` values are documented as experimental read-only views, not as guaranteed no-copy contracts
+
+This keeps the experiment small and reversible while the project evaluates how MoonBit runtime slicing behaves in practice.
+
+For now, the project treats these methods as experimental public APIs:
+
+- callable and documented
+- safe to rely on for non-consuming inspection and bounds/error semantics
+- not positioned as stable zero-copy guarantees before `1.0`
 
 ## API Narrowing Principles
 
@@ -75,17 +150,29 @@ Trait-based custom source/sink abstraction stays on the roadmap rather than bein
 ## Current Limitations
 
 - not zero-copy
-- not OS-level streaming file handles
+- the stable root package does not use OS-level streaming file handles
 - `FileSource` is a memory snapshot
 - `FileSink` is memory accumulation plus flush-time overwrite
-- no append mode for file sinks
+- the experimental native backend is native-target only
+- native resources require explicit `close()`
+- native sink `close()` attempts a final flush, but explicit `flush()` remains the recommended durability boundary
+- native buffered readers and writers are still experimental wrappers over native handles, not stable root APIs
+- no exported mmap API yet; see `docs/MMAP_FEASIBILITY.md`
+- no append mode for stable root file sinks
 - no async I/O
 - no benchmark claims yet
 
 ## Roadmap
 
+- native backend hardening across more targets and CI environments
+- read-only mmap feasibility study, gated on safer MoonBit borrowed-byte FFI support
 - trait-based custom source/sink abstraction
-- OS-level streaming file handles
-- append mode for `FileSink`
+- borrowed byte views
+- read-only slice API stabilization
+- true zero-copy investigation
 - reduced-copy APIs
-- benchmarks
+- benchmark baseline refinement and historical comparison tooling
+
+## Feasibility Link
+
+See [docs/NATIVE_BACKEND.md](./NATIVE_BACKEND.md), [docs/NATIVE_SAFETY.md](./NATIVE_SAFETY.md), [docs/STREAMING_FEASIBILITY.md](./STREAMING_FEASIBILITY.md), and [docs/MMAP_FEASIBILITY.md](./MMAP_FEASIBILITY.md) for the file-handle investigation history and the current experimental native backend direction.

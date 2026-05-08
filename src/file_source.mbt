@@ -46,12 +46,19 @@ pub fn FileSource::read(self : FileSource, dst : Array[Byte]) -> Int {
 /// Read all remaining bytes and advance to EOF.
 pub fn FileSource::read_to_end(self : FileSource) -> Array[Byte] {
   let remaining = self.remaining()
-  let result : Array[Byte] = []
-  for _ in 0..<remaining {
-    result.push(self.data[self.pos])
-    self.pos += 1
-  }
+  let start = self.pos
+  let result = self.data[start:start + remaining].to_array()
+  self.pos += remaining
   result
+}
+
+///|
+/// Experimental: return the remaining unread bytes from the in-memory snapshot
+/// as a read-only `BytesView` without advancing the position.
+pub fn FileSource::peek_remaining(self : FileSource) -> BytesView {
+  let remaining = self.remaining()
+  let start = self.pos
+  self.data[start:start + remaining]
 }
 
 ///|
@@ -97,8 +104,7 @@ pub fn FileSource::path(self : FileSource) -> String {
 ///|
 /// Convert a file source snapshot into a `MemorySource`.
 fn file_source_to_memory(source : FileSource) -> MemorySource {
-  let remaining = source.read_to_end()
-  let memory = new_memory_source(array_to_bytes(remaining))
+  let memory = new_memory_source(source.data)
   source.rewind()
   memory
 }

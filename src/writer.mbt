@@ -130,10 +130,11 @@ pub fn BufferWriter::write_all(
   self : BufferWriter,
   data : Array[Byte],
 ) -> Unit raise BufferError {
-  self.reserve(data.length())
-  for byte in data {
-    self.buf.push(byte)
+  if data.length() == 0 {
+    return
   }
+  self.reserve(data.length())
+  self.buf.append(data[:])
   self.pos = self.buf.length()
 }
 

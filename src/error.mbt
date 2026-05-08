@@ -16,6 +16,44 @@ suberror BufferError {
 }
 
 ///|
+/// Internal bridge for subpackages that need to raise `BufferError::InvalidInput`
+/// without widening the stable API docs.
+#doc(hidden)
+pub fn raise_buffer_invalid_input(message : String) -> Unit raise BufferError {
+  raise BufferError::InvalidInput(message)
+}
+
+///|
+/// Internal bridge for subpackages that need to raise `BufferError::InvalidCapacity`.
+#doc(hidden)
+pub fn raise_buffer_invalid_capacity(
+  message : String,
+) -> Unit raise BufferError {
+  raise BufferError::InvalidCapacity(message)
+}
+
+///|
+/// Internal bridge for subpackages that need to raise `BufferError::Underflow`.
+#doc(hidden)
+pub fn raise_buffer_underflow(message : String) -> Unit raise BufferError {
+  raise BufferError::Underflow(message)
+}
+
+///|
+/// Internal bridge for subpackages that need to raise `BufferError::Io`.
+#doc(hidden)
+pub fn raise_buffer_io(message : String) -> Unit raise BufferError {
+  raise BufferError::Io(message)
+}
+
+///|
+/// Internal bridge for subpackages that need to raise `BufferError::Flush`.
+#doc(hidden)
+pub fn raise_buffer_flush(message : String) -> Unit raise BufferError {
+  raise BufferError::Flush(message)
+}
+
+///|
 /// UTF-8 decoding error wrapper used by BufferUtils conversion helpers.
 pub suberror Utf8DecodeError {
   Utf8DecodeError(String)

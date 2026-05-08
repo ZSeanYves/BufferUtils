@@ -23,6 +23,122 @@ test "peek_byte does not advance position" {
 }
 
 ///|
+test "peek_slice zero bytes is allowed" {
+  let reader = new_reader(Bytes::from_array([1, 2]))
+  assert_eq(reader.peek_slice(0).to_array(), [])
+  assert_eq(reader.position(), 0)
+}
+
+///|
+test "peek_slice one byte returns current byte view" {
+  let reader = new_reader(Bytes::from_array([7, 8]))
+  assert_eq(reader.peek_slice(1).to_array(), [7])
+  assert_eq(reader.position(), 0)
+}
+
+///|
+test "peek_slice does not advance position" {
+  let reader = new_reader(Bytes::from_array([7, 8, 9]))
+  let view = reader.peek_slice(2)
+  assert_eq(view.to_array(), [7, 8])
+  assert_eq(reader.position(), 0)
+  assert_eq(reader.read_byte(), 7)
+  assert_eq(view.to_array(), [7, 8])
+}
+
+///|
+test "peek_slice negative raises invalid input" {
+  let reader = new_reader(Bytes::from_array([1, 2]))
+  let result = try? reader.peek_slice(-1)
+  assert_eq(result is Err(_), true)
+}
+
+///|
+test "peek_slice beyond remaining raises underflow" {
+  let reader = new_reader(Bytes::from_array([1, 2]))
+  let result = try? reader.peek_slice(3)
+  assert_eq(result is Err(_), true)
+}
+
+///|
+test "peek_slice repeated calls return consistent bytes" {
+  let reader = new_reader(Bytes::from_array([4, 5, 6]))
+  let first = reader.peek_slice(2)
+  let second = reader.peek_slice(2)
+  assert_eq(first.to_array(), [4, 5])
+  assert_eq(second.to_array(), [4, 5])
+  assert_eq(reader.position(), 0)
+}
+
+///|
+test "peek_slice exact remaining succeeds" {
+  let reader = new_reader(Bytes::from_array([1, 2, 3]))
+  ignore(reader.read_byte())
+  assert_eq(reader.peek_slice(2).to_array(), [2, 3])
+  assert_eq(reader.position(), 1)
+}
+
+///|
+test "peek_slice followed by read_exact returns same bytes" {
+  let reader = new_reader(Bytes::from_array([1, 2, 3, 4]))
+  let view = reader.peek_slice(3)
+  assert_eq(view.to_array(), [1, 2, 3])
+  assert_eq(reader.read_exact(3), [1, 2, 3])
+}
+
+///|
+test "peek_slice eof with one byte request raises underflow" {
+  let reader = new_reader(Bytes::from_array([1]))
+  ignore(reader.read_byte())
+  let result = try? reader.peek_slice(1)
+  assert_eq(result is Err(_), true)
+}
+
+///|
+test "peek_slice eof with zero byte request returns empty view" {
+  let reader = new_reader(Bytes::from_array([1]))
+  ignore(reader.read_byte())
+  assert_eq(reader.peek_slice(0).to_array(), [])
+  assert_eq(reader.position(), 1)
+}
+
+///|
+test "remaining_slice does not advance position" {
+  let reader = new_reader(Bytes::from_array([1, 2, 3]))
+  ignore(reader.read_byte())
+  let view = reader.remaining_slice()
+  assert_eq(view.to_array(), [2, 3])
+  assert_eq(reader.position(), 1)
+  assert_eq(reader.read_exact(2), [2, 3])
+  assert_eq(view.to_array(), [2, 3])
+}
+
+///|
+test "remaining_slice initially returns full unread content" {
+  let reader = new_reader(Bytes::from_array([1, 2, 3]))
+  assert_eq(reader.remaining_slice().to_array(), [1, 2, 3])
+  assert_eq(reader.position(), 0)
+}
+
+///|
+test "remaining_slice at eof returns empty view" {
+  let reader = new_reader(Bytes::from_array([1, 2]))
+  ignore(reader.read_remaining())
+  assert_eq(reader.remaining_slice().to_array(), [])
+  assert_eq(reader.position(), 2)
+}
+
+///|
+test "remaining_slice followed by read_remaining returns same bytes" {
+  let reader = new_reader(Bytes::from_array([1, 2, 3, 4]))
+  ignore(reader.read_byte())
+  let view = reader.remaining_slice()
+  assert_eq(view.to_array(), [2, 3, 4])
+  assert_eq(reader.read_remaining(), [2, 3, 4])
+  assert_eq(view.to_array(), [2, 3, 4])
+}
+
+///|
 test "single byte reader can be consumed exactly once" {
   let reader = new_reader(Bytes::from_array([42]))
   assert_eq(reader.read_byte(), 42)
@@ -257,6 +373,16 @@ test "flush_to_bytes returns current bytes without clearing" {
   writer.write_all([9, 8])
   assert_eq(writer.flush_to_bytes(), [9, 8])
   assert_eq(writer.len(), 2)
+}
+
+///|
+test "flush_to_bytes returns a copy rather than aliasing internal state" {
+  let writer = new_fixed_writer(4)
+  writer.write_all([9, 8])
+  let out = writer.flush_to_bytes()
+  out[0] = 1
+  assert_eq(out, [1, 8])
+  assert_eq(writer.flush_to_bytes(), [9, 8])
 }
 
 ///|
@@ -606,6 +732,50 @@ test "memory source read_to_end returns remaining bytes" {
 }
 
 ///|
+test "memory source peek_remaining does not advance position" {
+  let source = new_memory_source(Bytes::from_array([1, 2, 3, 4]))
+  let first = Array::makei(1, fn(_i) { (0).to_byte() })
+  ignore(source.read(first))
+  let view = source.peek_remaining()
+  assert_eq(view.to_array(), [2, 3, 4])
+  assert_eq(source.position(), 1)
+  assert_eq(source.read_to_end(), [2, 3, 4])
+  assert_eq(view.to_array(), [2, 3, 4])
+}
+
+///|
+test "memory source peek_remaining initially returns full content" {
+  let source = new_memory_source(Bytes::from_array([1, 2, 3]))
+  assert_eq(source.peek_remaining().to_array(), [1, 2, 3])
+  assert_eq(source.position(), 0)
+}
+
+///|
+test "memory source peek_remaining after eof returns empty view" {
+  let source = new_memory_source(Bytes::from_array([1, 2]))
+  ignore(source.read_to_end())
+  assert_eq(source.peek_remaining().to_array(), [])
+  assert_eq(source.position(), 2)
+}
+
+///|
+test "memory source rewind restores full peek_remaining view" {
+  let source = new_memory_source(Bytes::from_array([5, 6, 7]))
+  let dst = Array::makei(2, fn(_i) { (0).to_byte() })
+  ignore(source.read(dst))
+  source.rewind()
+  assert_eq(source.peek_remaining().to_array(), [5, 6, 7])
+  assert_eq(source.position(), 0)
+}
+
+///|
+test "empty memory source peek_remaining returns empty view" {
+  let source = new_memory_source(Bytes::from_array([]))
+  assert_eq(source.peek_remaining().to_array(), [])
+  assert_eq(source.position(), 0)
+}
+
+///|
 test "memory source rewind resets position" {
   let source = new_memory_source(Bytes::from_array([5, 6, 7]))
   let dst = Array::makei(2, fn(_i) { (0).to_byte() })
@@ -665,6 +835,19 @@ test "memory sink flush is a no-op" {
 }
 
 ///|
+test "memory sink to_bytes returns a copy rather than aliasing internal state" {
+  let sink = new_memory_sink()
+  sink.write([1, 2, 3])
+  let out = sink.to_bytes()
+  out[0] = 9
+  assert_eq(out, [9, 2, 3])
+  assert_eq(sink.to_bytes(), [1, 2, 3])
+  sink.write([4])
+  assert_eq(out, [9, 2, 3])
+  assert_eq(sink.to_bytes(), [1, 2, 3, 4])
+}
+
+///|
 test "memory sink clear removes all data" {
   let sink = new_memory_sink()
   sink.write([1, 2, 3])
@@ -705,6 +888,14 @@ test "buf reader read_exact larger than capacity" {
   let source = new_memory_source(Bytes::from_array([1, 2, 3, 4, 5]))
   let reader = new_buf_reader(source, 2)
   assert_eq(reader.read_exact(5), [1, 2, 3, 4, 5])
+}
+
+///|
+test "buf reader read_exact with capacity one crosses many refills" {
+  let source = new_memory_source(Bytes::from_array([1, 2, 3, 4, 5, 6, 7, 8]))
+  let reader = new_buf_reader(source, 1)
+  assert_eq(reader.read_exact(8), [1, 2, 3, 4, 5, 6, 7, 8])
+  assert_eq(reader.is_eof(), true)
 }
 
 ///|
@@ -928,6 +1119,31 @@ test "buf writer multiple flushes preserve data" {
 }
 
 ///|
+test "buf writer repeated flush without new data does not duplicate bytes" {
+  let sink = new_memory_sink()
+  let writer = new_buf_writer(sink, 8)
+  writer.write_all([1, 2, 3])
+  writer.flush()
+  writer.flush()
+  let sink = writer.into_inner()
+  assert_eq(sink.to_bytes(), [1, 2, 3])
+}
+
+///|
+test "buf reader read_to_end handles large 10000-byte input" {
+  let data : Array[Byte] = []
+  for i in 0..<10000 {
+    data.push((i % 256).to_byte())
+  }
+  let source = new_memory_source(Bytes::from_array(data))
+  let reader = new_buf_reader(source, 128)
+  let out = reader.read_to_end()
+  assert_eq(out.length(), 10000)
+  assert_eq(out[0], 0)
+  assert_eq(out[9999], (9999 % 256).to_byte())
+}
+
+///|
 test "buf writer flush before into_inner keeps final data correct" {
   let sink = new_memory_sink()
   let writer = new_buf_writer(sink, 2)
@@ -974,6 +1190,46 @@ test "file sink flush writes bytes to file" {
   sink.flush()
   let written = read_test_bytes(path)
   assert_eq(written, [1, 2, 3])
+  assert_eq(sink.pending_len(), 0)
+}
+
+///|
+test "file sink flush with no pending bytes does not rewrite file" {
+  let path = test_output_path("file_sink_no_pending_flush.bin")
+  let sink = new_file_sink(path)
+  sink.write([1, 2, 3])
+  sink.flush()
+  sink.flush()
+  assert_eq(read_test_bytes(path), [1, 2, 3])
+  assert_eq(sink.pending_len(), 0)
+}
+
+///|
+test "file sink to_bytes returns a copy rather than aliasing internal state" {
+  let path = test_output_path("file_sink_to_bytes_copy.bin")
+  let sink = new_file_sink(path)
+  sink.write([1, 2, 3])
+  let out = sink.to_bytes()
+  out[0] = 9
+  assert_eq(out, [9, 2, 3])
+  assert_eq(sink.to_bytes(), [1, 2, 3])
+  sink.write([4])
+  assert_eq(out, [9, 2, 3])
+  assert_eq(sink.to_bytes(), [1, 2, 3, 4])
+}
+
+///|
+test "file sink repeated no-op flush preserves accumulated bytes for later flushes" {
+  let path = test_output_path("file_sink_repeated_noop_flush.bin")
+  let sink = new_file_sink(path)
+  sink.write([1, 2, 3])
+  sink.flush()
+  sink.flush()
+  assert_eq(read_test_bytes(path), [1, 2, 3])
+  assert_eq(sink.pending_len(), 0)
+  sink.write([4, 5])
+  sink.flush()
+  assert_eq(read_test_bytes(path), [1, 2, 3, 4, 5])
   assert_eq(sink.pending_len(), 0)
 }
 
@@ -1243,6 +1499,70 @@ test "file source read_to_end returns remaining bytes" {
   assert_eq(source.read_to_end(), [3, 4, 5])
   assert_eq(source.remaining(), 0)
   assert_eq(source.read_to_end(), [])
+}
+
+///|
+test "file source peek_remaining does not advance position" {
+  let path = test_output_path("file_source_peek_remaining.bin")
+  write_test_bytes(path, [1, 2, 3, 4, 5])
+  let source = new_file_source(path)
+  let dst = Array::makei(2, fn(_i) { (0).to_byte() })
+  ignore(source.read(dst))
+  let view = source.peek_remaining()
+  assert_eq(view.to_array(), [3, 4, 5])
+  assert_eq(source.position(), 2)
+  assert_eq(source.read_to_end(), [3, 4, 5])
+  assert_eq(view.to_array(), [3, 4, 5])
+}
+
+///|
+test "file source peek_remaining initially returns full snapshot view" {
+  let path = test_output_path("file_source_peek_full.bin")
+  write_test_bytes(path, [1, 2, 3, 4])
+  let source = new_file_source(path)
+  assert_eq(source.peek_remaining().to_array(), [1, 2, 3, 4])
+  assert_eq(source.position(), 0)
+}
+
+///|
+test "file source peek_remaining after eof returns empty view" {
+  let path = test_output_path("file_source_peek_eof.bin")
+  write_test_bytes(path, [1, 2])
+  let source = new_file_source(path)
+  ignore(source.read_to_end())
+  assert_eq(source.peek_remaining().to_array(), [])
+  assert_eq(source.position(), 2)
+}
+
+///|
+test "file source peek_remaining keeps original snapshot after file rewrite" {
+  let path = test_output_path("file_source_peek_snapshot.bin")
+  write_test_bytes(path, [1, 2, 3])
+  let source = new_file_source(path)
+  write_test_bytes(path, [9, 9, 9])
+  assert_eq(source.peek_remaining().to_array(), [1, 2, 3])
+  assert_eq(source.read_to_end(), [1, 2, 3])
+}
+
+///|
+test "file source rewind restores full snapshot view" {
+  let path = test_output_path("file_source_peek_rewind.bin")
+  write_test_bytes(path, [7, 8, 9])
+  let source = new_file_source(path)
+  let dst = Array::makei(1, fn(_i) { (0).to_byte() })
+  ignore(source.read(dst))
+  source.rewind()
+  assert_eq(source.peek_remaining().to_array(), [7, 8, 9])
+  assert_eq(source.position(), 0)
+}
+
+///|
+test "empty file source peek_remaining returns empty view" {
+  let path = test_output_path("file_source_peek_empty.bin")
+  write_test_bytes(path, [])
+  let source = new_file_source(path)
+  assert_eq(source.peek_remaining().to_array(), [])
+  assert_eq(source.position(), 0)
 }
 
 ///|

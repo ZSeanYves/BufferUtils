@@ -45,9 +45,7 @@ pub fn BufWriter::write_all(self : BufWriter, src : Array[Byte]) -> Unit {
     return
   }
 
-  for byte in src {
-    self.buf.push(byte)
-  }
+  self.buf.append(src[:])
   self.pos = self.buf.length()
 }
 
@@ -55,8 +53,7 @@ pub fn BufWriter::write_all(self : BufWriter, src : Array[Byte]) -> Unit {
 /// Flush the buffered bytes into the sink.
 pub fn BufWriter::flush(self : BufWriter) -> Unit {
   if self.buffered_len() > 0 {
-    let pending = self.buf.copy()
-    self.sink.write(pending)
+    self.sink.write(self.buf)
     self.buf.clear()
     self.pos = 0
   }

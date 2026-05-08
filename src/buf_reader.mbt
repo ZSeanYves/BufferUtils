@@ -55,6 +55,16 @@ fn validate_buffer_request(n : Int) -> Unit raise BufferError {
 }
 
 ///|
+fn append_view(dst : Array[Byte], src : ArrayView[Byte]) -> Unit {
+  if src.length() == 0 {
+    return
+  }
+  let start = dst.length()
+  dst.resize(start + src.length(), (0).to_byte())
+  src.blit_to(dst, dst_offset=start)
+}
+
+///|
 /// Fill the internal buffer when it has been fully consumed.
 pub fn BufReader::fill_buf(self : BufReader) -> Int {
   let buffered = self.buffered_len()
@@ -91,7 +101,7 @@ pub fn BufReader::read_exact(
   n : Int,
 ) -> Array[Byte] raise BufferError {
   validate_buffer_request(n)
-  let result : Array[Byte] = []
+  let result : Array[Byte] = Array::new(capacity=n)
   while result.length() < n {
     if self.buffered_len() == 0 && self.fill_buf() == 0 {
       raise BufferError::Underflow("not enough bytes remaining in buffer")
@@ -100,10 +110,8 @@ pub fn BufReader::read_exact(
     let needed = n - result.length()
     let available = self.buffered_len()
     let count = if available < needed { available } else { needed }
-    for _ in 0..<count {
-      result.push(self.buf[self.pos])
-      self.pos += 1
-    }
+    append_view(result, self.buf[self.pos:self.pos + count])
+    self.pos += count
   }
   result
 }
@@ -112,16 +120,15 @@ pub fn BufReader::read_exact(
 /// Read all remaining bytes until EOF.
 pub fn BufReader::read_to_end(self : BufReader) -> Array[Byte] {
   let result : Array[Byte] = []
+  result.reserve_capacity(self.buffered_len() + self.source.remaining())
   while true {
     if self.buffered_len() == 0 && self.fill_buf() == 0 {
       break
     }
 
     let available = self.buffered_len()
-    for _ in 0..<available {
-      result.push(self.buf[self.pos])
-      self.pos += 1
-    }
+    append_view(result, self.buf[self.pos:self.pos + available])
+    self.pos += available
   }
   result
 }

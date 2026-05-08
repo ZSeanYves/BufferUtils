@@ -87,11 +87,13 @@ pub struct BufferReader {
 pub fn BufferReader::is_empty(Self) -> Bool
 pub fn BufferReader::len(Self) -> Int
 pub fn BufferReader::peek_byte(Self) -> Byte raise BufferError
+pub fn BufferReader::peek_slice(Self, Int) -> BytesView raise BufferError
 pub fn BufferReader::position(Self) -> Int
 pub fn BufferReader::read_byte(Self) -> Byte raise BufferError
 pub fn BufferReader::read_exact(Self, Int) -> Array[Byte] raise BufferError
 pub fn BufferReader::read_remaining(Self) -> Array[Byte]
 pub fn BufferReader::remaining(Self) -> Int
+pub fn BufferReader::remaining_slice(Self) -> BytesView
 pub fn BufferReader::rewind(Self) -> Unit
 pub fn BufferReader::skip(Self, Int) -> Unit raise BufferError
 
@@ -146,6 +148,7 @@ pub struct FileSource {
 pub fn FileSource::is_empty(Self) -> Bool
 pub fn FileSource::len(Self) -> Int
 pub fn FileSource::path(Self) -> String
+pub fn FileSource::peek_remaining(Self) -> BytesView
 pub fn FileSource::position(Self) -> Int
 pub fn FileSource::read(Self, Array[Byte]) -> Int
 pub fn FileSource::read_to_end(Self) -> Array[Byte]
@@ -170,6 +173,7 @@ pub struct MemorySource {
 }
 pub fn MemorySource::is_empty(Self) -> Bool
 pub fn MemorySource::len(Self) -> Int
+pub fn MemorySource::peek_remaining(Self) -> BytesView
 pub fn MemorySource::position(Self) -> Int
 pub fn MemorySource::read(Self, Array[Byte]) -> Int
 pub fn MemorySource::read_to_end(Self) -> Array[Byte]

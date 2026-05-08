@@ -15,6 +15,16 @@ fn validate_file_writer_capacity(capacity : Int) -> Unit raise BufferError {
 }
 
 ///|
+fn append_bytes(dst : Array[Byte], src : Array[Byte]) -> Unit {
+  if src.length() == 0 {
+    return
+  }
+  let start = dst.length()
+  dst.resize(start + src.length(), (0).to_byte())
+  src[:].blit_to(dst, dst_offset=start)
+}
+
+///|
 /// A file-backed sink that accumulates bytes in memory and writes on flush.
 pub struct FileSink {
   path : String
@@ -59,14 +69,16 @@ pub fn new_file_buf_writer(
 ///|
 /// Append bytes to the in-memory file sink buffer.
 pub fn FileSink::write(self : FileSink, src : Array[Byte]) -> Unit {
-  for byte in src {
-    self.data.push(byte)
-  }
+  append_bytes(self.data, src)
 }
 
 ///|
 /// Flush the accumulated bytes to the target file path using overwrite semantics.
+/// If no bytes are pending, this is a no-op and does not rewrite the file.
 pub fn FileSink::flush(self : FileSink) -> Unit raise BufferError {
+  if self.pending_len() == 0 {
+    return
+  }
   try @fs.write_bytes_to_file(self.path, array_to_bytes(self.data)) catch {
     _ => raise BufferError::Flush("failed to write buffered bytes to file")
   } noraise {
@@ -162,9 +174,7 @@ pub fn FileBufWriter::write_all(
     return
   }
 
-  for byte in src {
-    self.buf.push(byte)
-  }
+  self.buf.append(src[:])
   self.pos = self.buf.length()
 }
 
@@ -172,8 +182,7 @@ pub fn FileBufWriter::write_all(
 /// Flush the local buffer into the sink and then persist the sink to disk.
 pub fn FileBufWriter::flush(self : FileBufWriter) -> Unit raise BufferError {
   if self.buffered_len() > 0 {
-    let pending = self.buf.copy()
-    self.sink.write(pending)
+    self.sink.write(self.buf)
     self.buf.clear()
     self.pos = 0
   }

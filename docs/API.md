@@ -6,8 +6,10 @@
 - `new_reader(buf)`: create a reader over immutable `Bytes`.
 - `read_byte()`: read one byte and advance.
 - `peek_byte()`: inspect the next byte without advancing.
+- `peek_slice(n)`: Experimental. Return a non-consuming read-only `BytesView` for the next `n` bytes.
 - `read_exact(n)`: read exactly `n` bytes or raise `Underflow`.
 - `read_remaining()`: read all remaining bytes and advance to the end.
+- `remaining_slice()`: Experimental. Return a non-consuming read-only `BytesView` for unread bytes.
 - `skip(n)`: advance by `n` bytes with bounds checking.
 - `rewind()`: reset the cursor to the beginning.
 - `remaining()`: return unread byte count.
@@ -56,6 +58,7 @@ Notes:
 - `new_memory_source_from_array(data)`: create a source from `Array[Byte]`.
 - `read(dst)`: copy up to `dst.length()` bytes into the destination array and return the actual count.
 - `read_to_end()`: return all remaining bytes and advance to EOF.
+- `peek_remaining()`: Experimental. Return a non-consuming read-only `BytesView` for unread bytes.
 - `remaining()`: return unread bytes remaining.
 - `position()`: return current source offset.
 - `rewind()`: reset to the beginning.
@@ -95,7 +98,8 @@ Notes:
 Notes:
 
 - `BufReader` and `BufWriter` are concrete-type APIs over `MemorySource` and `MemorySink`.
-- BufferUtils does not expose trait-based pluggable source/sink backends in `v0.10.0`.
+- `BufReader.read_exact(n)` is streaming-style: if EOF is reached after partial progress, some already-consumed buffered bytes may remain consumed before `Underflow` is raised.
+- BufferUtils does not expose trait-based pluggable source/sink backends in the stable default package.
 
 ## 4. File Convenience Layer
 
@@ -103,6 +107,7 @@ Notes:
 - `new_file_source(path)`: read the file into memory and create a snapshot source.
 - `read(dst)`: copy bytes from the snapshot into the destination array.
 - `read_to_end()`: return all remaining bytes from the snapshot.
+- `peek_remaining()`: Experimental. Return a non-consuming read-only `BytesView` over the in-memory snapshot.
 - `remaining()`: return unread snapshot bytes.
 - `position()`: return current snapshot offset.
 - `rewind()`: reset the snapshot cursor.
@@ -113,7 +118,7 @@ Notes:
 ### FileSink
 - `new_file_sink(path)`: create a file sink that accumulates bytes in memory.
 - `write(src)`: append bytes into the accumulated in-memory output.
-- `flush()`: overwrite the target file with all accumulated bytes.
+- `flush()`: overwrite the target file with all accumulated bytes when pending bytes exist.
 - `pending_len()`: return bytes not yet persisted to disk.
 - `clear()`: clear accumulated output and reset flush state.
 - `path()`: return the target file path.
@@ -132,17 +137,69 @@ Notes:
 Notes:
 
 - `FileSource` is a memory-backed snapshot, not an OS-level streaming file handle.
+- `FileSource` snapshot creation reads the whole file into memory up front.
 - `FileSink` is memory accumulation plus flush-time overwrite, not append-mode streaming output.
+- Experimental `peek_*` / `*_slice()` APIs return `BytesView`, but BufferUtils does not currently guarantee that MoonBit runtime slicing is always shared-storage or no-copy.
+- These APIs are not part of the stable copy-returning API family. They are intended for read-only, non-consuming inspection.
 
-## 5. Errors
+## 5. Experimental Native Backend
+
+Package: `ZSeanYves/bufferutils/native`
+
+These APIs are experimental and native-target only. They are not part of the stable default root package surface.
+
+- `native_backend_version()`: native C FFI probe for backend wiring.
+- `NativeFileMode::Overwrite`: open a native sink in overwrite mode.
+- `NativeFileMode::Append`: open a native sink in append mode.
+- `new_native_file_source(path)`: open a native `FILE*`-backed source without snapshotting the whole file.
+- `NativeFileSource.read_chunk(size)`: read up to `size` bytes from the native file handle. EOF returns an empty array.
+- `NativeFileSource.close()`: release the underlying file handle. Repeated close is safe.
+- `NativeFileSource.is_closed()`: report whether the source has already been closed.
+- `new_native_file_sink(path, mode)`: open a native `FILE*`-backed sink in overwrite or append mode.
+- `NativeFileSink.write_all(data)`: write the provided byte array directly to the native file handle.
+- `NativeFileSink.flush()`: flush stdio state into the target file.
+- `NativeFileSink.close()`: attempt a final flush and then close the underlying file handle. Repeated close is safe.
+- `NativeFileSink.is_closed()`: report whether the sink has already been closed.
+- `new_native_buf_reader(path, capacity)`: open a buffered native reader over `NativeFileSource`.
+- `NativeBufReader.fill_buf()`: refill the local buffer when it has been fully consumed.
+- `NativeBufReader.read_byte()`: read a single byte, raising `Underflow` at EOF.
+- `NativeBufReader.read_exact(n)`: read exactly `n` bytes, possibly across multiple native chunks.
+- `NativeBufReader.read_to_end()`: read all remaining bytes until EOF.
+- `NativeBufReader.consume(n)`: consume bytes already buffered locally.
+- `NativeBufReader.buffered_len()`: return unread bytes currently buffered.
+- `NativeBufReader.capacity()`: return configured local buffer capacity.
+- `NativeBufReader.is_eof()`: report whether EOF has been reached and the local buffer is empty.
+- `NativeBufReader.close()`: close the wrapped native file source. Repeated close is safe.
+- `NativeBufReader.is_closed()`: report whether the reader has already been closed.
+- `new_native_buf_writer(path, capacity, mode)`: open a buffered native writer over `NativeFileSink`.
+- `NativeBufWriter.write_byte(b)`: append one byte, flushing when the local buffer is full.
+- `NativeBufWriter.write_all(data)`: buffer small writes and bypass the local buffer for large writes when possible.
+- `NativeBufWriter.flush()`: flush local buffered bytes into the native sink and then flush stdio state.
+- `NativeBufWriter.buffered_len()`: return bytes still sitting in the local writer buffer.
+- `NativeBufWriter.capacity()`: return configured local buffer capacity.
+- `NativeBufWriter.close()`: attempt a final flush and then close the wrapped native sink. Repeated close is safe.
+- `NativeBufWriter.is_closed()`: report whether the writer has already been closed.
+
+Notes:
+
+- the native backend is experimental public API, not part of the stable 1.0-facing root package
+- explicit `close()` is required because native resources are not memory-backed snapshots
+- invalid native arguments map to `BufferError::InvalidInput`
+- native open/read/write/flush/close failures map to `BufferError::Io`
+- `NativeBufReader.read_exact(n)` is streaming-style: an eventual `Underflow` can happen after partial consumption if EOF is reached mid-read
+- these APIs do not replace `FileSource` / `FileSink`, which remain memory-backed convenience layers
+- this backend does not claim zero-copy behavior
+- `v0.22.0` still does not export an experimental mmap API; see `docs/MMAP_FEASIBILITY.md` for the current feasibility conclusion
+
+## 6. Errors
 
 ### BufferError
 - `Overflow(String)`: fixed-capacity write exceeded allowed capacity.
 - `Underflow(String)`: read requested more bytes than available.
 - `InvalidCapacity(String)`: constructor received a non-positive capacity.
 - `InvalidInput(String)`: caller supplied an invalid count or out-of-range value.
-- `Io(String)`: file read failed.
-- `Flush(String)`: file write or flush failed.
+- `Io(String)`: file I/O or native handle operation failed.
+- `Flush(String)`: memory-backed file sink flush failed.
 
 ### Utf8DecodeError
 - `Utf8DecodeError(String)`: UTF-8 decode failed.
@@ -151,4 +208,4 @@ Notes:
 
 - `new_writer(capacity)`: compatibility constructor that still creates a fixed-capacity `BufferWriter`.
 
-No CamelCase compatibility wrappers remain in `v0.10.0`.
+No CamelCase compatibility wrappers remain in the stable root package.

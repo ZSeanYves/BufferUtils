@@ -38,12 +38,19 @@ pub fn MemorySource::read(self : MemorySource, dst : Array[Byte]) -> Int {
 /// Read all remaining bytes and advance the source to EOF.
 pub fn MemorySource::read_to_end(self : MemorySource) -> Array[Byte] {
   let remaining = self.remaining()
-  let result : Array[Byte] = []
-  for _ in 0..<remaining {
-    result.push(self.data[self.pos])
-    self.pos += 1
-  }
+  let start = self.pos
+  let result = self.data[start:start + remaining].to_array()
+  self.pos += remaining
   result
+}
+
+///|
+/// Experimental: return the remaining unread bytes as a read-only `BytesView`
+/// without advancing the current position.
+pub fn MemorySource::peek_remaining(self : MemorySource) -> BytesView {
+  let remaining = self.remaining()
+  let start = self.pos
+  self.data[start:start + remaining]
 }
 
 ///|

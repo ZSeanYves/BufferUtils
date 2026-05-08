@@ -53,17 +53,36 @@ pub fn BufferReader::peek_byte(self : BufferReader) -> Byte raise BufferError {
 }
 
 ///|
+/// Experimental: return the next `n` bytes as a read-only `BytesView`
+/// without advancing the current position.
+pub fn BufferReader::peek_slice(
+  self : BufferReader,
+  n : Int,
+) -> BytesView raise BufferError {
+  self.ensure_available(n)
+  let start = self.pos
+  self.buf[start:start + n]
+}
+
+///|
+/// Experimental: return all remaining unread bytes as a read-only `BytesView`
+/// without advancing the current position.
+pub fn BufferReader::remaining_slice(self : BufferReader) -> BytesView {
+  let remaining = self.remaining()
+  let start = self.pos
+  self.buf[start:start + remaining]
+}
+
+///|
 /// Read exactly `n` bytes and advance the current position.
 pub fn BufferReader::read_exact(
   self : BufferReader,
   n : Int,
 ) -> Array[Byte] raise BufferError {
   self.ensure_available(n)
-  let result : Array[Byte] = []
-  for _ in 0..<n {
-    result.push(self.buf[self.pos])
-    self.pos += 1
-  }
+  let start = self.pos
+  let result = self.buf[start:start + n].to_array()
+  self.pos += n
   result
 }
 
@@ -71,11 +90,9 @@ pub fn BufferReader::read_exact(
 /// Read all remaining bytes and advance the current position to the end.
 pub fn BufferReader::read_remaining(self : BufferReader) -> Array[Byte] {
   let remaining = self.remaining()
-  let result : Array[Byte] = []
-  for _ in 0..<remaining {
-    result.push(self.buf[self.pos])
-    self.pos += 1
-  }
+  let start = self.pos
+  let result = self.buf[start:start + remaining].to_array()
+  self.pos += remaining
   result
 }
 

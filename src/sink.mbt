@@ -5,6 +5,16 @@ pub struct MemorySink {
 }
 
 ///|
+fn memory_sink_append_bytes(dst : Array[Byte], src : Array[Byte]) -> Unit {
+  if src.length() == 0 {
+    return
+  }
+  let start = dst.length()
+  dst.resize(start + src.length(), (0).to_byte())
+  src[:].blit_to(dst, dst_offset=start)
+}
+
+///|
 /// Create an empty memory sink.
 pub fn new_memory_sink() -> MemorySink {
   let sink : MemorySink = { data: [] }
@@ -14,9 +24,7 @@ pub fn new_memory_sink() -> MemorySink {
 ///|
 /// Append all bytes into the sink.
 pub fn MemorySink::write(self : MemorySink, src : Array[Byte]) -> Unit {
-  for byte in src {
-    self.data.push(byte)
-  }
+  memory_sink_append_bytes(self.data, src)
 }
 
 ///|
