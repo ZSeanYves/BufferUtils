@@ -30,7 +30,9 @@ moon run src/bench --target native --release
 This package is experimental. It requires explicit `close()`, does not replace
 the stable memory-backed file helpers, and now includes a native-only
 `NativeByteView` / `new_mmap_file_view(...)` research path for read-only
-mmap-backed access on Unix-like native targets.
+mmap-backed access on Unix-like native targets. That research path uses a
+MoonBit-managed external owner object with explicit close plus finalizer
+fallback, not a stable MoonBit `BytesView` bridge.
 
 The mmap research path does not expose a stable MoonBit `BytesView` bridge and
 does not claim stable zero-copy behavior.
@@ -51,24 +53,26 @@ part of the recommended quick-usage path.
 `NativeByteView` is an explicit-close handle, not a lifetime-tracked borrowed
 MoonBit view.
 
-- MoonBit stores `handle_id`, `byte_len`, and `closed`
-- C stores a native owner registry plus per-view entries
-- child slices share one owner and raise the owner's ref-count
-- `close()` removes only the current view handle, and the owner is released only
-  when its ref-count reaches zero
+- MoonBit stores a managed `NativeByteOwner` external object plus `offset`,
+  `byte_len`, and `closed`
+- the external owner payload keeps the mmap region alive and carries the live
+  view count
+- child slices share one owner and raise the owner's live-view count
+- `close()` closes only the current view, and the owner is released
+  when its live-view count reaches zero
 - repeated `close()` is safe
 - if `munmap()` fails, the view is still treated as closed and cannot be reused
-- owner/view IDs are monotonic and not reused; the research backend now guards
-  against ID exhaustion instead of silently wrapping IDs
+- the owner finalizer is a fallback so forgotten closes still release resources
 
 ## Single-thread Assumption
 
 This mmap research path assumes single-threaded use.
 
-- the global mmap registry is not thread-safe
-- there is no shared-owner concurrency model
-- no cross-thread safety guarantee is provided
-- future work would need mutexes and/or atomic ref-count updates before this could claim any concurrency story
+- the shared-owner bookkeeping is not thread-safe
+- there is no cross-thread safety guarantee
+- no locking or atomic ref-counting is provided yet
+- future work would need mutexes and/or atomic ref-count updates before this
+  could claim any concurrency story
 
 ## slice_handle Status
 

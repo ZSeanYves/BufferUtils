@@ -115,9 +115,12 @@ The native backend explores that capability without rewriting the stable API sur
 - opens a read-only mmap-backed native handle on Unix-like native targets
 - does not snapshot the entire file into MoonBit-owned memory
 - does not expose a stable MoonBit `BytesView`
+- keeps the mapped region behind a MoonBit-managed external owner object
 - supports explicit-copy extraction through `copy_range(...)`
 - supports C-side scans and checks such as `find_byte`, `checksum_u64`, and `starts_with`
 - requires explicit `close()`
+- releases the shared owner promptly when the last open view closes
+- uses finalizer fallback if a view is forgotten
 
 ## mmap Research Outcome
 
@@ -137,6 +140,7 @@ Why:
 The current research track therefore stops at a more honest boundary:
 
 - keep borrowed native memory behind `NativeByteView`
+- keep owner lifetime behind a MoonBit-managed external object
 - allow explicit copy through `copy_range(...)`
 - allow C-side operations that avoid copying whole file contents into MoonBit
 
@@ -230,3 +234,4 @@ MoonBit-side mapping intentionally stays small:
 - mmap read-byte scans are dominated by MoonBit-to-C FFI overhead, not raw mmap capability
 - mmap checksum/find-byte cases are better indicators of C-side zero-copy-style processing
 - native numbers are experimental local observations, not release claims
+- `NativeByteView` still is not MoonBit `BytesView`, even with the external-owner bridge

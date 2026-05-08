@@ -60,6 +60,8 @@ During this investigation:
 - `moonbit.h` exposed `moonbit_bytes_t`, `moonbit_make_bytes`, and
   `moonbit_make_bytes_raw`
 - `moonbit.h` exposed `moonbit_make_external_object` for custom payloads
+- the documented C FFI model distinguished MoonBit-managed abstract objects
+  from plain external pointer types
 - MoonBit builtin code exposed `BytesView::make(...)`, but only as the internal
   primitive `%bytesview.make`, not as a stable C FFI hook
 
@@ -78,11 +80,14 @@ But it cannot currently and safely:
 `v0.23.0` therefore stops at a narrower research prototype:
 
 - `new_mmap_file_view(path) -> NativeByteView`
+- a MoonBit-managed external owner object created through
+  `moonbit_make_external_object(...)`
 - explicit indexed reads
 - explicit-copy extraction through `copy_range(...)`
 - C-side operations like `find_byte`, `checksum_u64`, and `starts_with`
 
-This is a native-only borrowed handle, not a MoonBit `BytesView`.
+This is a native-only borrowed handle backed by an external owner bridge, not a
+MoonBit `BytesView`.
 
 ## API Sketch
 

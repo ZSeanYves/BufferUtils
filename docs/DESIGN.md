@@ -74,6 +74,9 @@ The same native package also contains experimental `NativeByteView` research:
 This is not part of the stable root API and is not presented as stable
 zero-copy.
 
+The current implementation uses a MoonBit-managed external owner object plus
+explicit view state, manual live-view counting, and finalizer fallback.
+
 ## Stable Root Package
 
 ### Low-level Buffers
@@ -208,7 +211,7 @@ Experimental `NativeByteView` API:
 
 - is a native-only handle
 - is not MoonBit `BytesView`
-- keeps ownership in native owner/view registries
+- keeps ownership in a MoonBit-managed external owner object
 - uses `copy_range(...)` as the explicit-copy boundary
 - uses `copy_to_file(...)` as native-side transfer
 

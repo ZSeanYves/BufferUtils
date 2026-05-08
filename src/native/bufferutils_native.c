@@ -26,6 +26,14 @@ typedef struct bufferutils_native_handle_entry {
   struct bufferutils_native_handle_entry *next;
 } bufferutils_native_handle_entry;
 
+typedef struct bufferutils_native_external_owner_payload {
+  uint8_t *data;
+  int32_t len;
+  int32_t live_views;
+  int32_t closed;
+  int32_t mapped;
+} bufferutils_native_external_owner_payload;
+
 typedef struct bufferutils_native_mmap_owner {
   int32_t id;
   uint8_t *data;
@@ -51,6 +59,8 @@ static bufferutils_native_mmap_view_entry *bufferutils_native_mmap_views = NULL;
 static int32_t bufferutils_native_next_id = 1;
 static int32_t bufferutils_native_next_mmap_owner_id = 1;
 static int32_t bufferutils_native_next_mmap_view_id = 1;
+static int32_t bufferutils_native_external_mmap_owner_count = 0;
+static int32_t bufferutils_native_external_mmap_view_count = 0;
 static int32_t bufferutils_native_last_status_code = BUFFERUTILS_NATIVE_OK;
 
 static moonbit_bytes_t bufferutils_native_empty_bytes(void) {
@@ -398,6 +408,132 @@ static uint32_t bufferutils_native_crc32_update(
   return result;
 }
 
+static int32_t bufferutils_native_external_owner_cleanup(
+  bufferutils_native_external_owner_payload *owner
+) {
+  if (owner == NULL) {
+    return BUFFERUTILS_NATIVE_INVALID_HANDLE;
+  }
+  if (owner->closed) {
+    return BUFFERUTILS_NATIVE_OK;
+  }
+
+  int32_t status = BUFFERUTILS_NATIVE_OK;
+#if BUFFERUTILS_NATIVE_HAS_MMAP
+  if (owner->mapped && owner->data != NULL && owner->len > 0) {
+    if (munmap(owner->data, (size_t)owner->len) != 0) {
+      status = BUFFERUTILS_NATIVE_MUNMAP_FAILED;
+    }
+  }
+#endif
+  owner->closed = 1;
+  owner->data = NULL;
+  owner->len = 0;
+  owner->mapped = 0;
+  owner->live_views = 0;
+  return status;
+}
+
+static void bufferutils_native_external_owner_finalize(void *self) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)self;
+  if (owner == NULL) {
+    return;
+  }
+  if (!owner->closed) {
+    if (bufferutils_native_external_mmap_owner_count > 0) {
+      bufferutils_native_external_mmap_owner_count -= 1;
+    }
+    if (owner->live_views > 0) {
+      int32_t views = owner->live_views;
+      if (views > bufferutils_native_external_mmap_view_count) {
+        bufferutils_native_external_mmap_view_count = 0;
+      } else {
+        bufferutils_native_external_mmap_view_count -= views;
+      }
+    }
+    (void)bufferutils_native_external_owner_cleanup(owner);
+  }
+}
+
+static int32_t bufferutils_native_external_owner_validate(
+  bufferutils_native_external_owner_payload *owner
+) {
+  if (owner == NULL) {
+    return BUFFERUTILS_NATIVE_INVALID_HANDLE;
+  }
+  if (owner->closed) {
+    return BUFFERUTILS_NATIVE_CLOSED;
+  }
+  return BUFFERUTILS_NATIVE_OK;
+}
+
+static int32_t bufferutils_native_external_owner_resolve_view(
+  bufferutils_native_external_owner_payload *owner,
+  int32_t offset,
+  int32_t len,
+  const uint8_t **out_base
+) {
+  int32_t owner_status = bufferutils_native_external_owner_validate(owner);
+  if (owner_status != BUFFERUTILS_NATIVE_OK) {
+    return owner_status;
+  }
+  if (offset < 0 || len < 0) {
+    return BUFFERUTILS_NATIVE_INVALID_ARGUMENT;
+  }
+  if (offset > owner->len || len > owner->len - offset) {
+    return BUFFERUTILS_NATIVE_OUT_OF_BOUNDS;
+  }
+  if (out_base != NULL) {
+    if (owner->data == NULL) {
+      *out_base = NULL;
+    } else {
+      *out_base = owner->data + offset;
+    }
+  }
+  return BUFFERUTILS_NATIVE_OK;
+}
+
+static int32_t bufferutils_native_external_owner_acquire_view(
+  bufferutils_native_external_owner_payload *owner
+) {
+  int32_t status = bufferutils_native_external_owner_validate(owner);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    return bufferutils_native_set_status(status);
+  }
+  owner->live_views += 1;
+  bufferutils_native_external_mmap_view_count += 1;
+  return bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+}
+
+static int32_t bufferutils_native_external_owner_release_view(
+  bufferutils_native_external_owner_payload *owner
+) {
+  int32_t status = bufferutils_native_external_owner_validate(owner);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    return bufferutils_native_set_status(status);
+  }
+  if (owner->live_views <= 0) {
+    owner->closed = 1;
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_CLOSED);
+  }
+
+  owner->live_views -= 1;
+  if (bufferutils_native_external_mmap_view_count > 0) {
+    bufferutils_native_external_mmap_view_count -= 1;
+  }
+
+  if (owner->live_views == 0) {
+    if (bufferutils_native_external_mmap_owner_count > 0) {
+      bufferutils_native_external_mmap_owner_count -= 1;
+    }
+    status = bufferutils_native_external_owner_cleanup(owner);
+    return bufferutils_native_set_status(status);
+  }
+
+  return bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_version(void) {
   return 100;
 }
@@ -407,23 +543,11 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_last_status(void) {
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_live_owner_count(void) {
-  int32_t count = 0;
-  bufferutils_native_mmap_owner *entry = bufferutils_native_mmap_owners;
-  while (entry != NULL) {
-    count += 1;
-    entry = entry->next;
-  }
-  return count;
+  return bufferutils_native_external_mmap_owner_count;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_live_view_count(void) {
-  int32_t count = 0;
-  bufferutils_native_mmap_view_entry *entry = bufferutils_native_mmap_views;
-  while (entry != NULL) {
-    count += 1;
-    entry = entry->next;
-  }
-  return count;
+  return bufferutils_native_external_mmap_view_count;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_open_source(
@@ -615,6 +739,83 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_open_mmap_view(
 #endif
 }
 
+MOONBIT_FFI_EXPORT void *bufferutils_native_open_mmap_owner(
+  const uint8_t *path,
+  int32_t path_len
+) {
+  if (path == NULL || path_len <= 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return NULL;
+  }
+#if !BUFFERUTILS_NATIVE_HAS_MMAP
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_UNSUPPORTED);
+  return NULL;
+#else
+  char *copy = bufferutils_native_copy_path(path, path_len);
+  if (copy == NULL) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OPEN_FAILED);
+    return NULL;
+  }
+  int fd = open(copy, O_RDONLY);
+  libc_free(copy);
+  if (fd < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OPEN_FAILED);
+    return NULL;
+  }
+
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    close(fd);
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_MMAP_FAILED);
+    return NULL;
+  }
+
+  if (st.st_size < 0 || st.st_size > INT32_MAX) {
+    close(fd);
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_MMAP_FAILED);
+    return NULL;
+  }
+
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)moonbit_make_external_object(
+      bufferutils_native_external_owner_finalize,
+      (uint32_t)sizeof(bufferutils_native_external_owner_payload)
+    );
+  if (owner == NULL) {
+    close(fd);
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_MMAP_FAILED);
+    return NULL;
+  }
+
+  owner->data = NULL;
+  owner->len = 0;
+  owner->live_views = 1;
+  owner->closed = 0;
+  owner->mapped = 0;
+
+  if (st.st_size > 0) {
+    void *mapped = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (mapped == MAP_FAILED) {
+      owner->live_views = 0;
+      owner->closed = 1;
+      bufferutils_native_set_status(BUFFERUTILS_NATIVE_MMAP_FAILED);
+      return NULL;
+    }
+    owner->data = (uint8_t *)mapped;
+    owner->len = (int32_t)st.st_size;
+    owner->mapped = 1;
+  } else {
+    close(fd);
+  }
+
+  bufferutils_native_external_mmap_owner_count += 1;
+  bufferutils_native_external_mmap_view_count += 1;
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return owner;
+#endif
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_len(int32_t handle_id) {
   bufferutils_native_mmap_view_entry *view = NULL;
   bufferutils_native_mmap_owner *owner = NULL;
@@ -627,6 +828,18 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_len(int32_t handle_id) {
   (void)owner;
   bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
   return view->len;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_len(void *owner_obj) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  int32_t status = bufferutils_native_external_owner_validate(owner);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return owner->len;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_ref_count(
@@ -643,6 +856,20 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_ref_count(
   (void)view;
   bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
   return owner->ref_count;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_ref_count_obj(
+  void *owner_obj
+) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  int32_t status = bufferutils_native_external_owner_validate(owner);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return owner->live_views;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_slice_handle(
@@ -670,6 +897,22 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_slice_handle(
   );
 }
 
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_acquire_view(
+  void *owner_obj
+) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  return bufferutils_native_external_owner_acquire_view(owner);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_release_view(
+  void *owner_obj
+) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  return bufferutils_native_external_owner_release_view(owner);
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_read_byte_at(
   int32_t handle_id,
   int32_t index
@@ -691,6 +934,33 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_read_byte_at(
     return 0;
   }
   const uint8_t *base = bufferutils_native_mmap_view_data(owner, view);
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return base[index];
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_read_byte_at(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  int32_t index
+) {
+  if (index < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  if (index >= len) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OUT_OF_BOUNDS);
+    return 0;
+  }
   bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
   return base[index];
 }
@@ -731,6 +1001,44 @@ MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_native_mmap_copy_range(
   return out;
 }
 
+MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_native_mmap_owner_copy_range(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  int32_t start,
+  int32_t copy_len
+) {
+  if (start < 0 || copy_len < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return bufferutils_native_empty_bytes();
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return bufferutils_native_empty_bytes();
+  }
+  if (copy_len == 0) {
+    if (start <= len) {
+      bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+      return bufferutils_native_empty_bytes();
+    }
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OUT_OF_BOUNDS);
+    return bufferutils_native_empty_bytes();
+  }
+  if (start > len || copy_len > len - start) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OUT_OF_BOUNDS);
+    return bufferutils_native_empty_bytes();
+  }
+  moonbit_bytes_t out = moonbit_make_bytes_raw(copy_len);
+  memcpy(out, base + start, (size_t)copy_len);
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return out;
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_find_byte(
   int32_t handle_id,
   int32_t byte_value
@@ -749,6 +1057,35 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_find_byte(
   }
   const uint8_t *base = bufferutils_native_mmap_view_data(owner, view);
   for (int32_t i = 0; i < view->len; i++) {
+    if (base[i] == (uint8_t)byte_value) {
+      bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+      return i;
+    }
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return -1;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_find_byte(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  int32_t byte_value
+) {
+  if (byte_value < 0 || byte_value > 255) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return -1;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return -1;
+  }
+  for (int32_t i = 0; i < len; i++) {
     if (base[i] == (uint8_t)byte_value) {
       bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
       return i;
@@ -777,6 +1114,35 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_count_byte(
   const uint8_t *base = bufferutils_native_mmap_view_data(owner, view);
   int32_t count = 0;
   for (int32_t i = 0; i < view->len; i++) {
+    if (base[i] == (uint8_t)byte_value) {
+      count++;
+    }
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return count;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_count_byte(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  int32_t byte_value
+) {
+  if (byte_value < 0 || byte_value > 255) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  int32_t count = 0;
+  for (int32_t i = 0; i < len; i++) {
     if (base[i] == (uint8_t)byte_value) {
       count++;
     }
@@ -826,6 +1192,49 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_index_of(
   return -1;
 }
 
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_index_of(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  const uint8_t *data,
+  int32_t data_len
+) {
+  if (data_len < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return -1;
+  }
+  if (data_len > 0 && data == NULL) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return -1;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return -1;
+  }
+  if (data_len == 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return 0;
+  }
+  if (data_len > len) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return -1;
+  }
+  int32_t limit = len - data_len;
+  for (int32_t i = 0; i <= limit; i++) {
+    if (memcmp(base + i, data, (size_t)data_len) == 0) {
+      bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+      return i;
+    }
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return -1;
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_equals(
   int32_t handle_id,
   const uint8_t *data,
@@ -860,6 +1269,42 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_equals(
   return memcmp(base, data, (size_t)data_len) == 0 ? 1 : 0;
 }
 
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_equals(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  const uint8_t *data,
+  int32_t data_len
+) {
+  if (data_len < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  if (data_len > 0 && data == NULL) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  if (len != data_len) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return 0;
+  }
+  if (data_len == 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return 1;
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return memcmp(base, data, (size_t)data_len) == 0 ? 1 : 0;
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_crc32(int32_t handle_id) {
   bufferutils_native_mmap_view_entry *view = NULL;
   bufferutils_native_mmap_owner *owner = NULL;
@@ -876,6 +1321,26 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_crc32(int32_t handle_id) {
   return (int32_t)(crc ^ 0xFFFFFFFFU);
 }
 
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_crc32(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len
+) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  uint32_t crc = 0xFFFFFFFFU;
+  crc = bufferutils_native_crc32_update(crc, base, len);
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return (int32_t)(crc ^ 0xFFFFFFFFU);
+}
+
 MOONBIT_FFI_EXPORT uint64_t bufferutils_native_mmap_checksum(int32_t handle_id) {
   bufferutils_native_mmap_view_entry *view = NULL;
   bufferutils_native_mmap_owner *owner = NULL;
@@ -888,6 +1353,29 @@ MOONBIT_FFI_EXPORT uint64_t bufferutils_native_mmap_checksum(int32_t handle_id) 
   const uint8_t *base = bufferutils_native_mmap_view_data(owner, view);
   uint64_t hash = 14695981039346656037ULL;
   for (int32_t i = 0; i < view->len; i++) {
+    hash ^= (uint64_t)base[i];
+    hash *= 1099511628211ULL;
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return hash;
+}
+
+MOONBIT_FFI_EXPORT uint64_t bufferutils_native_mmap_owner_checksum(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len
+) {
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  uint64_t hash = 14695981039346656037ULL;
+  for (int32_t i = 0; i < len; i++) {
     hash ^= (uint64_t)base[i];
     hash *= 1099511628211ULL;
   }
@@ -929,6 +1417,42 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_starts_with(
   return memcmp(base, data, (size_t)data_len) == 0 ? 1 : 0;
 }
 
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_starts_with(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  const uint8_t *data,
+  int32_t data_len
+) {
+  if (data_len < 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  if (data_len > 0 && data == NULL) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+    return 0;
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    bufferutils_native_set_status(status);
+    return 0;
+  }
+  if (data_len == 0) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return 1;
+  }
+  if (data_len > len) {
+    bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+    return 0;
+  }
+  bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+  return memcmp(base, data, (size_t)data_len) == 0 ? 1 : 0;
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_copy_to_file(
   int32_t handle_id,
   const uint8_t *path,
@@ -965,6 +1489,56 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_copy_to_file(
       file
     );
     if (written != (size_t)view->len) {
+      clearerr(file);
+      fclose(file);
+      return bufferutils_native_set_status(BUFFERUTILS_NATIVE_WRITE_FAILED);
+    }
+  }
+
+  if (fflush(file) != 0) {
+    clearerr(file);
+    fclose(file);
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_FLUSH_FAILED);
+  }
+  if (fclose(file) != 0) {
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_CLOSE_FAILED);
+  }
+  return bufferutils_native_set_status(BUFFERUTILS_NATIVE_OK);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_native_mmap_owner_copy_to_file(
+  void *owner_obj,
+  int32_t offset,
+  int32_t len,
+  const uint8_t *path,
+  int32_t path_len
+) {
+  if (path == NULL || path_len <= 0) {
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_INVALID_ARGUMENT);
+  }
+  bufferutils_native_external_owner_payload *owner =
+    (bufferutils_native_external_owner_payload *)owner_obj;
+  const uint8_t *base = NULL;
+  int32_t status =
+    bufferutils_native_external_owner_resolve_view(owner, offset, len, &base);
+  if (status != BUFFERUTILS_NATIVE_OK) {
+    return bufferutils_native_set_status(status);
+  }
+
+  char *copy = bufferutils_native_copy_path(path, path_len);
+  if (copy == NULL) {
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_WRITE_FAILED);
+  }
+
+  FILE *file = fopen(copy, "wb");
+  libc_free(copy);
+  if (file == NULL) {
+    return bufferutils_native_set_status(BUFFERUTILS_NATIVE_WRITE_FAILED);
+  }
+
+  if (len > 0) {
+    size_t written = fwrite(base, 1, (size_t)len, file);
+    if (written != (size_t)len) {
       clearerr(file);
       fclose(file);
       return bufferutils_native_set_status(BUFFERUTILS_NATIVE_WRITE_FAILED);

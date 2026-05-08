@@ -147,21 +147,21 @@ repository. They are local observations, not portable throughput claims.
 
 | Case | 10MB local observation | Interpretation |
 |---|---:|---|
-| `file_memory_source_read_snapshot` | ~662 MiB/s | Memory-backed `FileSource` snapshot read |
-| `file_memory_sink_flush_write` | ~109 MiB/s | Memory-backed `FileSink` flush write |
-| `native_file_source_read_chunk_experimental` | ~2622 MiB/s | Native chunked read path; strongly cache-sensitive |
-| `native_file_sink_write_flush_experimental` | ~178 MiB/s | Native direct write + flush |
-| `native_buffered_reader_read_to_end_experimental` | ~215 MiB/s | Buffered native reader path |
-| `native_buffered_writer_write_flush_experimental` | ~185 MiB/s | Buffered native writer path |
-| `native_mmap_view_find_byte_experimental` | ~3313 MiB/s | C-side mmap scan with small result only |
-| `native_mmap_view_count_byte_experimental` | ~11446 MiB/s | C-side full scan/count; highly cache-sensitive |
-| `native_mmap_view_checksum_experimental` | ~835 MiB/s | C-side checksum over mmap-backed memory |
-| `native_mmap_view_crc32_experimental` | ~137 MiB/s | C-side CRC32 checksum |
-| `native_mmap_view_copy_range_explicit_copy` | ~2540 MiB/s | Explicit copy into a MoonBit array |
-| `native_mmap_view_copy_to_file_experimental` | ~3635 MiB/s | Native-side transfer to another file |
-| `native_mmap_view_slice_count_byte_experimental` | ~13833 MiB/s | C-side count on a child slice handle |
-| `native_mmap_view_slice_crc32_experimental` | ~198 MiB/s | C-side CRC32 on a child slice handle |
-| `native_mmap_view_slice_copy_range_explicit_copy` | ~3709 MiB/s | Explicit copy from a child slice handle |
+| `file_memory_source_read_snapshot` | ~674 MiB/s | Memory-backed `FileSource` snapshot read |
+| `file_memory_sink_flush_write` | ~112 MiB/s | Memory-backed `FileSink` flush write |
+| `native_file_source_read_chunk_experimental` | ~2656 MiB/s | Native chunked read path; strongly cache-sensitive |
+| `native_file_sink_write_flush_experimental` | ~188 MiB/s | Native direct write + flush |
+| `native_buffered_reader_read_to_end_experimental` | ~224 MiB/s | Buffered native reader path |
+| `native_buffered_writer_write_flush_experimental` | ~187 MiB/s | Buffered native writer path |
+| `native_mmap_view_find_byte_experimental` | ~3363 MiB/s | C-side mmap scan with small result only |
+| `native_mmap_view_count_byte_experimental` | ~12139 MiB/s | C-side full scan/count; highly cache-sensitive |
+| `native_mmap_view_checksum_experimental` | ~922 MiB/s | C-side checksum over mmap-backed memory |
+| `native_mmap_view_crc32_experimental` | ~150 MiB/s | C-side CRC32 checksum |
+| `native_mmap_view_copy_range_explicit_copy` | ~2827 MiB/s | Explicit copy into a MoonBit array |
+| `native_mmap_view_copy_to_file_experimental` | ~4046 MiB/s | Native-side transfer to another file |
+| `native_mmap_view_slice_count_byte_experimental` | ~16551 MiB/s | C-side count on a child slice handle |
+| `native_mmap_view_slice_crc32_experimental` | ~201 MiB/s | C-side CRC32 on a child slice handle |
+| `native_mmap_view_slice_copy_range_explicit_copy` | ~3602 MiB/s | Explicit copy from a child slice handle |
 
 ## Interpreting Results
 
@@ -181,8 +181,8 @@ Important interpretation notes:
 - `copy_range` is an explicit-copy baseline, not a borrowed-view guarantee
 - `copy_to_file` is a native-side transfer path that avoids materializing a
   large MoonBit array in MoonBit code
-- the `slice_*` cases additionally exercise the shared-owner/ref-count path of
-  `NativeByteView`
+- the `slice_*` cases additionally exercise the MoonBit-managed external owner
+  plus shared live-view path of `NativeByteView`
 - experimental root `BytesView` cases may still copy depending on MoonBit
   runtime behavior
 

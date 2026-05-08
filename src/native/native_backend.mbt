@@ -81,6 +81,9 @@ fn native_utf8_path_bytes(path : String) -> Bytes {
 }
 
 ///|
+type NativeByteOwner
+
+///|
 pub fn native_backend_version() -> Int {
   native_backend_version_ffi()
 }
@@ -121,81 +124,126 @@ extern "C" fn native_flush_ffi(handle_id : Int) -> Int = "bufferutils_native_flu
 extern "C" fn native_close_ffi(handle_id : Int) -> Int = "bufferutils_native_close"
 
 ///|
+/// Experimental native external-object owner constructor for mmap-backed views.
 #borrow(path)
-extern "C" fn native_open_mmap_view_ffi(path : Bytes, path_len : Int) -> Int = "bufferutils_native_open_mmap_view"
-
-///|
-extern "C" fn native_mmap_len_ffi(handle_id : Int) -> Int = "bufferutils_native_mmap_len"
-
-///|
-extern "C" fn native_mmap_owner_ref_count_ffi(handle_id : Int) -> Int = "bufferutils_native_mmap_owner_ref_count"
-
-///|
-extern "C" fn native_mmap_slice_handle_ffi(
-  handle_id : Int,
-  start : Int,
-  len : Int,
-) -> Int = "bufferutils_native_mmap_slice_handle"
-
-///|
-extern "C" fn native_mmap_read_byte_at_ffi(handle_id : Int, index : Int) -> Int = "bufferutils_native_mmap_read_byte_at"
-
-///|
-extern "C" fn native_mmap_copy_range_ffi(
-  handle_id : Int,
-  start : Int,
-  len : Int,
-) -> Bytes = "bufferutils_native_mmap_copy_range"
-
-///|
-extern "C" fn native_mmap_find_byte_ffi(
-  handle_id : Int,
-  byte_value : Int,
-) -> Int = "bufferutils_native_mmap_find_byte"
-
-///|
-extern "C" fn native_mmap_count_byte_ffi(
-  handle_id : Int,
-  byte_value : Int,
-) -> Int = "bufferutils_native_mmap_count_byte"
-
-///|
-#borrow(data)
-extern "C" fn native_mmap_index_of_ffi(
-  handle_id : Int,
-  data : Bytes,
-  data_len : Int,
-) -> Int = "bufferutils_native_mmap_index_of"
-
-///|
-#borrow(data)
-extern "C" fn native_mmap_equals_ffi(
-  handle_id : Int,
-  data : Bytes,
-  data_len : Int,
-) -> Int = "bufferutils_native_mmap_equals"
-
-///|
-extern "C" fn native_mmap_crc32_ffi(handle_id : Int) -> Int = "bufferutils_native_mmap_crc32"
-
-///|
-extern "C" fn native_mmap_checksum_ffi(handle_id : Int) -> UInt64 = "bufferutils_native_mmap_checksum"
-
-///|
-#borrow(data)
-extern "C" fn native_mmap_starts_with_ffi(
-  handle_id : Int,
-  data : Bytes,
-  data_len : Int,
-) -> Int = "bufferutils_native_mmap_starts_with"
-
-///|
-#borrow(path)
-extern "C" fn native_mmap_copy_to_file_ffi(
-  handle_id : Int,
+extern "C" fn native_open_mmap_owner_ffi(
   path : Bytes,
   path_len : Int,
-) -> Int = "bufferutils_native_mmap_copy_to_file"
+) -> NativeByteOwner = "bufferutils_native_open_mmap_owner"
 
 ///|
-extern "C" fn native_mmap_close_ffi(handle_id : Int) -> Int = "bufferutils_native_mmap_close"
+#borrow(owner)
+extern "C" fn native_mmap_owner_len_ffi(owner : NativeByteOwner) -> Int = "bufferutils_native_mmap_owner_len"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_ref_count_obj_ffi(
+  owner : NativeByteOwner,
+) -> Int = "bufferutils_native_mmap_owner_ref_count_obj"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_acquire_view_ffi(
+  owner : NativeByteOwner,
+) -> Int = "bufferutils_native_mmap_owner_acquire_view"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_release_view_ffi(
+  owner : NativeByteOwner,
+) -> Int = "bufferutils_native_mmap_owner_release_view"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_read_byte_at_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  index : Int,
+) -> Int = "bufferutils_native_mmap_owner_read_byte_at"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_copy_range_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  start : Int,
+  len : Int,
+) -> Bytes = "bufferutils_native_mmap_owner_copy_range"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_find_byte_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  byte_value : Int,
+) -> Int = "bufferutils_native_mmap_owner_find_byte"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_count_byte_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  byte_value : Int,
+) -> Int = "bufferutils_native_mmap_owner_count_byte"
+
+///|
+#borrow(owner, data)
+extern "C" fn native_mmap_owner_index_of_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  data : Bytes,
+  data_len : Int,
+) -> Int = "bufferutils_native_mmap_owner_index_of"
+
+///|
+/// Experimental external-object owner equality check for NativeByteView.
+#borrow(owner, data)
+extern "C" fn native_mmap_owner_equals_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  data : Bytes,
+  data_len : Int,
+) -> Int = "bufferutils_native_mmap_owner_equals"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_crc32_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+) -> Int = "bufferutils_native_mmap_owner_crc32"
+
+///|
+#borrow(owner)
+extern "C" fn native_mmap_owner_checksum_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+) -> UInt64 = "bufferutils_native_mmap_owner_checksum"
+
+///|
+#borrow(owner, data)
+extern "C" fn native_mmap_owner_starts_with_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  data : Bytes,
+  data_len : Int,
+) -> Int = "bufferutils_native_mmap_owner_starts_with"
+
+///|
+/// Experimental external-object owner transfer path for NativeByteView.
+#borrow(owner, path)
+extern "C" fn native_mmap_owner_copy_to_file_ffi(
+  owner : NativeByteOwner,
+  offset : Int,
+  byte_len : Int,
+  path : Bytes,
+  path_len : Int,
+) -> Int = "bufferutils_native_mmap_owner_copy_to_file"
