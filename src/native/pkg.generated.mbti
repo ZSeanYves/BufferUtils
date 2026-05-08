@@ -8,6 +8,8 @@ import {
 // Values
 pub fn native_backend_version() -> Int
 
+pub fn new_mmap_file_view(String) -> NativeByteView raise @bufferutils.BufferError
+
 pub fn new_native_buf_reader(String, Int) -> NativeBufReader raise @bufferutils.BufferError
 
 pub fn new_native_buf_writer(String, Int, NativeFileMode) -> NativeBufWriter raise @bufferutils.BufferError
@@ -53,6 +55,25 @@ pub fn NativeBufWriter::flush(Self) -> Unit raise @bufferutils.BufferError
 pub fn NativeBufWriter::is_closed(Self) -> Bool
 pub fn NativeBufWriter::write_all(Self, Array[Byte]) -> Unit raise @bufferutils.BufferError
 pub fn NativeBufWriter::write_byte(Self, Byte) -> Unit raise @bufferutils.BufferError
+
+pub struct NativeByteView {
+  // private fields
+}
+pub fn NativeByteView::checksum_u64(Self) -> UInt64 raise @bufferutils.BufferError
+pub fn NativeByteView::close(Self) -> Unit raise @bufferutils.BufferError
+pub fn NativeByteView::copy_range(Self, Int, Int) -> Array[Byte] raise @bufferutils.BufferError
+pub fn NativeByteView::copy_to_file(Self, String) -> Unit raise @bufferutils.BufferError
+pub fn NativeByteView::count_byte(Self, Byte) -> Int raise @bufferutils.BufferError
+pub fn NativeByteView::crc32(Self) -> Int raise @bufferutils.BufferError
+pub fn NativeByteView::equals(Self, Array[Byte]) -> Bool raise @bufferutils.BufferError
+pub fn NativeByteView::find_byte(Self, Byte) -> Int raise @bufferutils.BufferError
+pub fn NativeByteView::index_of(Self, Array[Byte]) -> Int raise @bufferutils.BufferError
+pub fn NativeByteView::is_closed(Self) -> Bool
+pub fn NativeByteView::len(Self) -> Int
+pub fn NativeByteView::owner_ref_count(Self) -> Int raise @bufferutils.BufferError
+pub fn NativeByteView::read_byte_at(Self, Int) -> Byte raise @bufferutils.BufferError
+pub fn NativeByteView::slice_handle(Self, Int, Int) -> Self raise @bufferutils.BufferError
+pub fn NativeByteView::starts_with(Self, Array[Byte]) -> Bool raise @bufferutils.BufferError
 
 pub(all) enum NativeFileMode {
   Overwrite

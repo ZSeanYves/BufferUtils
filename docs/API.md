@@ -179,6 +179,22 @@ These APIs are experimental and native-target only. They are not part of the sta
 - `NativeBufWriter.capacity()`: return configured local buffer capacity.
 - `NativeBufWriter.close()`: attempt a final flush and then close the wrapped native sink. Repeated close is safe.
 - `NativeBufWriter.is_closed()`: report whether the writer has already been closed.
+- `new_mmap_file_view(path)`: open an experimental native-only read-only mmap handle.
+- `NativeByteView.len()`: return mapped byte length.
+- `NativeByteView.is_closed()`: report whether the mapped handle has already been closed.
+- `NativeByteView.owner_ref_count()`: Experimental research/debug helper that reports the shared owner reference count for the current view.
+- `NativeByteView.slice_handle(start, len)`: create a child native view over a subrange of the mapped bytes while sharing the same native owner.
+- `NativeByteView.read_byte_at(index)`: read one byte directly from the mapped region without copying the whole file into MoonBit.
+- `NativeByteView.copy_range(start, len)`: explicitly copy a byte range out of the mapped region.
+- `NativeByteView.find_byte(b)`: search the mapped region in C and return the first index or `-1`.
+- `NativeByteView.count_byte(b)`: count matching bytes in C without copying the mapped region back into MoonBit.
+- `NativeByteView.index_of(pattern)`: search for the first occurrence of a byte pattern in C.
+- `NativeByteView.equals(data)`: compare the mapped region against a MoonBit byte array in C.
+- `NativeByteView.crc32()`: compute a CRC32 checksum in C over the mapped region.
+- `NativeByteView.checksum_u64()`: compute a checksum in C over the mapped region and return the 64-bit result.
+- `NativeByteView.starts_with(data)`: compare a MoonBit byte prefix against the mapped region in C.
+- `NativeByteView.copy_to_file(path)`: copy the mapped region to a file in the native layer without materializing a large MoonBit array.
+- `NativeByteView.close()`: unmap and release the native view. Repeated close is safe.
 
 Notes:
 
@@ -189,7 +205,14 @@ Notes:
 - `NativeBufReader.read_exact(n)` is streaming-style: an eventual `Underflow` can happen after partial consumption if EOF is reached mid-read
 - these APIs do not replace `FileSource` / `FileSink`, which remain memory-backed convenience layers
 - this backend does not claim zero-copy behavior
-- `v0.22.0` still does not export an experimental mmap API; see `docs/MMAP_FEASIBILITY.md` for the current feasibility conclusion
+- `NativeByteView` is a native-only research handle, not a stable MoonBit `BytesView` bridge
+- `NativeByteView` uses a native shared-owner/ref-count model for parent/child slices and still requires explicit `close()`
+- `NativeByteView.owner_ref_count()` is kept only as a research/debug helper and is not part of the recommended quick-usage path
+- `copy_range(...)` is an explicit-copy API by design
+- `copy_to_file(...)` is a native-layer transfer and not a stable zero-copy guarantee
+- `new_mmap_file_view(...)` is currently intended for Unix-like native targets only
+- the intended `NativeByteView` surface is its documented constructor and methods, not manual field construction or mutation
+- see `docs/MMAP_FEASIBILITY.md` and `docs/ZERO_COPY_RESEARCH.md` for the current feasibility and research conclusions
 
 ## 6. Errors
 

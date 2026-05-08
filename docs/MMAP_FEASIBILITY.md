@@ -12,7 +12,8 @@ The next obvious reduced-copy investigation is a read-only file mapping path:
 - avoid repeated chunk copies for large sequential read scenarios
 - explore whether a file-backed read-only view can fit the current API model
 
-This document records the `v0.21.0` feasibility conclusion.
+This document records the original `v0.21.0` feasibility conclusion and the
+`v0.23.0` research-branch follow-up.
 
 ## Scope
 
@@ -42,10 +43,11 @@ The stable root package remains unchanged:
 
 ## mmap Prototype Decision
 
-Decision for `v0.21.0`:
+Decision progression:
 
-- documented-only
-- no experimental `MmapFileSource` is exported yet
+- `v0.21.0`: documented-only
+- `v0.23.0` research branch: native-only `NativeByteView` prototype, but still
+  no stable MoonBit `BytesView` bridge
 
 Reason:
 
@@ -73,8 +75,14 @@ But it cannot currently and safely:
 - tie `BytesView` validity to `munmap()` / `close()`
 - guarantee safe behavior after explicit close or external file changes
 
-If the only public API outcome were a copied `read_all()` result, it would not
-be an honest mmap-view API, so BufferUtils does not export one yet.
+`v0.23.0` therefore stops at a narrower research prototype:
+
+- `new_mmap_file_view(path) -> NativeByteView`
+- explicit indexed reads
+- explicit-copy extraction through `copy_range(...)`
+- C-side operations like `find_byte`, `checksum_u64`, and `starts_with`
+
+This is a native-only borrowed handle, not a MoonBit `BytesView`.
 
 ## API Sketch
 
@@ -93,6 +101,21 @@ MmapFileSource.is_closed() -> Bool
 
 That sketch remains experimental-only and native-only. It is not part of the
 stable API surface today.
+
+The current research-branch prototype instead looks like:
+
+```moonbit
+new_mmap_file_view(path : String) -> NativeByteView raise BufferError
+
+NativeByteView.len() -> Int
+NativeByteView.read_byte_at(index : Int) -> Byte raise BufferError
+NativeByteView.copy_range(start : Int, len : Int) -> Array[Byte] raise BufferError
+NativeByteView.find_byte(b : Byte) -> Int raise BufferError
+NativeByteView.checksum_u64() -> UInt64 raise BufferError
+NativeByteView.starts_with(data : Array[Byte]) -> Bool raise BufferError
+NativeByteView.close() -> Unit raise BufferError
+NativeByteView.is_closed() -> Bool
+```
 
 ## Lifetime Model
 
@@ -139,7 +162,11 @@ Main risks that block a public experimental mmap API today:
 
 ## Benchmark Caveats
 
-No mmap benchmark case is added in `v0.21.0`.
+`v0.21.0` added no mmap benchmark case.
+
+`v0.23.0` research adds native-only experimental mmap benchmark cases, but they
+must still be read conservatively because they do not prove a stable
+zero-copy-like API contract.
 
 If a future prototype lands, its benchmark notes will need to separate:
 
@@ -156,8 +183,11 @@ behavior.
 Recommendation for now:
 
 - keep the stable root file APIs memory-backed
-- keep the current experimental native backend on the `FILE*` path
-- defer exported mmap APIs until MoonBit exposes a safer borrowed-byte FFI story
+- keep the current experimental native backend on the `FILE*` path for stable
+  exported behavior
+- keep mmap on the research path through `NativeByteView`
+- defer any stable borrowed MoonBit view API until MoonBit exposes a safer
+  borrowed-byte FFI story
 
 The next useful trigger for revisiting this work would be one of:
 

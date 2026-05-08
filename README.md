@@ -9,6 +9,7 @@ It provides:
 - memory-backed streaming-style readers and writers
 - file convenience APIs for buffered write and buffered read
 - an experimental native C backend package for native-target file handles
+- an experimental native-only zero-copy research handle for read-only mmap access
 - UTF-8 conversion and delimiter-based split helpers
 
 BufferUtils is intentionally conservative about its claims:
@@ -42,7 +43,7 @@ Or add it to `moon.mod.json`:
 ```json
 {
   "deps": {
-    "ZSeanYves/bufferutils": "0.22.0"
+    "ZSeanYves/bufferutils": "0.23.0"
   }
 }
 ```
@@ -165,6 +166,44 @@ stdio buffer before releasing the handle. `NativeBufReader` and `NativeBufWriter
 build buffered refill/flush behavior on top of those same native file handles
 without turning the stable root package into a native-only API.
 
+### Experimental Native Zero-copy Research
+
+```moonbit
+import {
+  "ZSeanYves/bufferutils/native" @native,
+}
+
+let view = @native.new_mmap_file_view(".tmp/native-view.bin")
+let first = view.read_byte_at(0)
+let prefix = view.copy_range(0, 8)
+let found = view.find_byte((42).to_byte())
+let checksum = view.checksum_u64()
+let starts = view.starts_with([1, 2, 3])
+view.close()
+```
+
+`NativeByteView` is a native-only research API for read-only mmap-backed access
+on Unix-like targets. It does **not** expose a stable MoonBit `BytesView`
+bridge, and it does **not** claim stable zero-copy semantics. Instead, it keeps
+the borrowed native memory behind an explicit handle and exposes:
+
+- indexed byte reads
+- shared-owner slice handles through `slice_handle(...)`
+- explicit copy boundaries through `copy_range(...)`
+- C-side operations such as `find_byte`, `count_byte`, `index_of`, `equals`,
+  `crc32`, `checksum_u64`, `starts_with`, and `copy_to_file(...)`
+
+`slice_handle(...)` is still research-only. It uses a native shared-owner /
+ref-count model so a child view can outlive a closed parent view without
+becoming a use-after-`munmap` bug, but it still requires explicit `close()`
+and does not become a MoonBit `BytesView`.
+
+`owner_ref_count()` exists only as a research/debug helper and is intentionally
+left out of normal usage examples.
+
+This is intentionally separate from the stable root package and should be
+treated as zero-copy research rather than release API.
+
 ### Experimental View / Slice API
 
 ```moonbit
@@ -227,6 +266,7 @@ The detailed reference lives in [docs/API.md](./docs/API.md).
 Experimental view/slice notes live in [docs/VIEW_API.md](./docs/VIEW_API.md).
 Experimental native backend notes live in [docs/NATIVE_BACKEND.md](./docs/NATIVE_BACKEND.md) and [docs/NATIVE_SAFETY.md](./docs/NATIVE_SAFETY.md).
 Read-only mmap feasibility notes live in [docs/MMAP_FEASIBILITY.md](./docs/MMAP_FEASIBILITY.md).
+Zero-copy research notes live in [docs/ZERO_COPY_RESEARCH.md](./docs/ZERO_COPY_RESEARCH.md).
 
 ## API Stability
 
@@ -263,7 +303,7 @@ More detail is in [docs/DESIGN.md](./docs/DESIGN.md), [docs/VIEW_API.md](./docs/
 
 ## Benchmark Baseline
 
-`v0.11.0` adds an experimental benchmark baseline for repeatable local measurements. `v0.12.0` keeps the same output format while tracking reduced-copy changes, `v0.13.0` adds regression-audit notes, `v0.14.0` adds view/slice experiment benchmark comparisons, `v0.15.0` keeps those cases explicitly in the experimental bucket, `v0.16.0` records the pure-MoonBit streaming feasibility study, `v0.17.0` adds experimental native backend cases, `v0.18.0` hardens the native lifecycle/error-path coverage, `v0.19.0` adds experimental native buffered benchmark cases, `v0.20.0` stabilizes benchmark naming/documentation around memory-backed, native file-handle, and native buffered groups, `v0.21.0` records why experimental mmap stays in feasibility-study mode instead of adding a misleading public API, and `v0.22.0` performs the 1.0 release-candidate audit without changing core behavior.
+`v0.11.0` adds an experimental benchmark baseline for repeatable local measurements. `v0.12.0` keeps the same output format while tracking reduced-copy changes, `v0.13.0` adds regression-audit notes, `v0.14.0` adds view/slice experiment benchmark comparisons, `v0.15.0` keeps those cases explicitly in the experimental bucket, `v0.16.0` records the pure-MoonBit streaming feasibility study, `v0.17.0` adds experimental native backend cases, `v0.18.0` hardens the native lifecycle/error-path coverage, `v0.19.0` adds experimental native buffered benchmark cases, `v0.20.0` stabilizes benchmark naming/documentation around memory-backed, native file-handle, and native buffered groups, `v0.21.0` records why experimental mmap stays in feasibility-study mode instead of adding a misleading public API, `v0.22.0` performs the 1.0 release-candidate audit without changing core behavior, and `v0.23.0` adds a native-only zero-copy research branch with `NativeByteView`, read-only mmap prototypes, and C-side scanning benchmarks.
 
 Run it with:
 
@@ -285,8 +325,9 @@ Current benchmark notes remain experimental and local-only. They are useful for 
 - `FileSink` accumulates bytes in memory and overwrites the file on flush
 - experimental view/slice APIs may still copy depending on MoonBit runtime behavior
 - the experimental native backend is currently native-target only
-- the experimental native backend requires explicit `close()`, and read-only mmap remains under feasibility study rather than exported API
+- the experimental native backend requires explicit `close()`, and the mmap path is still exposed only as an experimental native-only `NativeByteView` handle
 - the experimental native backend still maps handle failures to `BufferError::Io` rather than exposing platform-specific errno detail
+- the experimental native zero-copy research path does not yet provide a stable C-memory to MoonBit `BytesView` bridge
 - no async I/O
 - no benchmark claims yet
 
