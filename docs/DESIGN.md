@@ -1,6 +1,6 @@
 # Design
 
-BufferUtils 0.36 has four ownership and capability boundaries:
+BufferUtils 0.37 has four ownership and capability boundaries:
 
 1. `buffer` owns pure MoonBit shared storage and copy-on-write mutation.
 2. `io` owns fallible synchronous progress, buffering, seeking, and adapters.
@@ -36,4 +36,4 @@ the contract portable while leaving the platform optimization visible in the
 parity matrix.
 
 TLS, compression, UDP, full codec frameworks, io_uring, and Rust's ownership
-type-system equivalence are intentionally outside the 0.36 scope.
+type-system equivalence are intentionally outside the 0.37 scope.

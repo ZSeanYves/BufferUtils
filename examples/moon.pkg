@@ -5,6 +5,12 @@ import {
   "ZSeanYves/bufferutils/async_io" @asyncio,
 }
 
+import {
+  "moonbitlang/x/fs",
+  "moonbitlang/async",
+  "moonbitlang/async/fs" @afs,
+} for "test"
+
 supported_targets = "native"
 
 options(

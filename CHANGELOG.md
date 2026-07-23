@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.37.0
+
+### Breaking
+- `SharedBytes::from_fixed_array` and both buffered-writer `into_parts` APIs
+  now validate and propagate invalid fixed-array ranges.
+
+### Added
+- Async runtime error normalization with cancellation preservation and real
+  TCP write-half shutdown.
+- Native POSIX vectored file/TCP I/O, Windows socket vectored I/O, capability
+  reporting, and per-resource syscall counters.
+- Small/short/vectored/native benchmark workloads, three-batch baseline gates,
+  and executable example tests.
+- `docs/MIGRATION_0.36_TO_0.37.md` for the source migration.
+
 ## v0.36.0
 
 ### Breaking

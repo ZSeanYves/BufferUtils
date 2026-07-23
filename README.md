@@ -1,6 +1,6 @@
 # BufferUtils
 
-BufferUtils 0.36 is a zero-copy shared byte-buffer and I/O toolkit for MoonBit.
+BufferUtils 0.37 is a zero-copy shared byte-buffer and I/O toolkit for MoonBit.
 Its core path keeps slices, splits, freezes, and buffered pending data in shared
 `FixedArray[Byte]` storage. Copying is explicit at the API boundary, so callers
 can see when data is materialized as an `Array` or Core `Bytes` value.
@@ -17,11 +17,11 @@ can see when data is materialized as an `Array` or Core `Bytes` value.
 Install the fixed release from another MoonBit module:
 
 ```bash
-moon add ZSeanYves/bufferutils@0.36.0
+moon add ZSeanYves/bufferutils@0.37.0
 ```
 
-The 0.36 release intentionally breaks the 0.35 source API. See
-[`docs/MIGRATION_0.35_TO_0.36.md`](docs/MIGRATION_0.35_TO_0.36.md) before upgrading.
+The 0.37 release intentionally breaks the 0.36 source API. See
+[`docs/MIGRATION_0.36_TO_0.37.md`](docs/MIGRATION_0.36_TO_0.37.md) before upgrading.
 
 ## Zero-copy model
 
@@ -89,8 +89,8 @@ port metadata. `MappedBytes` keeps its owner alive while slices exist;
 `AsyncClose` with the same caller-range validation. Buffered async views are
 borrowed until the next reader operation. Async copy reuses one fixed buffer,
 preserves committed progress across cancellation, and `copy_bidirectional`
-invokes the destination's `AsyncWrite::shutdown` hook after EOF. See the parity
-matrix for the remaining runtime error-mapping and TCP half-close work.
+invokes the destination's `AsyncWrite::shutdown` hook after EOF. Runtime
+errors are normalized to `IoError` while cancellation remains observable.
 
 TLS, compression, UDP datagrams, full codec frameworks, io_uring, and Rust's
 ownership/type-system equivalence are intentionally outside this library's
