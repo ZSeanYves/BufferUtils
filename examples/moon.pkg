@@ -1,0 +1,12 @@
+import {
+  "ZSeanYves/bufferutils/buffer",
+  "ZSeanYves/bufferutils/io",
+  "ZSeanYves/bufferutils/native",
+  "ZSeanYves/bufferutils/async_io" @asyncio,
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": false,
+)

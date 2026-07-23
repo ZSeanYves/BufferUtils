@@ -1,69 +1,61 @@
 # BufferUtils
 
-BufferUtils 1.0 是面向 MoonBit 的 Rust 风格字节缓冲区与 I/O 库。公共
-API 分为纯核心包和 native 平台包。
+BufferUtils 0.36 是 MoonBit 的零拷贝共享字节缓冲区与 I/O 工具库。核心路径
+使用 `FixedArray[Byte]` 加逻辑范围保存数据，slice、split、freeze 和缓冲
+尾部都共享存储；只有明确调用复制适配器时才物化新的 `Array` 或 Core
+`Bytes`。
 
-| 包 | 范围 | 目标 |
-|---|---|---|
-| ZSeanYves/bufferutils/buffer | SharedBytes、BytesMut、Buf、BufMut | wasm、wasm-gc、js、native |
-| ZSeanYves/bufferutils/io | Read、Write、BufRead、Seek、Close、组合器 | wasm、wasm-gc、js、native |
-| ZSeanYves/bufferutils/async_io | 异步 traits、缓冲包装器、文件/socket adapter | native |
-| ZSeanYves/bufferutils/native | 文件、TCP、mmap 的 MappedBytes | native |
+## 包结构
 
-旧 root 包只保留为空的模块入口。Buffer/BufferMut、source/sink 快照和
-旧 native 句柄 API 已在 1.0 删除，迁移表见
-docs/MIGRATION_0.26_TO_1.0.md。
+| 包 | 职责 | 目标 |
+| --- | --- | --- |
+| `buffer` | `SharedBytes`、`BytesMut`、`Buf`/`BufMut`、大小端 typed API | 全目标 |
+| `io` | 可失败同步读写、缓冲、seek 与组合器 | 全目标 |
+| `async_io` | 异步 trait、缓冲包装器、copy 与 stream adapter | native |
+| `native` | 文件、TCP、mmap、操作系统错误映射 | native |
 
-## 共享字节
+0.36 有意破坏 0.35 源码兼容性，升级前请阅读
+[`docs/MIGRATION_0.35_TO_0.36.md`](docs/MIGRATION_0.35_TO_0.36.md)。
 
-MoonBit 已经占用内置标识符 Bytes，因此本库不可变共享句柄命名为
-SharedBytes。它不表示转换为 Core Bytes 一定是零成本。
+## 零拷贝与缓冲区
 
-~~~moonbit
-import { "ZSeanYves/bufferutils/buffer" @buffer }
+`SharedBytes` 的 clone、slice、split_to、split_off 和 `BytesMut::freeze`
+共享 backing allocation。对冻结或别名范围写入时只对需要修改的范围执行
+COW。`SharedBytes::as_bytes_view()` 返回固定存储上的借用 Core view，不分配；
+`to_array`、`to_bytes`、`read_array`、`write_array` 明确表示复制边界。
 
-let mutable = @buffer.BytesMut::new(capacity=32)
-mutable.put_u16_be(0x1234U.to_uint16())
-mutable.put_utf8("MoonBit")
-let immutable = mutable.freeze()
-let prefix = immutable.slice(0, 2)
-mutable.put_byte(b'!')
-ignore(prefix)
-~~~
+支持有符号/无符号整数、`f32`/`f64`、大小端、UTF-8、自动扩容、spare
+capacity、reclaim、split/unsplit。underflow、overflow、非法 UTF-8 和非法
+范围都会返回 `BufferError`，并保持游标不变。
 
-split_to、split_off、slice、freeze 和 immutable clone 共享存储；冻结或
-拆分后的修改只在修改边界发生 COW。copied_bytes 可用于性能计数。
-转换为 Array/Core Bytes 是明确的复制边界。
+## 同步、native 与异步 I/O
 
-## 同步 I/O
+`Read` 主接口借用 `FixedArray[Byte]` 范围，`Write` 主接口借用 `Bytes` 范围；
+Array 便利接口会显式复制。`read_exact`/`write_all` 处理短读短写、
+`Interrupted`、EOF 与 `WriteZero`。
 
-io 包提供短读短写、read_exact/write_all、Interrupted 重试、vectored
-fallback、BufRead、Seekable Cursor 以及 Empty/Repeat/Take/Chain/LineWriter。
-BufWriter::into_parts 在 flush 错误后保留未写 tail，finish 只在 flush
-成功后返回底层对象。IoError 统一携带可移植 kind、operation、context、
-path、raw code、message 和累计 progress。
+`BufReader` 提供 `buffer`、`peek`、`seek_relative`、`skip_until`、`lines`、
+`split`；`BufWriter` 使用 start/end 游标，只在必要时 compact，并通过
+`into_parts` 保留零拷贝 pending tail。还包含 Cursor、Empty、Repeat、Take、
+Chain、LineWriter、BufStream 和内存 duplex。
 
-## Native 与异步
+native 资源独立管理，带锁、幂等 close 和 finalizer 兜底；文件支持
+OpenOptions、seek、flush、`sync_all`/`sync_data` 和 mmap，TCP 支持半关闭、
+timeout 与地址元数据。async_io 复用同一范围校验和错误分类，copy 复用单一
+固定缓冲并保留取消时的进度。
 
-native 的每个文件、TCP、mmap view 都是独立 external object，带有资源状态、
-mutex、幂等 close 和 finalizer 兜底。POSIX 使用 fd/mmap，Windows 使用
-UTF-8 到 UTF-16 路径转换、Win32 mapping 和 Winsock。
-
-async_io 定义自己的 AsyncRead、AsyncWrite、AsyncBufRead、AsyncSeek、
-AsyncClose，复用 moonbitlang/async@0.20.2 的 event loop，提供
-AsyncBufReader、AsyncBufWriter、独立 offset 的 AsyncFile、内存/file/socket
-adapter 以及 copy_bidirectional。
+TLS、压缩、UDP、完整 codec、io_uring 和 Rust 所有权类型系统等价性不在范围内。
 
 ## 验证
 
-~~~bash
+```bash
 moon info && scripts/normalize_interfaces && moon fmt
 moon check --target all --deny-warn
 moon test --target all --deny-warn
 scripts/check_api_surface
-mkdir -p .tmp/bufferutils-bench
+moon check examples --target native --deny-warn
 moon run bench --target native --release > .tmp/bufferutils-bench/results.csv
 scripts/check_performance_budget
-~~~
+```
 
-TLS、压缩、完整 codec 和 UDP 不纳入 1.0 的能力矩阵分母。
+详细合同、对齐矩阵、性能方法和 native 安全说明见 `docs/`。

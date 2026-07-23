@@ -1,43 +1,23 @@
-# BufferUtils 1.0 API Contract
+# BufferUtils 0.36 API Contract
 
-## Ownership
+All byte ranges validate `offset >= 0`, `length >= 0`, and
+`offset + length <= storage.length`. Invalid ranges raise `InvalidInput` (I/O)
+or `BufferError::InvalidRange` (memory). A failed read/write never advances a
+cursor. A backend-reported count outside the requested range is a
+`ContractViolation`.
 
-`SharedBytes` is immutable shared storage. Cloning, slicing, splitting, and freezing
-must not copy payload bytes. `BytesMut` uses copy-on-write whenever a mutable
-operation would otherwise mutate storage visible through an immutable or sibling
-handle. A conversion to Core `Bytes`, `Array`, or `BytesView` is an explicit
-copy boundary unless the API says otherwise.
+`read_exact` retries ordinary short reads and `Interrupted`, and reports
+`UnexpectedEof` with cumulative progress. `write_all` retries short writes and
+`Interrupted`, and reports `WriteZero` with cumulative progress.
 
-`MappedBytes` is native-only external read-only storage. Its slices retain the
-owner. `close` is idempotent; a finalizer is only a fallback and never the
-deterministic release contract.
+Shared buffer mutations detach before writing whenever a frozen or aliased
+range is reachable. `as_bytes_view`, `BytesMut::freeze`, split, and buffered
+pending tails do not copy; `to_array`, `to_bytes`, and `read_array`/
+`write_array` are explicit copy boundaries.
 
-## I/O progress
+`BufRead::fill_buf` and async `AsyncBufRead::fill_buf` borrow internal storage.
+The view must not be retained across the next operation on that reader.
 
-An implementation returning an I/O error must not report committed bytes from
-the same operation. A short successful return reports the exact committed
-count. Helpers accumulate progress from earlier successful operations and
-retry only `Interrupted`. A successful zero-byte write is `WriteZero` when data
-remains.
-
-## Buffering
-
-`BufReader` exposes only bytes currently owned by its internal buffer. The view
-becomes invalid after the next reader operation. `consume(n)` accepts only
-`0 <= n <= fill_buf().length()`.
-
-`BufWriter::flush` is the explicit error boundary. After a short write or
-flush error, unwritten bytes remain recoverable through `into_parts`. `close`
-does not hide a previous flush error and is idempotent.
-
-## Seeking
-
-Seeking discards buffered reader data and flushes buffered writer data before
-delegating to the underlying object. `stream_position` reports the logical
-position after accounting for unread reader bytes.
-
-## Async cancellation
-
-Progress callbacks run only after the destination has accepted the complete
-reported chunk. Cancellation propagates unchanged. Every opened file, socket,
-listener, and directory is closed on success, error, and cancellation.
+Native resources are independently closeable, idempotent, externally owned,
+and guarded by their native lock. A close or finalizer invalidates subsequent
+operations with `IoError::Closed`.

@@ -8,7 +8,9 @@ moon run bench --target native --release > .tmp/bufferutils-bench/results.csv
 scripts/check_performance_budget
 ~~~
 
-The runner performs 5 warmups and 30 measured samples for 1KB, 64KB, and 1MB.
+The runner performs 5 warmups and 50 measured samples for 1KB, 64KB, 1MB, and
+64MB. Inputs, file paths, and adapters should be constructed before the timed
+closure when adding new workloads.
 Each row contains:
 
 ~~~text

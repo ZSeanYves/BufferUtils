@@ -1,60 +1,61 @@
-# Rust Parity Matrix
+# BufferUtils 0.36 Rust Parity Matrix
 
-This matrix defines the BufferUtils 1.0 release gate. The score is a delivery
-measurement, not a claim that MoonBit has Rust's ownership or OS model.
+This is the 100-point release gate for the deliberately bounded comparison
+with Rust `std::io`, `bytes`, and Tokio core I/O. TLS, compression, UDP,
+codec frameworks, io_uring, and ownership/type-system equivalence are outside
+the denominator. A 0.36 release requires at least 90 points, every correctness
+and resource-safety row, and no unexplained performance regression.
 
-## Weighted Areas
+| Area | Weight | Current target | Gate |
+| --- | ---: | ---: | --- |
+| Buffer and zero-copy | 20 | 19 | FixedArray storage, COW, typed access, spare capacity |
+| Synchronous I/O | 25 | 24 | borrowed Read/Write, vectored fallback, buffered cursor semantics |
+| Asynchronous I/O | 20 | 19 | fixed ranges, cancellation-safe copy, shutdown, buffered views |
+| Native resources | 15 | 14 | direct FFI, OpenOptions, sync, TCP lifecycle |
+| Performance | 10 | 8 | geometric growth, no per-chunk async copy, benchmark gate |
+| Documentation and quality | 10 | 7 | migration/API contracts, examples, tests and interfaces |
+| **Total** | **100** | **91** | **90 required for release** |
 
-| Area | Weight | Required gate |
+## Scored Rows
+
+| Area | Points | Verification |
 | --- | ---: | --- |
-| `buffer` shared bytes and cursor operations | 25 | 100% of core rows |
-| synchronous `io` traits and adapters | 30 | 100% of core rows |
-| asynchronous traits and adapters | 25 | 100% of core rows |
-| native files, sockets, seek, and mmap | 10 | Linux/macOS/Windows rows |
-| documentation, API snapshots, and release tooling | 10 | all release checks |
+| FixedArray + logical range storage | 4 | buffer model/property tests |
+| COW clone/slice/split/freeze and zero-copy `BytesView` | 4 | copied-byte and alias tests |
+| resize/reclaim/unsplit/spare-capacity | 3 | capacity and invalid-range tests |
+| signed integer, float, endian and UTF-8 APIs | 4 | cursor-preserving boundary tests |
+| explicit copy adapters (`to_array`, `to_bytes`) | 2 | conversion tests |
+| typed `Buf`/`BufMut` surface | 3 | trait conformance |
+| borrowed `Read` and `Write` primary paths | 5 | memory/native adapters |
+| exact progress, EOF, interruption and WriteZero | 4 | fault-injection tests |
+| IoSlice/IosliceMut validation and vectored fallback | 3 | boundary/conformance tests |
+| BufReader peek/seek/skip/lines/split | 4 | parser and seek model tests |
+| BufWriter start/end, short-write tail, finish recovery | 4 | failure/recovery tests |
+| Cursor, Empty, Repeat, Take, Chain, LineWriter, BufStream | 3 | adapter matrix |
+| flush vs sync durability contract | 2 | native file sync tests |
+| Async fixed-array/Bytes ranges and shared validation | 4 | async memory tests |
+| AsyncBufRead borrowed view and AsyncBufWriter cursors | 4 | view invalidation and short writes |
+| reusable copy, cancellation and bidirectional half-close | 4 | async copy tests |
+| Async file/TCP adapters and error mapping | 3 | runtime tests |
+| async shutdown and cancellation propagation | 5 | cancellation/half-close tests |
+| Native direct borrow and external-resource lifecycle | 4 | native tests, sanitizers |
+| OpenOptions, sync_all/sync_data, TCP shutdown/timeouts | 3 | native integration tests |
+| vectored capability reporting and platform fallback | 2 | target conformance |
+| native seek/mmap/close safety | 3 | resource and sanitizer tests |
+| native TCP addresses and timeout lifecycle | 3 | loopback tests |
+| geometric allocation/copy behavior | 3 | capacity and copied-byte counters |
+| 1 KiB..64 MiB benchmark matrix and baseline | 3 | `bench` output + CI gate |
+| syscall/allocation/copy instrumentation | 2 | native benchmark counters |
+| repeated batches and regression comparison | 2 | CI baseline script |
+| API contract and 0.35 to 0.36 migration docs | 3 | docs build/review |
+| compilable examples and generated interfaces | 2 | CI example target |
+| cross-target tests, coverage, sanitizers | 3 | CI matrix |
+| bilingual README and maintenance guidance | 2 | documentation review |
+| model, fault-injection and property coverage | 3 | 90% coverage gate |
 
-The release requires every row marked `core` and a weighted score of at least
-80. Rows marked `extension` are deliberately outside the 1.0 denominator:
-TLS, compression, full codec frameworks, and UDP datagrams.
-
-## Buffer Core (25)
-
-| Capability | Class | Verification |
-| --- | --- | --- |
-| immutable shared `SharedBytes` | core | model and target tests |
-| mutable COW `BytesMut` | core | mutation and alias tests |
-| O(1) split, split-off, clone, freeze | core | copied-byte counter is zero |
-| `Buf` cursor and chunk operations | core | conformance tests |
-| `BufMut` reserve and put operations | core | capacity model tests |
-| endian integers and UTF-8 | core | boundary tests |
-| explicit Core `SharedBytes`/`Array` conversion | core | copy counter tests |
-
-## Synchronous I/O (30)
-
-| Capability | Class | Verification |
-| --- | --- | --- |
-| `Read` and `Write` partial progress | core | memory/native/fault backends |
-| Interrupted retry, EOF, WriteZero | core | injected failures |
-| `BufRead::fill_buf/consume/read_until/read_line` | core | allocation-free parser tests |
-| `Seek` and `SeekFrom` | core | cursor/file tests |
-| `BufReader` and `BufWriter` bypass paths | core | call counters and benchmarks |
-| pending-tail recovery and `into_parts` | core | flush failure tests |
-| Cursor, Empty, Repeat, Take, Chain, LineWriter | core | adapter matrix |
-| vectored I/O fallback and capability reporting | core | scalar equivalence tests |
-
-## Asynchronous I/O (25)
-
-| Capability | Class | Verification |
-| --- | --- | --- |
-| `AsyncRead` and `AsyncWrite` | core | memory/file/socket adapters |
-| async buffered reader/writer | core | partial and backpressure tests |
-| async seek for files | core | independent-offset tests |
-| cancellation-safe copy and close | core | cancellation tests |
-| TCP stream/listener adapters | core | loopback tests |
-| codec/TLS/compression/UDP | extension | not scored in 1.0 |
-
-## Native and Release Quality (20)
-
-The native rows require Linux, macOS, and Windows CI. The release also requires
-all stable MoonBit targets, generated interface snapshots, documentation
-examples, sanitizer runs, property tests, and the performance budget script.
+Rows marked correctness or resource safety are mandatory even when their
+weighted score is otherwise met. The remaining rows are explicit follow-up
+gates rather than hidden scope: platform-specific `readv/writev`, mmap-to-Core
+zero-copy conversion, and an Ubuntu baseline with three 50-run batches. Scalar
+vectored fallback remains correct on every target while those optimized native
+rows are added.

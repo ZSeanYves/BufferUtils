@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/examples"
+
+import {
+  "ZSeanYves/bufferutils/buffer",
+  "ZSeanYves/bufferutils/io",
+  "ZSeanYves/bufferutils/native",
+}
+
+// Values
+pub async fn async_copy_example(StringView, StringView) -> Int
+
+pub fn parse_lines_example(Bytes) -> Array[String] raise @io.IoError
+
+pub fn shared_buffer_example() -> @buffer.SharedBytes raise @buffer.BufferError
+
+pub fn sync_copy_example(String, String) -> Unit raise @io.IoError
+
+pub fn tcp_shutdown_example(@native.NativeTcpStream) -> Unit raise @io.IoError
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

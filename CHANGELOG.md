@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.36.0
+
+### Breaking
+- Changed `Read::read` to borrowed `FixedArray` ranges and `Write::write` to
+  borrowed `Bytes` ranges; `read_array`/`write_array` are explicit copy adapters.
+- Replaced growable array storage with FixedArray logical ranges and removed
+  0.35 source compatibility.
+
+### Added
+- Added zero-copy `SharedBytes::as_bytes_view`, typed signed/float accessors,
+  `BytesMut` resize/reclaim/unsplit/spare-capacity APIs, and validated IoSlice.
+- Added BufReader peek/lines/split helpers, cursor-based BufWriter recovery,
+  BufStream/Sink, memory pipe endpoints, and structured finish failures.
+- Added native OpenOptions, sync_all/sync_data, direct borrowed file/TCP I/O,
+  TCP shutdown/timeouts/addresses, async shutdown, and cancellation-protected copy.
+- Added the 100-point parity matrix, migration/API contracts, examples, 64 MiB
+  benchmark coverage, and three-batch CI performance structure.
+
 ## v1.0.0
 
 ### Breaking
