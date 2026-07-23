@@ -210,7 +210,7 @@ test "BytesMut management and split_off preserve contents" {
 }
 
 ///|
-test "v2 typed signed float and spare-capacity APIs preserve ranges" {
+test "typed signed float and spare-capacity APIs preserve ranges" {
   let mutable = BytesMut::new(capacity=2)
   mutable.put_i8(-1)
   mutable.put_i16_be(Int16::from_int(-1234))
@@ -252,7 +252,7 @@ test "split unsplit reclaim and zero-copy bytes view" {
 }
 
 ///|
-test "v2 buffer invalid branches and remaining typed directions" {
+test "buffer invalid branches and remaining typed directions" {
   let mutable = BytesMut::new(capacity=8)
   assert_eq(capture_buffer_result(() => mutable.put_i8(128)) is Err(_), true)
   assert_eq(capture_buffer_result(() => mutable.resize(-1)) is Err(_), true)

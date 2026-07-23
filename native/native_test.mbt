@@ -211,7 +211,7 @@ test "MappedBytes v1 shares slices and closes idempotently" {
 }
 
 ///|
-test "NativeTcp v1 performs a loopback roundtrip and closes idempotently" {
+test "NativeTcp performs a loopback roundtrip and closes idempotently" {
   let listener = NativeTcpListener::bind("127.0.0.1", 0)
   let port = listener.local_port()
   assert_true(port > 0)
@@ -261,7 +261,7 @@ test "NativeTcp v1 performs a loopback roundtrip and closes idempotently" {
 }
 
 ///|
-test "Native TCP validates v2 ranges and closed resource errors" {
+test "Native TCP validates ranges and closed resource errors" {
   let invalid_host = try {
     ignore(NativeTcpStream::connect("", 1))
     false
@@ -461,7 +461,7 @@ test "Native resources reject operations after close and wrong access mode" {
 }
 
 ///|
-test "NativeOpenOptions and durability APIs cover v2 resource paths" {
+test "NativeOpenOptions and durability APIs cover resource paths" {
   ensure_native_test_dir()
   let path = native_test_dir + "/open-options.bin"
   ignore(NativeOpenOptions::read())

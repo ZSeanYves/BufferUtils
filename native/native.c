@@ -1084,11 +1084,13 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_shutdown(void *payload, int32_t how) 
   if (result != 0) {
 #if defined(_WIN32)
     socket->os_error = WSAGetLastError();
+    if (socket->os_error == WSAENOTCONN) return BUFFERUTILS_V1_OK;
 #else
     socket->os_error = errno;
+    if (socket->os_error == ENOTCONN) return BUFFERUTILS_V1_OK;
 #endif
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
-    return -socket->error;
+    return socket->error;
   }
   return 0;
 }

@@ -109,7 +109,12 @@ pub fn NativeTcpStream::shutdown_read(
 ) -> Unit raise @io.IoError {
   let status = native_tcp_shutdown_ffi(self.handle, 0)
   if status != 0 {
-    raise native_error("tcp shutdown_read", self.host, status)
+    raise native_error(
+      "tcp shutdown_read",
+      self.host,
+      status,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
   }
 }
 
@@ -119,7 +124,12 @@ pub fn NativeTcpStream::shutdown_write(
 ) -> Unit raise @io.IoError {
   let status = native_tcp_shutdown_ffi(self.handle, 1)
   if status != 0 {
-    raise native_error("tcp shutdown_write", self.host, status)
+    raise native_error(
+      "tcp shutdown_write",
+      self.host,
+      status,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
   }
 }
 
@@ -129,7 +139,12 @@ pub fn NativeTcpStream::shutdown_both(
 ) -> Unit raise @io.IoError {
   let status = native_tcp_shutdown_ffi(self.handle, 2)
   if status != 0 {
-    raise native_error("tcp shutdown_both", self.host, status)
+    raise native_error(
+      "tcp shutdown_both",
+      self.host,
+      status,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
   }
 }
 

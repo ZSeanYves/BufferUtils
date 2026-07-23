@@ -642,7 +642,7 @@ test "default vectored and error helpers preserve contracts" {
 }
 
 ///|
-test "v2 IoSlice validation and BufReader convenience APIs" {
+test "IoSlice validation and BufReader convenience APIs" {
   let reader = BufReader::new(MemoryReader::new(b"a\nb\n"), capacity=2)
   assert_eq(BufReader::peek(reader, 1).to_owned(), [b'a'])
   assert_eq(BufReader::skip_until(reader, b'\n'), 2)
@@ -686,7 +686,7 @@ test "BufStream and Sink compose independent buffered halves" {
 }
 
 ///|
-test "v2 adapter primary ranges reject invalid input" {
+test "adapter primary ranges reject invalid input" {
   let cursor = Cursor::new([b'x'][:])
   let destination = FixedArray::make(1, (0).to_byte())
   assert_eq(
@@ -715,7 +715,7 @@ test "v2 adapter primary ranges reject invalid input" {
 }
 
 ///|
-test "BufReader v2 buffer split and relative seek helpers" {
+test "BufReader buffer split and relative seek helpers" {
   let reader = BufReader::new(MemoryReader::new(b"a,b"), capacity=2)
   assert_eq(reader.peek(1).to_owned(), [b'a'])
   assert_eq(reader.buffer().to_owned(), [b'a', b','])
