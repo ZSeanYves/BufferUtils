@@ -5,7 +5,7 @@ let bench_output_root = ".tmp"
 let bench_output_dir = ".tmp/bufferutils-bench"
 
 ///|
-let bench_runs = 30
+let bench_runs = 50
 
 ///|
 let bench_warmup_runs = 5
@@ -15,6 +15,7 @@ let bench_sizes : Array[(String, Int)] = [
   ("1KB", 1024),
   ("64KB", 64 * 1024),
   ("1MB", 1024 * 1024),
+  ("64MB", 64 * 1024 * 1024),
 ]
 
 ///|

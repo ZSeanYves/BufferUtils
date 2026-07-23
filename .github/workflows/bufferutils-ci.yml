@@ -1,4 +1,4 @@
-name: BufferUtils 1.0 CI
+name: BufferUtils 2.0 CI
 
 on:
   push:
@@ -52,6 +52,7 @@ jobs:
           moon test --target all --deny-warn
           moon test native --target native --deny-warn
           moon test async_io --target native --deny-warn
+          moon check examples --target native --deny-warn
           scripts/check_api_surface
 
   sanitizers:
@@ -122,6 +123,9 @@ jobs:
         run: |
           moon update
           mkdir -p .tmp/bufferutils-bench
-          moon run bench --target native --release \
-            > .tmp/bufferutils-bench/results.csv
-          scripts/check_performance_budget .tmp/bufferutils-bench/results.csv
+          for batch in 1 2 3; do
+            moon run bench --target native --release \
+              > ".tmp/bufferutils-bench/results-${batch}.csv"
+            scripts/check_performance_budget \
+              ".tmp/bufferutils-bench/results-${batch}.csv"
+          done
