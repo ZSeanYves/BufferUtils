@@ -1,4 +1,4 @@
-name: CI
+name: BufferUtils 1.0 CI
 
 on:
   push:
@@ -15,79 +15,110 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-
-    defaults:
-      run:
-        shell: bash
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Install MoonBit
+      - name: Install MoonBit (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Show MoonBit version
+      - name: Install MoonBit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          moon version || true
-          moonc -v || true
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Update MoonBit registry
-        run: moon update
-
-      - name: Check formatting
+      - name: Verify, format, and generate interfaces
+        shell: bash
         run: |
-          moon fmt
+          moon version
+          moon update
+          moon fmt --check
+          moon info --target all
+          scripts/normalize_interfaces
           git diff --exit-code
 
-      - name: Check root package
-        run: moon check
-
-      - name: Test root package
-        run: moon test
-
-      - name: Test root package by package name
-        run: moon test -p ZSeanYves/bufferutils
-
-      - name: Build native target
-        run: moon build --target native
-
-      - name: Test experimental native package
-        run: moon test -p ZSeanYves/bufferutils/native --target native
-
-  bench-smoke:
-    name: bench smoke (manual ubuntu)
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
+      - name: Test all stable targets
         shell: bash
+        run: |
+          moon check --target all --deny-warn
+          moon test --target all --deny-warn
+          moon test native --target native --deny-warn
+          moon test async_io --target native --deny-warn
+          scripts/check_api_surface
+
+  sanitizers:
+    name: ${{ matrix.sanitizer }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: asan-ubsan
+            compiler: scripts/clang-asan-ubsan
+            options: detect_leaks=1:halt_on_error=1
+          - sanitizer: tsan
+            compiler: scripts/clang-tsan
+            options: halt_on_error=1
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
+      - uses: actions/checkout@v5
       - name: Install MoonBit
+        shell: bash
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-
-      - name: Show MoonBit version
+      - name: Run native sanitizer tests
+        shell: bash
+        env:
+          ASAN_OPTIONS: ${{ matrix.options }}
+          UBSAN_OPTIONS: ${{ matrix.options }}
+          TSAN_OPTIONS: ${{ matrix.options }}
         run: |
-          moon version || true
-          moonc -v || true
+          chmod +x scripts/ar scripts/clang-asan-ubsan scripts/clang-tsan
+          MOON_CC="$PWD/${{ matrix.compiler }}" moon test native \
+            --target native --release --deny-warn
 
-      - name: Update MoonBit registry
-        run: moon update
+  coverage:
+    name: library coverage budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install MoonBit
+        shell: bash
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Enforce 90 percent library coverage
+        shell: bash
+        run: |
+          moon coverage clean
+          moon test --target native --enable-coverage --deny-warn
+          mkdir -p .tmp
+          moon coverage report -f summary > .tmp/bufferutils-coverage-summary.txt
+          scripts/check_coverage_budget .tmp/bufferutils-coverage-summary.txt 90
 
-      - name: Build native target
-        run: moon build --target native
-
-      - name: Run benchmark smoke
-        run: moon run src/bench --target native --release
+  performance:
+    name: performance structure and copy budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install MoonBit
+        shell: bash
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Run performance gate
+        shell: bash
+        run: |
+          mkdir -p .tmp/bufferutils-bench
+          moon run bench --target native --release \
+            > .tmp/bufferutils-bench/results.csv
+          scripts/check_performance_budget .tmp/bufferutils-bench/results.csv

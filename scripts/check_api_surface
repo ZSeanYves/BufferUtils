@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for file in \
+  buffer/pkg.generated.mbti \
+  io/pkg.generated.mbti \
+  native/pkg.generated.mbti \
+  async_io/pkg.generated.mbti; do
+  test -f "$file"
+done
+
+required=(
+  "buffer/pkg.generated.mbti|pub struct SharedBytes"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::clone"
+  "buffer/pkg.generated.mbti|pub struct BytesMut"
+  "buffer/pkg.generated.mbti|pub(open) trait Buf"
+  "buffer/pkg.generated.mbti|pub(open) trait BufMut"
+  "io/pkg.generated.mbti|pub(open) trait Read"
+  "io/pkg.generated.mbti|pub(open) trait Write"
+  "io/pkg.generated.mbti|pub(open) trait BufRead"
+  "io/pkg.generated.mbti|pub(open) trait Seek"
+  "io/pkg.generated.mbti|pub(open) trait Close"
+  "io/pkg.generated.mbti|pub fn IoError::message"
+  "io/pkg.generated.mbti|pub fn[R] BufReader::new"
+  "io/pkg.generated.mbti|pub fn[W] BufWriter::new"
+  "io/pkg.generated.mbti|pub struct Cursor"
+  "io/pkg.generated.mbti|pub struct Empty"
+  "io/pkg.generated.mbti|pub struct Repeat"
+  "io/pkg.generated.mbti|pub struct Take"
+  "io/pkg.generated.mbti|pub struct Chain"
+  "io/pkg.generated.mbti|pub struct LineWriter"
+  "native/pkg.generated.mbti|pub struct NativeFile"
+  "native/pkg.generated.mbti|pub struct NativeTcpStream"
+  "native/pkg.generated.mbti|pub struct NativeTcpListener"
+  "native/pkg.generated.mbti|pub struct MappedBytes"
+  "async_io/pkg.generated.mbti|pub(open) trait AsyncRead"
+  "async_io/pkg.generated.mbti|pub(open) trait AsyncWrite"
+  "async_io/pkg.generated.mbti|pub(open) trait AsyncBufRead"
+  "async_io/pkg.generated.mbti|pub(open) trait AsyncSeek"
+  "async_io/pkg.generated.mbti|pub(open) trait AsyncClose"
+  "async_io/pkg.generated.mbti|pub struct AsyncBufReader"
+  "async_io/pkg.generated.mbti|pub struct AsyncBufWriter"
+  "async_io/pkg.generated.mbti|pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]"
+  "async_io/pkg.generated.mbti|pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]"
+  "async_io/pkg.generated.mbti|pub async fn[R : AsyncRead, W : AsyncWrite] copy"
+  "async_io/pkg.generated.mbti|pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional"
+)
+
+for requirement in "${required[@]}"; do
+  file=${requirement%%|*}
+  symbol=${requirement#*|}
+  if ! grep -Fq "$symbol" "$file"; then
+    printf 'missing public symbol: %s\n' "$symbol" >&2
+    exit 1
+  fi
+done
+
+if grep -Eq 'pub (struct|fn|type) (BufferReader|BufferWriter|MemorySource|MemorySink|FileSource|FileSink)' pkg.generated.mbti; then
+  printf 'legacy root API is still public\n' >&2
+  exit 1
+fi
+
+legacy_sources=(
+  reader.mbt
+  writer.mbt
+  source.mbt
+  sink.mbt
+  buf_reader.mbt
+  buf_writer.mbt
+  native/bufferutils_native.c
+)
+for file in "${legacy_sources[@]}"; do
+  if [[ -e "$file" ]]; then
+    printf 'legacy implementation still exists: %s\n' "$file" >&2
+    exit 1
+  fi
+done
+
+printf 'public API surface checks passed for all five weighted areas\n'

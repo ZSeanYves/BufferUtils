@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+summary=${1:-.tmp/bufferutils-coverage-summary.txt}
+minimum=${2:-90}
+
+if [[ ! -f "$summary" ]]; then
+  printf 'coverage summary not found: %s\n' "$summary" >&2
+  exit 1
+fi
+
+awk -v minimum="$minimum" '
+/^bench\// {
+  split($2, counts, "/")
+  bench_covered += counts[1]
+  bench_total += counts[2]
+}
+/^Total:/ {
+  split($2, counts, "/")
+  covered = counts[1] - bench_covered
+  total = counts[2] - bench_total
+}
+END {
+  if (total == 0) {
+    print "coverage summary contains no library source rows" > "/dev/stderr"
+    exit 1
+  }
+  percent = covered * 100.0 / total
+  printf "library coverage: %d/%d (%.1f%%)\n", covered, total, percent
+  if (percent + 0.000001 < minimum) {
+    printf "coverage %.1f%% is below %.1f%%\n", percent, minimum > "/dev/stderr"
+    exit 1
+  }
+}
+' "$summary"

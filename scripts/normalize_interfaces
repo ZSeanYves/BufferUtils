@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+while IFS= read -r file; do
+  temporary="${file}.tmp"
+  awk '
+  { lines[NR] = $0 }
+  END {
+    last = NR
+    while (last > 0 && lines[last] == "") last--
+    for (i = 1; i <= last; i++) print lines[i]
+  }
+  ' "$file" > "$temporary"
+  mv "$temporary" "$file"
+done < <(find . -name pkg.generated.mbti -not -path './_build/*' -not -path './.tmp/*' | sort)
