@@ -211,12 +211,13 @@ fn bench_native_read(path : String, bytes_len : Int) -> Int raise {
 ///|
 fn bench_native_mmap(path : String, bytes_len : Int) -> Int raise {
   let mapped = @native.MappedBytes::open(path)
-  let mut checksum = 0
-  for i in 0..<bytes_len {
-    checksum += mapped.read_byte_at(i).to_int()
-  }
+  // Keep the full-file scan in the native implementation. Calling the
+  // per-byte accessor billions of times would benchmark FFI overhead rather
+  // than mmap throughput.
+  let position = mapped.find_byte(b'\xff')
   @io.Close::close(mapped)
-  ignore(checksum)
+  ignore(position)
+  ignore(bytes_len)
   0
 }
 
