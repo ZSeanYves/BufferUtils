@@ -55,7 +55,7 @@ for requirement in "${required[@]}"; do
   fi
 done
 
-if grep -Eq 'pub (struct|fn|type) (BufferReader|BufferWriter|MemorySource|MemorySink|FileSource|FileSink)' pkg.generated.mbti; then
+if [[ -f pkg.generated.mbti ]] && grep -Eq 'pub (struct|fn|type) (BufferReader|BufferWriter|MemorySource|MemorySink|FileSource|FileSink)' pkg.generated.mbti; then
   printf 'legacy root API is still public\n' >&2
   exit 1
 fi

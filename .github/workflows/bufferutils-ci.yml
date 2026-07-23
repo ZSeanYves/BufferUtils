@@ -82,6 +82,7 @@ jobs:
           UBSAN_OPTIONS: ${{ matrix.options }}
           TSAN_OPTIONS: ${{ matrix.options }}
         run: |
+          moon update
           chmod +x scripts/ar scripts/clang-asan-ubsan scripts/clang-tsan
           MOON_CC="$PWD/${{ matrix.compiler }}" moon test native \
             --target native --release --deny-warn
@@ -99,6 +100,7 @@ jobs:
       - name: Enforce 90 percent library coverage
         shell: bash
         run: |
+          moon update
           moon coverage clean
           moon test --target native --enable-coverage --deny-warn
           mkdir -p .tmp
@@ -118,6 +120,7 @@ jobs:
       - name: Run performance gate
         shell: bash
         run: |
+          moon update
           mkdir -p .tmp/bufferutils-bench
           moon run bench --target native --release \
             > .tmp/bufferutils-bench/results.csv
