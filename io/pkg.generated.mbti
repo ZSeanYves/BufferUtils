@@ -181,6 +181,7 @@ pub(open) trait Close {
 
 pub(open) trait Read {
   fn read(Self, MutArrayView[Byte]) -> Int raise IoError
+  fn read_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise IoError = _
   fn read_vectored(Self, ArrayView[MutArrayView[Byte]]) -> Int raise IoError = _
   fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
   fn is_read_vectored(Self) -> Bool = _

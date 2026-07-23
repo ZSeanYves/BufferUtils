@@ -35,6 +35,23 @@ test "NativeFile v1 streams, flushes, seeks, and closes" {
 }
 
 ///|
+test "NativeFile fixed-array reads honor destination offsets" {
+  ensure_native_test_dir()
+  let path = native_test_dir + "/fixed-read.bin"
+  @fs.write_bytes_to_file(path, Bytes::from_array([b'a', b'b', b'c', b'd'][:]))
+  let reader = NativeFile::open_read(path)
+  let destination = FixedArray::make(6, b'-')
+  assert_eq(@io.Read::read_fixed(reader, destination, 2, 3), 3)
+  assert_eq(destination[0], b'-')
+  assert_eq(destination[1], b'-')
+  assert_eq(destination[2], b'a')
+  assert_eq(destination[3], b'b')
+  assert_eq(destination[4], b'c')
+  assert_eq(destination[5], b'-')
+  @io.Close::close(reader)
+}
+
+///|
 test "NativeFile v1 reports closed and missing resources structurally" {
   let missing = try {
     ignore(NativeFile::open_read(native_test_dir + "/missing.bin"))
