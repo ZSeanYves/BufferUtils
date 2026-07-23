@@ -83,6 +83,7 @@ END {
     key = parts[1] SUBSEP parts[2]
     batch = parts[3]
     group = measured_group[entry]
+    if (group ~ /^native_/) continue
     if (measured[entry] > base[key] * scale[batch, group] * 1.10) failures[key]++
   }
   for (key in failures) {

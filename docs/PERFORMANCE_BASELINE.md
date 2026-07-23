@@ -23,5 +23,7 @@ allocator, and filesystem differences between shared GitHub runners. It fails
 only after the same workload in two of three batches exceeds that normalized
 family baseline by more than 10%. A uniform family slowdown is diagnostic
 rather than an automatic failure; a dedicated runner is required for an
-absolute-time gate. Non-Ubuntu targets run structural, copy-count, and
+absolute-time gate. Native file and mmap timings are likewise diagnostic on
+the shared runner, while their structural, copy-count, call-count, and syscall
+budgets remain mandatory. Non-Ubuntu targets run structural, copy-count, and
 correctness gates only.

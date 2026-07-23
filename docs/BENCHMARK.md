@@ -31,3 +31,9 @@ uses it to normalize shared-runner speed (never making a faster runner stricter
 than the raw baseline). It fails only when the same case still exceeds its
 family-normalized baseline median by 10% in at least two batches. The baseline
 metadata must match `moon version --all`.
+
+Native file and mmap timing remains in every batch and its structural,
+copy-count, call-count, and syscall contracts are enforced. Absolute native
+timing is diagnostic on GitHub's shared runners because filesystem latency and
+throughput vary independently of CPU speed; it is not part of the failure
+decision until a dedicated runner is available.
