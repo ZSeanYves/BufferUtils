@@ -1,61 +1,59 @@
 # BufferUtils 0.36 Rust Parity Matrix
 
-This is the 100-point release gate for the deliberately bounded comparison
-with Rust `std::io`, `bytes`, and Tokio core I/O. TLS, compression, UDP,
-codec frameworks, io_uring, and ownership/type-system equivalence are outside
-the denominator. A 0.36 release requires at least 90 points, every correctness
-and resource-safety row, and no unexplained performance regression.
+This matrix compares BufferUtils with the bounded core surface of Rust
+`std::io`, `bytes`, and Tokio I/O. TLS, compression, UDP, codec frameworks,
+io_uring, and ownership/type-system equivalence are outside the denominator.
+A release at the stated 90% maturity level requires at least 90 points, all
+correctness and resource-safety blockers resolved, and a measured performance
+baseline without unexplained regression.
 
-| Area | Weight | Current target | Gate |
+## Current score
+
+| Area | Weight | Score | Evidence and remaining gap |
 | --- | ---: | ---: | --- |
-| Buffer and zero-copy | 20 | 19 | FixedArray storage, COW, typed access, spare capacity |
-| Synchronous I/O | 25 | 24 | borrowed Read/Write, vectored fallback, buffered cursor semantics |
-| Asynchronous I/O | 20 | 19 | fixed ranges, cancellation-safe copy, shutdown, buffered views |
-| Native resources | 15 | 14 | direct FFI, OpenOptions, sync, TCP lifecycle |
-| Performance | 10 | 8 | geometric growth, no per-chunk async copy, benchmark gate |
-| Documentation and quality | 10 | 7 | migration/API contracts, examples, tests and interfaces |
-| **Total** | **100** | **91** | **90 required for release** |
+| Buffer and zero-copy | 20 | 18 | FixedArray ranges, geometric growth, COW, typed access, spare capacity; public fixed-array adoption relies on a caller immutability contract and does not validate its range |
+| Synchronous I/O | 25 | 23 | borrowed ranges, progress/error contracts, buffering, seek and adapters; native implementations use only the scalar vectored fallback and text helpers are eager collections rather than iterators |
+| Asynchronous I/O | 20 | 13 | fixed ranges, reusable copy buffer, buffered views and cancellation protection; runtime errors are not uniformly mapped to `IoError`, and the default shutdown hook is a no-op for current TCP adapters |
+| Native resources | 15 | 11 | direct borrowed file/TCP I/O, OpenOptions presets, sync, mmap, locks and idempotent close; no POSIX `readv`/`writev`, Windows `WSARecv`/`WSASend`, full socket addresses, or timeout getters |
+| Performance | 10 | 4 | geometric growth, copied-byte checks, four sizes and three CI batches; workloads, counters, prebuilt fixtures, committed baseline and two-of-three regression comparison are incomplete |
+| Documentation and quality | 10 | 7 | bilingual README, contracts, migration, examples, 90.6% library coverage, cross-platform tests and sanitizers; examples are compiled rather than executed, and property/concurrent-close coverage is incomplete |
+| **Total** | **100** | **76** | **90 required** |
 
-## Scored Rows
+## Completed capabilities
 
-| Area | Points | Verification |
-| --- | ---: | --- |
-| FixedArray + logical range storage | 4 | buffer model/property tests |
-| COW clone/slice/split/freeze and zero-copy `BytesView` | 4 | copied-byte and alias tests |
-| resize/reclaim/unsplit/spare-capacity | 3 | capacity and invalid-range tests |
-| signed integer, float, endian and UTF-8 APIs | 4 | cursor-preserving boundary tests |
-| explicit copy adapters (`to_array`, `to_bytes`) | 2 | conversion tests |
-| typed `Buf`/`BufMut` surface | 3 | trait conformance |
-| borrowed `Read` and `Write` primary paths | 5 | memory/native adapters |
-| exact progress, EOF, interruption and WriteZero | 4 | fault-injection tests |
-| IoSlice/IosliceMut validation and vectored fallback | 3 | boundary/conformance tests |
-| BufReader peek/seek/skip/lines/split | 4 | parser and seek model tests |
-| BufWriter start/end, short-write tail, finish recovery | 4 | failure/recovery tests |
-| Cursor, Empty, Repeat, Take, Chain, LineWriter, BufStream | 3 | adapter matrix |
-| flush vs sync durability contract | 2 | native file sync tests |
-| Async fixed-array/Bytes ranges and shared validation | 4 | async memory tests |
-| AsyncBufRead borrowed view and AsyncBufWriter cursors | 4 | view invalidation and short writes |
-| reusable copy, cancellation and bidirectional half-close | 4 | async copy tests |
-| Async file/TCP adapters and error mapping | 3 | runtime tests |
-| async shutdown and cancellation propagation | 5 | cancellation/half-close tests |
-| Native direct borrow and external-resource lifecycle | 4 | native tests, sanitizers |
-| OpenOptions, sync_all/sync_data, TCP shutdown/timeouts | 3 | native integration tests |
-| vectored capability reporting and platform fallback | 2 | target conformance |
-| native seek/mmap/close safety | 3 | resource and sanitizer tests |
-| native TCP addresses and timeout lifecycle | 3 | loopback tests |
-| geometric allocation/copy behavior | 3 | capacity and copied-byte counters |
-| 1 KiB..64 MiB benchmark matrix and baseline | 3 | `bench` output + CI gate |
-| syscall/allocation/copy instrumentation | 2 | native benchmark counters |
-| repeated batches and regression comparison | 2 | CI baseline script |
-| API contract and 0.35 to 0.36 migration docs | 3 | docs build/review |
-| compilable examples and generated interfaces | 2 | CI example target |
-| cross-target tests, coverage, sanitizers | 3 | CI matrix |
-| bilingual README and maintenance guidance | 2 | documentation review |
-| model, fault-injection and property coverage | 3 | 90% coverage gate |
+- Shared `FixedArray[Byte]` storage with logical ranges, geometric growth, COW
+  mutation, zero-copy clone/slice/split/freeze, and borrowed `BytesView`.
+- Signed and unsigned integers, floats, endian variants, UTF-8, resize,
+  reclaim, unsplit, and checked spare-capacity initialization.
+- Borrowed synchronous `Read`/`Write`, validated `IoSlice` types, scalar
+  vectored fallback, exact-progress helpers, and structured `IoError`.
+- Cursor-based `BufReader`/`BufWriter`, recoverable pending tails, seek,
+  BufStream, memory pipe, Cursor, Empty, Repeat, Take, Chain, and LineWriter.
+- Direct native scalar file/TCP FFI, durability sync, open-option presets,
+  mmap owner retention, TCP shutdown/timeouts/ports, independent external
+  objects, locks, finalizers, and idempotent close.
+- Fixed-buffer async traits and wrappers, cancellation-protected copy progress,
+  cross-target tests, sanitizer jobs, generated-interface checks, and a 90%
+  library coverage gate.
 
-Rows marked correctness or resource safety are mandatory even when their
-weighted score is otherwise met. The remaining rows are explicit follow-up
-gates rather than hidden scope: platform-specific `readv/writev`, mmap-to-Core
-zero-copy conversion, and an Ubuntu baseline with three 50-run batches. Scalar
-vectored fallback remains correct on every target while those optimized native
-rows are added.
+## Release blockers for 90
+
+1. Implement real native vectored I/O and advertise capability only on the
+   supported platform paths.
+2. Override async TCP shutdown with a real write-half close and normalize all
+   non-cancellation runtime failures to `IoError` while preserving cancellation.
+3. Validate or make internal the unsafe fixed-array adoption boundary so a
+   malformed range cannot create an invalid zero-copy view.
+4. Complete the benchmark matrix: small and short writes, capacity scan,
+   native read/write, TCP loopback, async copy, vectored and mmap workloads.
+5. Construct inputs/files/adapters outside timed regions; record allocation,
+   copied-byte, lower-level-call and syscall counts.
+6. Commit an Ubuntu x86_64 baseline and enforce the stated two-of-three 10%
+   regression policy rather than checking each batch only for structure.
+7. Add model/property coverage for short I/O, seek, vectored boundaries,
+   cancellation points and concurrent close; enforce native-package coverage
+   independently and execute the examples in CI.
+
+The score describes implemented capability, not throughput relative to Rust.
+It should only increase when the corresponding implementation and gate are both
+present in the repository.

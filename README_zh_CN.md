@@ -41,8 +41,9 @@ Chain、LineWriter、BufStream 和内存 duplex。
 
 native 资源独立管理，带锁、幂等 close 和 finalizer 兜底；文件支持
 OpenOptions、seek、flush、`sync_all`/`sync_data` 和 mmap，TCP 支持半关闭、
-timeout 与地址元数据。async_io 复用同一范围校验和错误分类，copy 复用单一
-固定缓冲并保留取消时的进度。
+timeout 与本地/对端端口元数据。async_io 复用同一调用范围校验，copy 复用单一
+固定缓冲并保留取消时已提交的进度；runtime 错误统一映射和真实 TCP 半关闭仍列在
+Rust 对齐矩阵的待完成项中。
 
 TLS、压缩、UDP、完整 codec、io_uring 和 Rust 所有权类型系统等价性不在范围内。
 

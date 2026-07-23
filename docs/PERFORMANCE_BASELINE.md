@@ -1,6 +1,7 @@
-# Ubuntu x86_64 Baseline
+# Ubuntu x86_64 Baseline Procedure
 
-The release baseline is produced on a pinned `ubuntu-x86_64` runner with the
+No absolute Ubuntu baseline is committed in 0.36. The release baseline must be
+produced on a pinned `ubuntu-x86_64` runner with the
 same MoonBit toolchain as CI:
 
 ```text

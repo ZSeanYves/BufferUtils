@@ -81,15 +81,16 @@ requested explicitly with `NativeFile::sync_all()` or `sync_data()`.
 Native resources are independent external objects with per-resource state,
 mutex protection, idempotent close, and finalizer fallback. `NativeFile`
 supports validated open options, seek, flush, durability sync, and mmap.
-`NativeTcpStream` supports read/write/both shutdown, timeouts, and loopback
-address metadata. `MappedBytes` keeps its owner alive while slices exist;
+`NativeTcpStream` supports read/write/both shutdown, timeouts, and local/peer
+port metadata. `MappedBytes` keeps its owner alive while slices exist;
 `copy_range` is the explicit materialization boundary.
 
 `async_io` defines `AsyncRead`, `AsyncWrite`, `AsyncBufRead`, `AsyncSeek`, and
-`AsyncClose` over the same range validation and error taxonomy. Buffered async
-views are borrowed until the next reader operation. Async copy reuses one
-fixed buffer, preserves progress across cancellation, and
-`copy_bidirectional` half-closes the opposite write side after EOF.
+`AsyncClose` with the same caller-range validation. Buffered async views are
+borrowed until the next reader operation. Async copy reuses one fixed buffer,
+preserves committed progress across cancellation, and `copy_bidirectional`
+invokes the destination's `AsyncWrite::shutdown` hook after EOF. See the parity
+matrix for the remaining runtime error-mapping and TCP half-close work.
 
 TLS, compression, UDP datagrams, full codec frameworks, io_uring, and Rust's
 ownership/type-system equivalence are intentionally outside this library's
