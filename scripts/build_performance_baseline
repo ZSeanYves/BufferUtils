@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=${1:?usage: build_performance_baseline OUTPUT.csv BATCH1.csv BATCH2.csv BATCH3.csv}
+shift
+[[ $# -eq 3 ]] || { printf 'expected three batch CSV files\n' >&2; exit 1; }
+
+awk -F, '
+FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+{
+  key = $(col["name"]) SUBSEP $(col["size"])
+  name[key] = $(col["name"]); size[key] = $(col["size"]); bytes[key] = $(col["bytes"]); temp[key] = $(col["temp_file"])
+  median[key, FILENAME] = $(col["median_us"])
+}
+END {
+  print "name,size,bytes,temp_file,median_us"
+  for (key in name) {
+    a = median[key, ARGV[1]]; b = median[key, ARGV[2]]; c = median[key, ARGV[3]]
+    if (a > b) { t = a; a = b; b = t }
+    if (b > c) { t = b; b = c; c = t }
+    if (a > b) { t = a; a = b; b = t }
+    print name[key] "," size[key] "," bytes[key] "," temp[key] "," b
+  }
+}
+' "$@" > "$output"

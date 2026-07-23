@@ -1,4 +1,4 @@
-name: BufferUtils 0.36 CI
+name: BufferUtils 0.37 CI
 
 on:
   push:
@@ -53,6 +53,7 @@ jobs:
           moon test native --target native --deny-warn
           moon test async_io --target native --deny-warn
           moon check examples --target native --deny-warn
+          moon test examples --target native --deny-warn
           scripts/check_api_surface
 
   sanitizers:
@@ -109,8 +110,8 @@ jobs:
           scripts/check_coverage_budget .tmp/bufferutils-coverage-summary.txt 90
 
   performance:
-    name: performance structure and copy budget
-    runs-on: ubuntu-latest
+    name: performance batches and regression budget
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Install MoonBit
@@ -123,9 +124,31 @@ jobs:
         run: |
           moon update
           mkdir -p .tmp/bufferutils-bench
+          moon version --all > .tmp/bufferutils-bench/toolchain.txt
           for batch in 1 2 3; do
             moon run bench --target native --release \
               > ".tmp/bufferutils-bench/results-${batch}.csv"
             scripts/check_performance_budget \
               ".tmp/bufferutils-bench/results-${batch}.csv"
           done
+          if [[ -f bench/baselines/ubuntu-x86_64.csv ]]; then
+            cmp -s bench/baselines/ubuntu-x86_64.meta \
+              .tmp/bufferutils-bench/toolchain.txt || {
+                echo "MoonBit toolchain changed; regenerate the performance baseline" >&2
+                exit 1
+              }
+            scripts/check_performance_batches \
+              bench/baselines/ubuntu-x86_64.csv \
+              .tmp/bufferutils-bench/results-1.csv \
+              .tmp/bufferutils-bench/results-2.csv \
+              .tmp/bufferutils-bench/results-3.csv
+          fi
+      - name: Upload benchmark batches
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-x86_64-performance-batches
+          path: |
+            .tmp/bufferutils-bench/results-1.csv
+            .tmp/bufferutils-bench/results-2.csv
+            .tmp/bufferutils-bench/results-3.csv
+            .tmp/bufferutils-bench/toolchain.txt

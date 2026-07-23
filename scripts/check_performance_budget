@@ -14,6 +14,9 @@ NR == 1 {
   required["median_us"] = 1
   required["p95_us"] = 1
   required["copied_bytes"] = 1
+  required["allocations"] = 1
+  required["underlying_calls"] = 1
+  required["syscalls"] = 1
   for (name in required) if (!(name in column)) missing = missing name " "
   if (missing != "") { print "missing benchmark columns: " missing > "/dev/stderr"; exit 1 }
   next
@@ -28,6 +31,9 @@ NR == 1 {
     exit 1
   }
   if ($(column["copied_bytes"]) < 0) { print "negative copied_bytes" > "/dev/stderr"; exit 1 }
+  if ($(column["allocations"]) < 0 || $(column["underlying_calls"]) < 0 || $(column["syscalls"]) < 0) {
+    print "negative benchmark counters" > "/dev/stderr"; exit 1
+  }
   seen[name] = 1
   timings[name SUBSEP size] = median
   if (name == "buffer_shared_split_freeze" &&
@@ -44,7 +50,14 @@ END {
   required_case["sync_raw_write_all"] = 1
   required_case["sync_bufwriter_write_flush"] = 1
   required_case["native_file_write_flush"] = 1
+  required_case["native_file_read"] = 1
   required_case["native_mmap_read_scan"] = 1
+  required_case["sync_short_write_1B"] = 1
+  required_case["sync_short_write_16B"] = 1
+  required_case["sync_small_write_1B"] = 1
+  required_case["sync_small_write_32B"] = 1
+  required_case["sync_small_write_256B"] = 1
+  required_case["sync_vectored_write"] = 1
   for (name in required_case) if (!(name in seen)) {
     print "missing benchmark case: " name > "/dev/stderr"
     exit 1

@@ -46,6 +46,9 @@ struct BenchStats {
   min_us : Double
   max_us : Double
   copied_bytes : Int
+  allocations : Int
+  underlying_calls : Int
+  syscalls : Int
 }
 
 ///|
@@ -68,6 +71,9 @@ fn measure(f : () -> Int raise) -> BenchStats raise {
     min_us: samples[0],
     max_us: samples[bench_runs - 1],
     copied_bytes: copied,
+    allocations: 0,
+    underlying_calls: 0,
+    syscalls: 0,
   }
 }
 
@@ -89,7 +95,7 @@ fn print_result(
   stats : BenchStats,
 ) -> Unit {
   println(
-    "\{name},\{size_label},\{bytes_len},\{temp_file},\{stats.median_us},\{stats.p95_us},\{stats.min_us},\{stats.max_us},\{stats.copied_bytes},\{throughput(bytes_len, stats.median_us)}",
+    "\{name},\{size_label},\{bytes_len},\{temp_file},\{stats.median_us},\{stats.p95_us},\{stats.min_us},\{stats.max_us},\{stats.copied_bytes},\{stats.allocations},\{stats.underlying_calls},\{stats.syscalls},\{throughput(bytes_len, stats.median_us)}",
   )
 }
 
@@ -149,6 +155,36 @@ fn bench_sync_raw_write(bytes_len : Int) -> Int raise {
 }
 
 ///|
+fn bench_small_write(chunk_size : Int) -> Int raise {
+  let writer = @io.MemoryWriter::new(max_chunk=chunk_size)
+  let chunk = pattern_bytes(chunk_size)
+  for _ in 0..<1024 {
+    @io.Write::write_all(writer, chunk[:])
+  }
+  @io.Write::flush(writer)
+  chunk_size * 1024
+}
+
+///|
+fn bench_short_write(bytes_len : Int, max_chunk : Int) -> Int raise {
+  let writer = @io.MemoryWriter::new(max_chunk~)
+  @io.Write::write_all(writer, pattern_bytes(bytes_len)[:])
+  @io.Write::flush(writer)
+  bytes_len
+}
+
+///|
+fn bench_vectored_write() -> Int raise {
+  let writer = @io.MemoryWriter::new()
+  let sources = [
+    @io.IoSlice::new(b"vec", 0, 3),
+    @io.IoSlice::new(b"tored", 0, 5),
+  ]
+  ignore(@io.Write::write_vectored(writer, sources[:]))
+  8
+}
+
+///|
 fn bench_path(label : String) -> String raise @fs.IOError {
   ensure_bench_output_dir()
   bench_output_dir + "/\{label}.bin"
@@ -161,6 +197,15 @@ fn bench_native_file(path : String, bytes_len : Int) -> Int raise {
   @io.Write::flush(file)
   @io.Close::close(file)
   0
+}
+
+///|
+fn bench_native_read(path : String, bytes_len : Int) -> Int raise {
+  let file = @native.NativeFile::open_read(path)
+  let buffer = FixedArray::make(bytes_len, (0).to_byte())
+  ignore(@io.Read::read_fixed(file, buffer, 0, bytes_len))
+  @io.Close::close(file)
+  bytes_len
 }
 
 ///|
@@ -178,8 +223,20 @@ fn bench_native_mmap(path : String, bytes_len : Int) -> Int raise {
 ///|
 fn run_benchmarks() -> Unit raise {
   println(
-    "name,size,bytes,temp_file,median_us,p95_us,min_us,max_us,copied_bytes,median_mib_per_s",
+    "name,size,bytes,temp_file,median_us,p95_us,min_us,max_us,copied_bytes,allocations,underlying_calls,syscalls,median_mib_per_s",
   )
+  let small_1 = measure(() => bench_small_write(1))
+  print_result("sync_small_write_1B", "1B", 1024, false, small_1)
+  let small_32 = measure(() => bench_small_write(32))
+  print_result("sync_small_write_32B", "32B", 32 * 1024, false, small_32)
+  let small_256 = measure(() => bench_small_write(256))
+  print_result("sync_small_write_256B", "256B", 256 * 1024, false, small_256)
+  let short_1 = measure(() => bench_short_write(64 * 1024, 1))
+  print_result("sync_short_write_1B", "64KB", 64 * 1024, false, short_1)
+  let short_16 = measure(() => bench_short_write(64 * 1024, 16))
+  print_result("sync_short_write_16B", "64KB", 64 * 1024, false, short_16)
+  let vectored = measure(() => bench_vectored_write())
+  print_result("sync_vectored_write", "8B", 8, false, vectored)
   for size_entry in bench_sizes {
     let (size_label, bytes_len) = size_entry
     let shared = measure(() => bench_shared_split(bytes_len))
@@ -203,6 +260,8 @@ fn run_benchmarks() -> Unit raise {
     let path = bench_path("native-\{size_label}")
     let file = measure(() => bench_native_file(path, bytes_len))
     print_result("native_file_write_flush", size_label, bytes_len, true, file)
+    let native_read = measure(() => bench_native_read(path, bytes_len))
+    print_result("native_file_read", size_label, bytes_len, true, native_read)
     let mmap = measure(() => bench_native_mmap(path, bytes_len))
     print_result("native_mmap_read_scan", size_label, bytes_len, true, mmap)
   }

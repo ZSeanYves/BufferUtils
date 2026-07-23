@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+baseline=${1:?usage: check_performance_batches BASELINE.csv BATCH1.csv BATCH2.csv BATCH3.csv}
+batch_one=${2:?missing batch 1}
+batch_two=${3:?missing batch 2}
+batch_three=${4:?missing batch 3}
+
+for file in "$baseline" "$batch_one" "$batch_two" "$batch_three"; do
+  [[ -f "$file" ]] || { printf 'benchmark CSV not found: %s\n' "$file" >&2; exit 1; }
+done
+
+awk -F, '
+NR == FNR {
+  if (FNR == 1) { for (i = 1; i <= NF; i++) col[$i] = i; next }
+  key = $(col["name"]) SUBSEP $(col["size"])
+  base[key] = $(col["median_us"])
+  next
+}
+FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+{
+  key = $(col["name"]) SUBSEP $(col["size"])
+  batch = FILENAME
+  value = $(col["median_us"])
+  if (key in base && value > base[key] * 1.10) failures[key]++
+}
+END {
+  for (key in failures) {
+    if (failures[key] >= 2) {
+      print "median regression exceeds 10% in at least two batches: " key > "/dev/stderr"
+      failed = 1
+    }
+  }
+  exit failed
+}
+' "$baseline" "$batch_one" "$batch_two" "$batch_three"
