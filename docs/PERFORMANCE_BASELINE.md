@@ -27,3 +27,8 @@ absolute-time gate. Native file and mmap timings are likewise diagnostic on
 the shared runner, while their structural, copy-count, call-count, and syscall
 budgets remain mandatory. Non-Ubuntu targets run structural, copy-count, and
 correctness gates only.
+
+Rows with a baseline median below 50 microseconds remain recorded but do not
+make the shared-runner job fail. Their 10% window is too small to separate code
+changes from scheduler noise; a longer workload is required before promotion
+to the timing gate.

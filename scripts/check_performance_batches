@@ -5,12 +5,13 @@ baseline=${1:?usage: check_performance_batches BASELINE.csv BATCH1.csv BATCH2.cs
 batch_one=${2:?missing batch 1}
 batch_two=${3:?missing batch 2}
 batch_three=${4:?missing batch 3}
+minimum_gate_us=50
 
 for file in "$baseline" "$batch_one" "$batch_two" "$batch_three"; do
   [[ -f "$file" ]] || { printf 'benchmark CSV not found: %s\n' "$file" >&2; exit 1; }
 done
 
-awk -F, -v batch_one="$batch_one" -v batch_two="$batch_two" -v batch_three="$batch_three" '
+awk -F, -v batch_one="$batch_one" -v batch_two="$batch_two" -v batch_three="$batch_three" -v minimum_gate_us="$minimum_gate_us" '
 function workload_group(name) {
   if (name ~ /^buffer_/) return "buffer"
   if (name ~ /^sync_.*read/) return "sync_read"
@@ -32,7 +33,7 @@ FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
   key = name SUBSEP $(col["size"])
   batch = FILENAME
   value = $(col["median_us"])
-  if (key in base) {
+  if (key in base && base[key] >= minimum_gate_us) {
     group = workload_group(name)
     measured[key, batch] = value
     measured_group[key, batch] = group

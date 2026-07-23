@@ -37,3 +37,7 @@ copy-count, call-count, and syscall contracts are enforced. Absolute native
 timing is diagnostic on GitHub's shared runners because filesystem latency and
 throughput vary independently of CPU speed; it is not part of the failure
 decision until a dedicated runner is available.
+
+Cases whose committed median is below 50 microseconds are also diagnostic.
+A 10% delta at that scale is smaller than shared-runner scheduling noise; these
+cases must be lengthened before they can become hard timing gates.
