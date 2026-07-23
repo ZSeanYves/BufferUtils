@@ -1,357 +1,119 @@
 # BufferUtils
 
-A byte-buffer utility library for MoonBit.
+BufferUtils 1.0 is a Rust-inspired byte buffer and I/O library for MoonBit.
+The 1.0 surface is intentionally split into pure core packages and a
+native-only platform package.
 
-BufferUtils provides stable pure-MoonBit byte-buffer APIs for reading, writing,
-conversion, splitting, memory-backed streaming, and file convenience
-workflows.
-
-It also includes experimental native-target extensions for C-backed file
-handles and mmap-backed `NativeByteView` zero-copy-style processing.
-
-BufferUtils does not claim stable zero-copy behavior. `NativeByteView` is an
-experimental native-only research API, not MoonBit `BytesView`.
-
-[English](https://github.com/ZSeanYves/BufferUtils/blob/main/README.md) | [简体中文](https://github.com/ZSeanYves/BufferUtils/blob/main/README_zh_CN.md)
-
-## Highlights
-
-- Stable root API for byte readers, writers, memory sources/sinks, and file convenience helpers
-- Fixed-capacity and auto-growing buffer writers
-- Boundary-checked reads, writes, conversion, and split utilities
-- Memory-backed `BufReader` / `BufWriter`
-- File convenience APIs with overwrite-materialization flush semantics
-- Experimental native C backend for native-target file handles
-- Experimental mmap-backed `NativeByteView` with a MoonBit-managed external owner model
-- C-side search, count, checksum, equality, and file-transfer operations over mmap-backed native memory
-- CI coverage for Ubuntu/macOS, root package tests, native package tests, and benchmark smoke
-
-## Status At A Glance
-
-| Area | Status | Notes |
+| Package | Scope | Targets |
 |---|---|---|
-| Root byte-buffer API | Stable | Pure MoonBit |
-| Memory streaming | Stable | Memory-backed concrete types |
-| File convenience APIs | Stable | Memory-backed snapshot/accumulator |
-| Reader/source `BytesView` inspection | Experimental | MoonBit-managed memory only |
-| Native C file handles | Experimental | `--target native` only |
-| NativeByteView mmap research | Experimental | Unix-like verified, explicit close |
-| Stable zero-copy | Not claimed | No stable C-memory-backed MoonBit `BytesView` |
-| Windows mmap | Not supported | Future work |
-| Thread-safe mmap owner model | Not guaranteed | Single-thread assumption |
+| ZSeanYves/bufferutils/buffer | SharedBytes, BytesMut, Buf, BufMut | wasm, wasm-gc, js, native |
+| ZSeanYves/bufferutils/io | Read, Write, BufRead, Seek, Close, combinators | wasm, wasm-gc, js, native |
+| ZSeanYves/bufferutils/async_io | async traits, buffered wrappers, file/socket adapters | native |
+| ZSeanYves/bufferutils/native | files, TCP, mmap-backed MappedBytes | native |
 
-## What Is Stable
+The old root package is an empty module entry point. Buffer/BufferMut,
+source/sink snapshots, and the old native handle API were removed in 1.0.
+Use docs/MIGRATION_0.26_TO_1.0.md for the hard switch.
 
-The stable root package is the pure MoonBit API surface:
+## Install
 
-- `BufferReader` / `BufferWriter`
-- `MemorySource` / `MemorySink`
-- `BufReader` / `BufWriter`
-- `FileSource` / `FileSink`
-- `FileBufWriter` / `new_file_buf_reader`
-- conversion helpers
-- split helpers
-- `BufferError`
+~~~bash
+moon add ZSeanYves/bufferutils@1.0.0
+~~~
 
-The stable root package intentionally keeps file support honest:
+## Shared bytes
 
-- `FileSource` is a memory-backed snapshot created at construction time
-- `FileSink` is a memory-backed accumulator that persists on `flush()`
-- `FileSink.flush()` uses overwrite-materialization semantics, including creating or overwriting an empty file when the accumulated data is empty
+MoonBit reserves the builtin identifier Bytes; BufferUtils therefore names
+its immutable shared handle SharedBytes. This is the library's public name,
+not a claim that conversion to Core Bytes is free.
 
-BufferUtils 1.x stabilizes this root API boundary, not the experimental native
-extensions.
+~~~moonbit
+import { "ZSeanYves/bufferutils/buffer" @buffer }
 
-## What Is Experimental
+let mutable = @buffer.BytesMut::new(capacity=32)
+mutable.put_u16_be(0x1234U.to_uint16())
+mutable.put_utf8("MoonBit")
+let immutable = mutable.freeze()
+let prefix = immutable.slice(0, 2)
+mutable.put_byte(b'!')
+ignore(prefix)
+~~~
 
-BufferUtils keeps several capabilities outside the stable root API boundary:
+split_to, split_off, slice, freeze, and immutable copies share storage.
+Mutation after a freeze or split detaches only the mutated range. copied_bytes
+is available for instrumentation. Array/Core Bytes conversions are explicit
+copy boundaries.
 
-- Reader/source `BytesView` inspection APIs:
-  - `BufferReader.peek_slice`
-  - `BufferReader.remaining_slice`
-  - `MemorySource.peek_remaining`
-  - `FileSource.peek_remaining`
-- Native file-handle APIs in `ZSeanYves/bufferutils/native`:
-  - `NativeFileSource`
-  - `NativeFileSink`
-  - `NativeBufReader`
-  - `NativeBufWriter`
-- Native zero-copy research APIs in `ZSeanYves/bufferutils/native`:
-  - `NativeByteView`
-  - `new_mmap_file_view`
-  - `NativeByteView.slice_handle`
-  - `NativeByteView` C-side operations
+## Synchronous I/O
 
-Experimental does not mean hidden. It means the API is available, documented,
-and tested, but it is not part of the stable root compatibility promise.
+~~~moonbit
+import { "ZSeanYves/bufferutils/io" @io }
 
-## Installation
+let source = @io.MemoryReader::new(b"header:payload", max_chunk=3)
+let reader = @io.BufReader::new(source, capacity=8)
+let header = Array::make(7, (0).to_byte())
+@io.Read::read_exact(reader, header.mut_view())
+let rest : Array[Byte] = []
+@io.read_to_end(reader, rest)
+~~~
 
-```bash
-moon add ZSeanYves/bufferutils
-```
+The sync package implements partial progress, read_exact/write_all,
+interruption retry, vectored fallback, BufRead, seekable Cursor, and the
+Cursor/Empty/Repeat/Take/Chain/LineWriter combinators. BufWriter preserves
+unwritten tail bytes through into_parts; finish returns the destination only
+after a successful flush. IoError carries portable kind, operation, context,
+path, raw code, message, and accumulated progress.
 
-Or add it to `moon.mod.json`:
+## Native files, TCP, and mmap
 
-```json
-{
-  "deps": {
-    "ZSeanYves/bufferutils": "0.24.0"
-  }
-}
-```
-
-## Quick Start
-
-### In-memory Reading
-
-```moonbit
-let reader = new_reader(Bytes::from_array([1, 2, 3, 4]))
-
-let first = reader.read_byte()
-let next_two = reader.read_exact(2)
-let rest = reader.read_remaining()
-```
-
-### Fixed and Growing Writers
-
-```moonbit
-let fixed = new_fixed_writer(4)
-fixed.write_all([1, 2, 3, 4])
-let fixed_bytes = fixed.flush_to_bytes()
-
-let growing = new_growing_writer(2)
-growing.write_all([1, 2, 3, 4, 5])
-growing.reserve(16)
-growing.ensure_capacity(32)
-let growing_bytes = growing.flush_to_bytes()
-```
-
-`new_writer(capacity)` remains available as a compatibility constructor for
-fixed-capacity writers, but `new_fixed_writer` and `new_growing_writer` are
-the preferred release-facing entry points.
-
-### Memory-backed Streaming
-
-```moonbit
-let source = new_memory_source(Bytes::from_array([1, 2, 3, 4, 5]))
-let reader = new_buf_reader(source, 2)
-let data = reader.read_to_end()
-
-let sink = new_memory_sink()
-let writer = new_buf_writer(sink, 2)
-writer.write_all([10, 20, 30, 40])
-writer.flush()
-let sink = writer.into_inner()
-let out = sink.to_bytes()
-```
-
-`BufReader` and `BufWriter` are streaming-style APIs over concrete
-memory-backed types. BufferUtils does not currently expose a stable trait-based
-custom source/sink abstraction.
-
-### File Convenience APIs
-
-```moonbit
-let writer = new_file_buf_writer(".tmp/out.bin", 4)
-writer.write_all([72, 101, 108, 108, 111])
-writer.flush()
-
-let reader = new_file_buf_reader(".tmp/out.bin", 4)
-let header = reader.read_exact(2)
-let rest = reader.read_to_end()
-```
-
-`FileSource` and `FileSink` are convenience APIs, not OS-level streaming file
-handles. `FileSource` snapshots the file into memory. `FileSink` and
-`FileBufWriter` accumulate in memory and materialize to disk on `flush()`.
-
-### Experimental Native File-handle Backend
-
-```moonbit
+~~~moonbit
 import {
+  "ZSeanYves/bufferutils/io" @io,
   "ZSeanYves/bufferutils/native" @native,
 }
 
-let sink = @native.new_native_file_sink(
-  ".tmp/native-out.bin",
-  @native.NativeFileMode::Overwrite,
-)
-sink.write_all([1, 2, 3, 4])
-sink.flush()
-sink.close()
+let file = @native.NativeFile::create(".tmp/output.bin")
+@io.Write::write_all(file, [1, 2, 3, 4][:])
+@io.Write::flush(file)
+@io.Seek::seek(file, @io.Start(0L))
+@io.Close::close(file)
 
-let source = @native.new_native_file_source(".tmp/native-out.bin")
-let chunk = source.read_chunk(2)
-source.close()
-```
+let listener = @native.NativeTcpListener::bind("127.0.0.1", 0)
+let port = listener.local_port()
+let mapped = @native.MappedBytes::open(".tmp/output.bin")
+let first = mapped.read_byte_at(0)
+ignore((port, first))
+@io.Close::close(mapped)
+@io.Close::close(listener)
+~~~
 
-The native backend is experimental and native-target only. It requires
-`--target native`, a working C toolchain, and explicit `close()`. It does not
-replace the stable pure MoonBit file convenience layer.
+Native resources are independent external objects with per-resource state,
+mutex protection, idempotent close, and finalizer fallback. POSIX uses
+open/read/write/lseek/mmap; Windows uses UTF-8 to UTF-16 file paths,
+Win32 mappings, and Winsock TCP. Mmap slices retain their owner; copy_range
+is the explicit copy boundary.
 
-### Experimental NativeByteView Zero-copy Research
+## Async
 
-```moonbit
-import {
-  "ZSeanYves/bufferutils/native" @native,
-}
+async_io defines AsyncRead, AsyncWrite, AsyncBufRead, AsyncSeek, and
+AsyncClose, then delegates event-loop work to moonbitlang/async@0.20.2.
+It includes AsyncBufReader, AsyncBufWriter, AsyncFile (independent offset),
+memory adapters, fs.File/socket.Tcp adapters, copy, and
+copy_bidirectional. Pending buffered writes remain recoverable on errors and
+cancellation.
 
-let view = @native.new_mmap_file_view(".tmp/native-view.bin")
-let first = view.read_byte_at(0)
-let prefix = view.copy_range(0, 8)
-let found = view.find_byte((42).to_byte())
-let count = view.count_byte((0).to_byte())
-let checksum = view.checksum_u64()
-let starts = view.starts_with([1, 2, 3])
-view.close()
-```
+## Verification and performance
 
-`NativeByteView` is an experimental native-only research handle for read-only
-mmap-backed access on Unix-like targets.
+~~~bash
+moon info && scripts/normalize_interfaces && moon fmt
+moon check --target all --deny-warn
+moon test --target all --deny-warn
+scripts/check_api_surface
+mkdir -p .tmp/bufferutils-bench
+moon run bench --target native --release > .tmp/bufferutils-bench/results.csv
+scripts/check_performance_budget
+~~~
 
-Its owner is a MoonBit-managed external object created through the documented
-MoonBit external-object FFI path. That improves owner lifetime management, but
-it still does not create a stable MoonBit `BytesView` bridge.
-
-Important boundaries:
-
-- `NativeByteView` is not MoonBit `BytesView`
-- this is not a stable zero-copy API
-- explicit `close()` is still recommended
-- the finalizer is a fallback, not a prompt-release guarantee
-- thread safety is not guaranteed
-- Windows mmap support is currently unsupported
-
-## Performance Overview
-
-BufferUtils includes a native benchmark runner for local regression tracking:
-
-```bash
-moon run src/bench --target native --release
-```
-
-The runner prints CSV-style rows:
-
-```text
-name,size,bytes,temp_file,mean_us,throughput_mib_per_s,runs
-```
-
-The current suite compares:
-
-- pure in-memory buffer operations
-- memory-backed streaming APIs
-- memory-backed file convenience APIs
-- experimental native file-handle APIs
-- experimental mmap-backed `NativeByteView` operations
-
-### Benchmark Methodology
-
-The current benchmark runner uses:
-
-- `1` warmup run per case and size
-- `5` measured runs per case and size
-- arithmetic mean for `mean_us`
-- `.tmp/bufferutils-bench/` for temporary benchmark files
-
-It is designed for repeatable local regression tracking, not for publishable
-performance claims.
-
-### Local Observations
-
-These are representative local observations from recent native-target runs on
-this repository, not portable throughput guarantees.
-
-| Case | 10MB local observation | Meaning |
-|---|---:|---|
-| `native_file_source_read_chunk_experimental` | ~2200-2600 MiB/s | Native chunked read, cache-sensitive |
-| `native_file_sink_write_flush_experimental` | ~175-190 MiB/s | Native write + flush path |
-| `native_buffered_reader_read_to_end_experimental` | ~205-215 MiB/s | Native buffered reader |
-| `native_buffered_writer_write_flush_experimental` | ~170-190 MiB/s | Native buffered writer |
-| `native_mmap_view_find_byte_experimental` | ~3200-3400 MiB/s | C-side mmap scan |
-| `native_mmap_view_count_byte_experimental` | ~10800-11900 MiB/s | C-side full scan/count |
-| `native_mmap_view_checksum_experimental` | ~920 MiB/s | C-side checksum |
-| `native_mmap_view_crc32_experimental` | ~150 MiB/s | C-side CRC32 |
-| `native_mmap_view_copy_range_explicit_copy` | ~2650-2860 MiB/s | Explicit copy into MoonBit array |
-| `native_mmap_view_copy_to_file_experimental` | ~3940-4040 MiB/s | Native-side transfer |
-| `native_mmap_view_slice_count_byte_experimental` | ~16500-16700 MiB/s | Slice-view C-side count |
-
-### Where the Performance Advantage Comes From
-
-The native zero-copy research path does not turn C memory into MoonBit
-`BytesView`.
-
-Its advantage is that large data can stay in mmap/native memory while C-side
-operations perform search, counting, equality checks, checksums, and file
-transfer. MoonBit receives small results such as `Int` or `Bool`, or
-explicitly requests a copy through `copy_range(...)`.
-
-### What the Numbers Do Not Mean
-
-These numbers are not performance guarantees. Native file and mmap benchmarks
-are strongly affected by page cache, filesystem cache, CPU, OS, compiler,
-MoonBit runtime version, and fixture setup.
-
-Do not read the benchmark as proof that BufferUtils provides:
-
-- stable zero-copy behavior
-- stable mmap throughput across machines
-- raw disk throughput measurement
-- benchmark-proven high performance guarantees
-
-## API Layers
-
-BufferUtils currently has four user-facing layers:
-
-1. Stable root API
-   - in-memory readers/writers
-   - conversion helpers
-   - split helpers
-   - memory-backed streaming
-   - memory-backed file convenience
-2. Experimental root `BytesView` inspection API
-   - non-consuming read-only slices over MoonBit-managed memory
-3. Experimental native file-handle API
-   - `NativeFileSource`, `NativeFileSink`, `NativeBufReader`, `NativeBufWriter`
-4. Experimental native zero-copy research API
-   - `NativeByteView` and `new_mmap_file_view(...)`
-
-The stable 1.x boundary is the root pure-MoonBit API. The experimental layers
-remain available, but they are not part of that stability promise.
-
-## Safety and Limitations
-
-- `FileSource` is still a memory-backed snapshot
-- `FileSink` is still a memory-backed accumulator plus flush-time overwrite
-- experimental reader/source `BytesView` APIs return `BytesView`, but BufferUtils does not guarantee runtime-level shared-storage behavior
-- native APIs require `--target native`, a C toolchain, and explicit `close()`
-- `NativeByteView` is native-only research API, not MoonBit `BytesView`
-- `NativeByteView` uses a MoonBit-managed external owner with finalizer fallback, but still has no deterministic automatic destructor contract
-- `NativeByteView` is currently verified on Unix-like native targets; Windows mmap support remains unsupported
-- the native shared-owner bookkeeping does not provide a thread-safety guarantee
-- BufferUtils does not claim stable zero-copy or stable mmap behavior
-- the stable root package does not provide async I/O
-
-## Documentation Map
-
-- [docs/API.md](./docs/API.md): API reference and stable/experimental layering
-- [docs/DESIGN.md](./docs/DESIGN.md): current architecture and design boundaries
-- [docs/BENCHMARK.md](./docs/BENCHMARK.md): benchmark guide, methodology, and caveats
-- [docs/VIEW_API.md](./docs/VIEW_API.md): experimental root `BytesView` inspection notes
-- [docs/NATIVE_BACKEND.md](./docs/NATIVE_BACKEND.md): experimental native file-handle backend overview
-- [docs/NATIVE_SAFETY.md](./docs/NATIVE_SAFETY.md): native lifecycle and safety notes
-- [docs/MMAP_FEASIBILITY.md](./docs/MMAP_FEASIBILITY.md): mmap feasibility and current status
-- [docs/ZERO_COPY_RESEARCH.md](./docs/ZERO_COPY_RESEARCH.md): `NativeByteView` research design notes
-- [docs/STREAMING_FEASIBILITY.md](./docs/STREAMING_FEASIBILITY.md): pure-MoonBit streaming feasibility background
-
-## Roadmap
-
-- keep the stable root pure-MoonBit API small and predictable
-- keep experimental `BytesView` APIs under observation before any stabilization decision
-- continue native backend hardening across more targets and CI environments
-- keep `NativeByteView` explicitly experimental until ownership, portability, and concurrency questions are better answered
-- continue reduced-copy and benchmark-regression tracking without overstating zero-copy claims
-
-## License
-
-Apache-2.0
+The benchmark uses 5 warmups and 30 samples and reports median, p95, min, max,
+throughput, and copied bytes. TLS, compression, full codecs, and UDP are
+deliberately outside the 1.0 denominator.

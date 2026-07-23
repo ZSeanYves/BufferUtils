@@ -1,5 +1,68 @@
 # Changelog
 
+## v1.0.0
+
+### Breaking
+- Removed the complete pre-1.0 root Buffer/Reader/Writer/source/sink API.
+- Removed snapshot file semantics and the global native integer-handle layer.
+- Renamed the immutable shared handle to SharedBytes because Bytes is a
+  MoonBit builtin; mutable storage is BytesMut.
+
+### Added
+- Added COW shared storage with O(1) freeze, split, and slice operations.
+- Added Read, Write, BufRead, Seek, Close, Cursor, Empty, Repeat, Take, Chain,
+  LineWriter, BufReader, and BufWriter with structured errors and recovery.
+- Added NativeFile, NativeTcpStream, NativeTcpListener, and MappedBytes backed
+  by independent external objects and platform mutexes.
+- Added BufferUtils-owned async traits, generic async buffering, independent
+  file offsets, seek-aware buffered wrappers, memory/file/TCP adapters, copy,
+  and bidirectional copy.
+- Added the parity matrix, API contracts, 10,000-operation model test,
+  three-platform CI, sanitizer jobs, and median/p95 raw-path performance gates.
+
+## v0.26.0
+
+### Added
+- Added the target-independent `buffer` package with shared immutable cursors,
+  growing mutable buffers, capacity checks, endian integers, and UTF-8 bounds.
+- Added `Read`, `Write`, `BufRead`, and `Close` contracts with generic
+  `BufReader[R]` and `BufWriter[W]`, vectored helpers, partial progress, and
+  structured errors.
+- Added real streaming native file adapters and a native-focused async package
+  built on `moonbitlang/async@0.20.2`.
+- Added failure-injection, interruption, EOF, recovery, cancellation, mmap
+  finalizer, and large-transfer bypass tests.
+
+### Changed
+- Replaced exact-length repeated growth in hot append paths with geometric
+  capacity growth, removing the native buffered reader's O(n^2) behavior.
+- Extended benchmark output with median, min, max, and median throughput.
+- Added shared mmap clone and common close semantics while preserving the
+  external-owner finalizer fallback.
+
+### Performance
+- On the recorded local 10 MiB benchmark, legacy native buffered reading moved
+  from about 265 ms / 37.7 MiB/s to a 1.70 ms median / 5882 MiB/s.
+- The new generic native path recorded a 4.45 ms median / 2246 MiB/s on the
+  same warm-cache environment.
+
+### Compatibility
+- The pre-0.26 root APIs remain available. Their file snapshot/accumulator
+  semantics are unchanged; new file code should use the native or async APIs.
+
+## v0.25.0
+
+### Changed
+- Migrated the module manifest from `moon.mod.json` to the current `moon.mod` format.
+- Upgraded `moonbitlang/x` from `0.4.38` to `0.4.46`.
+- Replaced deprecated `try?` usage in tests with current typed error handling.
+- Removed the deprecated-warning suppression and scoped the native test-only filesystem dependency to tests.
+- Updated installation documentation for the current manifest format.
+
+### Compatibility
+- Preserved the public package interfaces and runtime behavior.
+- Added `docs/MAINTENANCE_PLAN.md` for the intentionally breaking v2 design direction.
+
 ## v0.24.0
 
 ### Changed
@@ -28,7 +91,7 @@
 - Added `new_mmap_file_view(path)` plus native-only mmap tests and benchmark cases.
 - Added more C-side mmap research operations for counting, pattern search, equality checks, CRC32, and native-side file copy.
 - Added a shared-owner / ref-count model for `NativeByteView` slices, including research-only `slice_handle(...)` and owner-ref-count inspection.
-- Added `docs/ZERO_COPY_RESEARCH.md` for the zero-copy research branch findings.
+- Added zero-copy research documentation for the zero-copy research branch.
 
 ### Changed
 - Reframed mmap from documented-only feasibility into a native-only research prototype that still does not expose a stable MoonBit `BytesView` bridge.
@@ -66,7 +129,7 @@
 ## v0.21.0
 
 ### Added
-- Added `docs/MMAP_FEASIBILITY.md` for the experimental native mmap investigation.
+- Added mmap feasibility documentation for the experimental native mmap investigation.
 
 ### Changed
 - Clarified across README, native backend docs, safety notes, and benchmark notes that mmap remains under feasibility study.
@@ -111,7 +174,7 @@
 ## v0.17.0
 
 ### Added
-- Added an experimental native C backend package under `src/native`.
+- Added an experimental native C backend package under `native`.
 - Added a minimal native FFI probe via `native_backend_version()`.
 - Added experimental `NativeFileSource` and `NativeFileSink` for native-target file-handle streaming.
 - Added native-only tests for open/read/write/flush/close and native roundtrips.
@@ -203,7 +266,7 @@
 ## v0.11.0
 
 ### Added
-- Added an experimental benchmark baseline runner under `src/bench`.
+- Added an experimental benchmark baseline runner under `bench`.
 - Added `docs/BENCHMARK.md` with benchmark scope, run instructions, output format, and hotspot notes.
 - Added benchmark coverage for low-level buffers, memory streaming, and file convenience layers at `1KB`, `64KB`, `1MB`, and `10MB`.
 
