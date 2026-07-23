@@ -48,7 +48,22 @@ test "NativeFile fixed-array reads honor destination offsets" {
   assert_eq(destination[3], b'b')
   assert_eq(destination[4], b'c')
   assert_eq(destination[5], b'-')
+  assert_eq(@io.Read::read_fixed(reader, destination, 0, 0), 0)
+  let invalid = try {
+    ignore(@io.Read::read_fixed(reader, destination, -1, 1))
+    false
+  } catch {
+    error => error.kind() == @io.InvalidInput
+  }
+  assert_eq(invalid, true)
   @io.Close::close(reader)
+  let closed = try {
+    ignore(@io.Read::read_fixed(reader, destination, 0, 1))
+    false
+  } catch {
+    error => error.kind() == @io.Closed
+  }
+  assert_eq(closed, true)
 }
 
 ///|
@@ -121,9 +136,18 @@ test "NativeTcp v1 performs a loopback roundtrip and closes idempotently" {
   let server = listener.accept()
 
   @io.Write::write_all(client, [b'p', b'i', b'n', b'g'][:])
-  let request = Array::make(4, (0).to_byte())
-  @io.Read::read_exact(server, request.mut_view())
-  assert_eq(request, [b'p', b'i', b'n', b'g'])
+  @io.Write::flush(client)
+  let request = FixedArray::make(6, b'-')
+  assert_eq(@io.Read::read_fixed(server, request, 1, 4), 4)
+  assert_eq(request.unsafe_reinterpret_as_bytes(), b"-ping-")
+  assert_eq(@io.Read::read_fixed(server, request, 0, 0), 0)
+  let invalid_read = try {
+    ignore(@io.Read::read_fixed(server, request, -1, 1))
+    false
+  } catch {
+    error => error.kind() == @io.InvalidInput
+  }
+  assert_eq(invalid_read, true)
 
   @io.Write::write_all(server, [b'p', b'o', b'n', b'g'][:])
   let response = Array::make(4, (0).to_byte())
@@ -132,6 +156,13 @@ test "NativeTcp v1 performs a loopback roundtrip and closes idempotently" {
 
   @io.Close::close(client)
   @io.Close::close(client)
+  let closed_read = try {
+    ignore(@io.Read::read_fixed(client, request, 0, 1))
+    false
+  } catch {
+    error => error.kind() == @io.Closed
+  }
+  assert_eq(closed_read, true)
   @io.Close::close(server)
   @io.Close::close(listener)
   assert_eq(@io.Close::is_closed(client), true)
@@ -150,6 +181,13 @@ test "Native resources reject operations after close and wrong access mode" {
     error => error.kind() == @io.InvalidInput
   }
   assert_eq(read_wrong, true)
+  let fixed_read_wrong = try {
+    ignore(@io.Read::read_fixed(writer, FixedArray::make(1, b'\x00'), 0, 1))
+    false
+  } catch {
+    error => error.kind() == @io.InvalidInput
+  }
+  assert_eq(fixed_read_wrong, true)
   @io.Close::close(writer)
   let closed_write = try {
     ignore(@io.Write::write(writer, [b'x'][:]))

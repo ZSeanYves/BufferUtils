@@ -153,6 +153,21 @@ test "Read::read_exact handles ordinary short reads" {
 }
 
 ///|
+test "Read::read_fixed default path preserves offsets and validates ranges" {
+  let reader = MemoryReader::new(b"abc")
+  let destination = FixedArray::make(5, b'-')
+  assert_eq(Read::read_fixed(reader, destination, 1, 3), 3)
+  assert_eq(destination.unsafe_reinterpret_as_bytes(), b"-abc-")
+  let invalid = capture_io_result(() => {
+    Read::read_fixed(reader, destination, -1, 1)
+  })
+  match invalid {
+    Err(error) => assert_eq(error.kind(), InvalidInput)
+    Ok(_) => fail("expected InvalidInput")
+  }
+}
+
+///|
 test "Read::read_exact reports partial progress at EOF" {
   let reader = MemoryReader::new(b"abc", max_chunk=2)
   let dst = Array::make(5, (0).to_byte())
