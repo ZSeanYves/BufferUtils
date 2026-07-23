@@ -25,8 +25,9 @@ split/freeze rows must be zero. Results are local regression evidence, not
 portable throughput claims.
 
 CI runs three batches on `ubuntu-24.04`. For each batch,
-`scripts/check_performance_batches` first calculates the median ratio across
-all matching workloads and uses it to normalize shared-runner speed (never
-making a faster runner stricter than the raw baseline). It fails only when the
-same case still exceeds its normalized baseline median by 10% in at least two
-batches. The baseline metadata must match `moon version --all`.
+`scripts/check_performance_batches` first calculates the median ratio within
+each workload family (buffer, sync read/write, native read/write, and mmap) and
+uses it to normalize shared-runner speed (never making a faster runner stricter
+than the raw baseline). It fails only when the same case still exceeds its
+family-normalized baseline median by 10% in at least two batches. The baseline
+metadata must match `moon version --all`.

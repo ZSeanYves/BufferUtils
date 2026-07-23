@@ -18,9 +18,10 @@ cp .tmp/bufferutils-bench/toolchain.txt bench/baselines/ubuntu-x86_64.meta
 
 Run three batches of 50 samples for each 1 KiB, 64 KiB, 1 MiB, and 64 MiB
 case. Store both baseline files in the repository. Subsequent CI normalizes
-each batch by the median ratio across matching workloads to account for the
-speed class of the shared GitHub runner. It fails only after the same workload
-in two of three batches exceeds that normalized baseline by more than 10%.
-A uniform slowdown across the suite is diagnostic rather than an automatic
-failure; a dedicated runner is required for an absolute-time gate. Non-Ubuntu
-targets run structural, copy-count, and correctness gates only.
+each batch by the median ratio within each workload family to account for CPU,
+allocator, and filesystem differences between shared GitHub runners. It fails
+only after the same workload in two of three batches exceeds that normalized
+family baseline by more than 10%. A uniform family slowdown is diagnostic
+rather than an automatic failure; a dedicated runner is required for an
+absolute-time gate. Non-Ubuntu targets run structural, copy-count, and
+correctness gates only.

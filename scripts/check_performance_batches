@@ -11,6 +11,15 @@ for file in "$baseline" "$batch_one" "$batch_two" "$batch_three"; do
 done
 
 awk -F, -v batch_one="$batch_one" -v batch_two="$batch_two" -v batch_three="$batch_three" '
+function workload_group(name) {
+  if (name ~ /^buffer_/) return "buffer"
+  if (name ~ /^sync_.*read/) return "sync_read"
+  if (name ~ /^sync_/) return "sync_write"
+  if (name ~ /^native_file_read/) return "native_read"
+  if (name ~ /^native_file_write/) return "native_write"
+  if (name ~ /^native_mmap/) return "native_mmap"
+  return name
+}
 NR == FNR {
   if (FNR == 1) { for (i = 1; i <= NF; i++) col[$i] = i; next }
   key = $(col["name"]) SUBSEP $(col["size"])
@@ -19,12 +28,16 @@ NR == FNR {
 }
 FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
 {
-  key = $(col["name"]) SUBSEP $(col["size"])
+  name = $(col["name"])
+  key = name SUBSEP $(col["size"])
   batch = FILENAME
   value = $(col["median_us"])
   if (key in base) {
+    group = workload_group(name)
     measured[key, batch] = value
-    ratios[batch, ++ratio_count[batch]] = value / base[key]
+    measured_group[key, batch] = group
+    ratios[batch, group, ++ratio_count[batch, group]] = value / base[key]
+    group_seen[batch, group] = 1
   }
 }
 END {
@@ -33,15 +46,24 @@ END {
   batches[3] = batch_three
   for (batch_index = 1; batch_index <= 3; batch_index++) {
     batch = batches[batch_index]
-    count = ratio_count[batch]
-    if (count == 0) {
+    batch_count = 0
+    for (seen in group_seen) {
+      split(seen, seen_parts, SUBSEP)
+      if (seen_parts[1] == batch) batch_count++
+    }
+    if (batch_count == 0) {
       print "benchmark batch contains no baseline cases: " batch > "/dev/stderr"
       failed = 1
-      continue
     }
+  }
+  for (seen in group_seen) {
+    split(seen, seen_parts, SUBSEP)
+    batch = seen_parts[1]
+    group = seen_parts[2]
+    count = ratio_count[batch, group]
     delete sorted
     for (i = 1; i <= count; i++) {
-      current = ratios[batch, i]
+      current = ratios[batch, group, i]
       position = i - 1
       while (position >= 1 && sorted[position] > current) {
         sorted[position + 1] = sorted[position]
@@ -50,17 +72,18 @@ END {
       sorted[position + 1] = current
     }
     if (count % 2 == 1) {
-      scale[batch] = sorted[(count + 1) / 2]
+      scale[batch, group] = sorted[(count + 1) / 2]
     } else {
-      scale[batch] = (sorted[count / 2] + sorted[count / 2 + 1]) / 2
+      scale[batch, group] = (sorted[count / 2] + sorted[count / 2 + 1]) / 2
     }
-    if (scale[batch] < 1.0) scale[batch] = 1.0
+    if (scale[batch, group] < 1.0) scale[batch, group] = 1.0
   }
   for (entry in measured) {
     split(entry, parts, SUBSEP)
     key = parts[1] SUBSEP parts[2]
     batch = parts[3]
-    if (measured[entry] > base[key] * scale[batch] * 1.10) failures[key]++
+    group = measured_group[entry]
+    if (measured[entry] > base[key] * scale[batch, group] * 1.10) failures[key]++
   }
   for (key in failures) {
     if (failures[key] >= 2) {
