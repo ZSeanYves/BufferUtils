@@ -38,14 +38,18 @@ pub async fn copy_file(
   let buffer = FixedArray::make(buffer_size, (0).to_byte())
   let mut progress : CopyProgress = { bytes: 0, read_calls: 0, write_calls: 0 }
   while true {
-    let count = @runtime_io.Reader::read(source, buffer)
+    let count = @runtime_io.Reader::read(source, buffer) catch {
+      err => raise map_async_error("copy_file read", err)
+    }
     progress = { ..progress, read_calls: progress.read_calls + 1 }
     if count == 0 {
       break
     }
     let bytes = buffer.unsafe_reinterpret_as_bytes()
     @async.protect_from_cancel(() => {
-      @runtime_io.Writer::write(destination, bytes[0:count])
+      @runtime_io.Writer::write(destination, bytes[0:count]) catch {
+        err => raise map_async_error("copy_file write", err)
+      }
       progress = {
         bytes: progress.bytes + count,
         read_calls: progress.read_calls,
@@ -65,7 +69,9 @@ pub async fn copy_file(
 pub async fn read_file(path : StringView) -> Bytes {
   let source = @fs.open(path, mode=@fs.ReadOnly)
   defer source.close()
-  @runtime_io.Reader::read_all(source).binary()
+  @runtime_io.Reader::read_all(source).binary() catch {
+    err => raise map_async_error("read_file", err)
+  }
 }
 
 ///|
@@ -77,5 +83,7 @@ pub async fn write_file(path : StringView, data : BytesView) -> Unit {
     create_mode=@fs.CreateOrTruncate,
   )
   defer destination.close()
-  @runtime_io.Writer::write(destination, data)
+  @runtime_io.Writer::write(destination, data) catch {
+    err => raise map_async_error("write_file", err)
+  }
 }

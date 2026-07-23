@@ -42,7 +42,7 @@ pub fn[W] AsyncBufWriter::get_mut(self : AsyncBufWriter[W]) -> W {
 ///|
 pub fn[W] AsyncBufWriter::into_parts(
   self : AsyncBufWriter[W],
-) -> (W, @buffer.SharedBytes) {
+) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {
   (
     self.inner,
     @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),
@@ -106,6 +106,12 @@ pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W] with fn write(
 pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W] with fn flush(self) {
   self.flush_buffer()
   AsyncWrite::flush(self.inner)
+}
+
+///|
+pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W] with fn shutdown(self) {
+  self.flush_buffer()
+  AsyncWrite::shutdown(self.inner)
 }
 
 ///|

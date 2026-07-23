@@ -71,7 +71,7 @@ pub fn[W] BufWriter::capacity(Self[W]) -> Int
 pub fn[W : Write] BufWriter::finish(Self[W]) -> Result[W, BufWriterFinishError[W]]
 pub fn[W] BufWriter::get_mut(Self[W]) -> W
 pub fn[W] BufWriter::get_ref(Self[W]) -> W
-pub fn[W] BufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes)
+pub fn[W] BufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
 pub fn[W] BufWriter::new(W, capacity? : Int) -> Self[W] raise IoError
 pub fn[W] BufWriter::underlying_write_calls(Self[W]) -> Int
 pub impl[W : Write + Seek] Seek for BufWriter[W]

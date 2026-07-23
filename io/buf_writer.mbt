@@ -210,7 +210,7 @@ pub impl[W : Write + Seek] Seek for BufWriter[W] with fn stream_position(self) {
 /// This method performs no I/O and therefore cannot lose recovery state.
 pub fn[W] BufWriter::into_parts(
   self : BufWriter[W],
-) -> (W, @buffer.SharedBytes) {
+) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {
   (
     self.inner,
     @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),

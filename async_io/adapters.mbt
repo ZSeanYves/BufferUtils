@@ -5,17 +5,23 @@ pub impl AsyncRead for @fs.File with fn read(
   offset? = 0,
   max_len? = destination.length() - offset,
 ) {
-  @runtime_io.Reader::read(self, destination, offset~, max_len~)
+  @runtime_io.Reader::read(self, destination, offset~, max_len~) catch {
+    err => raise map_async_error("async file read", err)
+  }
 }
 
 ///|
 pub impl AsyncWrite for @fs.File with fn write(self, source, offset~, len~) {
-  @runtime_io.Writer::write_once(self, source, offset~, len~)
+  @runtime_io.Writer::write_once(self, source, offset~, len~) catch {
+    err => raise map_async_error("async file write", err)
+  }
 }
 
 ///|
 pub impl AsyncWrite for @fs.File with fn flush(self) {
-  self.sync()
+  self.sync() catch {
+    err => raise map_async_error("async file flush", err)
+  }
 }
 
 ///|
@@ -25,17 +31,34 @@ pub impl AsyncRead for @socket.Tcp with fn read(
   offset? = 0,
   max_len? = destination.length() - offset,
 ) {
-  @runtime_io.Reader::read(self, destination, offset~, max_len~)
+  @runtime_io.Reader::read(self, destination, offset~, max_len~) catch {
+    err => raise map_async_error("async tcp read", err)
+  }
 }
 
 ///|
 pub impl AsyncWrite for @socket.Tcp with fn write(self, source, offset~, len~) {
-  @runtime_io.Writer::write_once(self, source, offset~, len~)
+  @runtime_io.Writer::write_once(self, source, offset~, len~) catch {
+    err => raise map_async_error("async tcp write", err)
+  }
 }
 
 ///|
 pub impl AsyncWrite for @socket.Tcp with fn flush(_self) {
   ()
+}
+
+///|
+pub impl AsyncWrite for @socket.Tcp with fn shutdown(self) {
+  let status = async_tcp_shutdown_ffi(self.fd(), 1)
+  if status != 0 {
+    raise @syncio.io_error(
+      @syncio.Backend,
+      "async tcp shutdown",
+      raw_code=status,
+      message="runtime TCP write-half shutdown failed",
+    )
+  }
 }
 
 ///|
@@ -75,7 +98,9 @@ pub impl AsyncRead for AsyncFile with fn read(
     position=self.position,
     offset~,
     len=max_len,
-  )
+  ) catch {
+    err => raise map_async_error("async file read_at", err)
+  }
   self.position += count.to_int64()
   count
 }
@@ -85,14 +110,18 @@ pub impl AsyncWrite for AsyncFile with fn write(self, source, offset~, len~) {
   if self.closed {
     raise @syncio.io_error(@syncio.Closed, "async file write")
   }
-  self.file.write_at(source[offset:offset + len], position=self.position)
+  self.file.write_at(source[offset:offset + len], position=self.position) catch {
+    err => raise map_async_error("async file write_at", err)
+  }
   self.position += len.to_int64()
   len
 }
 
 ///|
 pub impl AsyncWrite for AsyncFile with fn flush(self) {
-  self.file.sync()
+  self.file.sync() catch {
+    err => raise map_async_error("async file flush", err)
+  }
 }
 
 ///|
@@ -103,7 +132,12 @@ pub impl AsyncSeek for AsyncFile with fn seek(self, from) {
   let target = match from {
     Start(offset) => offset
     Current(offset) => self.position + offset
-    End(offset) => self.file.size() + offset
+    End(offset) => {
+      let size = self.file.size() catch {
+        err => raise map_async_error("async file size", err)
+      }
+      size + offset
+    }
   }
   if target < 0L {
     raise @syncio.io_error(@syncio.InvalidInput, "async file seek")
@@ -155,7 +189,9 @@ pub impl AsyncRead for AsyncTcpStream with fn read(
   if self.closed {
     raise @syncio.io_error(@syncio.Closed, "async tcp read")
   }
-  @runtime_io.Reader::read(self.stream, destination, offset~, max_len~)
+  @runtime_io.Reader::read(self.stream, destination, offset~, max_len~) catch {
+    err => raise map_async_error("async tcp read", err)
+  }
 }
 
 ///|
@@ -168,12 +204,30 @@ pub impl AsyncWrite for AsyncTcpStream with fn write(
   if self.closed {
     raise @syncio.io_error(@syncio.Closed, "async tcp write")
   }
-  @runtime_io.Writer::write_once(self.stream, source, offset~, len~)
+  @runtime_io.Writer::write_once(self.stream, source, offset~, len~) catch {
+    err => raise map_async_error("async tcp write", err)
+  }
 }
 
 ///|
 pub impl AsyncWrite for AsyncTcpStream with fn flush(_self) {
   ()
+}
+
+///|
+pub impl AsyncWrite for AsyncTcpStream with fn shutdown(self) {
+  if self.closed {
+    raise @syncio.io_error(@syncio.Closed, "async tcp shutdown")
+  }
+  let status = async_tcp_shutdown_ffi(self.stream.fd(), 1)
+  if status != 0 {
+    raise @syncio.io_error(
+      @syncio.Backend,
+      "async tcp shutdown",
+      raw_code=status,
+      message="runtime TCP write-half shutdown failed",
+    )
+  }
 }
 
 ///|

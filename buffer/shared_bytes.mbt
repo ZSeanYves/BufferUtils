@@ -39,7 +39,12 @@ pub fn SharedBytes::from_fixed_array(
   data : FixedArray[Byte],
   start : Int,
   end : Int,
-) -> SharedBytes {
+) -> SharedBytes raise BufferError {
+  if start < 0 || end < start || end > data.length() {
+    raise BufferError::InvalidRange(
+      "fixed-array range is outside the backing storage",
+    )
+  }
   { storage: { data, immutable: true, copied_bytes: 0 }, start, end }
 }
 

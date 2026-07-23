@@ -169,6 +169,30 @@ test "SharedBytes basic helpers and bounds errors are stable" {
 }
 
 ///|
+test "SharedBytes fixed-array adoption validates the complete range" {
+  let backing = FixedArray::make(4, b'x')
+  let adopted = SharedBytes::from_fixed_array(backing, 1, 3)
+  assert_eq(adopted.to_bytes(), b"xx")
+  assert_eq(
+    capture_buffer_result(() => SharedBytes::from_fixed_array(backing, -1, 2))
+    is Err(InvalidRange(_)),
+    true,
+  )
+  assert_eq(
+    capture_buffer_result(() => SharedBytes::from_fixed_array(backing, 3, 2))
+    is Err(InvalidRange(_)),
+    true,
+  )
+  assert_eq(
+    capture_buffer_result(() => SharedBytes::from_fixed_array(backing, 0, 5))
+    is Err(InvalidRange(_)),
+    true,
+  )
+  let empty = SharedBytes::from_fixed_array(backing, 2, 2)
+  assert_eq(empty.is_empty(), true)
+}
+
+///|
 test "BytesMut management and split_off preserve contents" {
   assert_eq(
     capture_buffer_result(() => BytesMut::new(capacity=-1))

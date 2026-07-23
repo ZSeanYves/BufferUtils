@@ -4,6 +4,7 @@ import {
   "moonbitlang/async",
   "moonbitlang/async/fs",
   "moonbitlang/async/io" @runtime_io,
+  "moonbitlang/async/os_error",
   "moonbitlang/async/socket",
   "moonbitlang/core/debug",
 }
@@ -18,4 +19,5 @@ options(
   "is-main": false,
   "preferred-target": "native",
   "max-concurrent-tests": 1,
+  "native-stub": [ "native.c" ],
 )

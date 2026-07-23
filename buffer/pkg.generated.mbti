@@ -78,7 +78,7 @@ pub fn SharedBytes::clone(Self) -> Self
 pub fn SharedBytes::copied_bytes(Self) -> Int
 pub fn SharedBytes::copy_to(Self, MutArrayView[Byte]) -> Int
 pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
-pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self
+pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
 pub fn SharedBytes::get_f32_be(Self) -> Float raise BufferError
 pub fn SharedBytes::get_f32_le(Self) -> Float raise BufferError
 pub fn SharedBytes::get_f64_be(Self) -> Double raise BufferError

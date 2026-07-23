@@ -188,6 +188,37 @@ impl AsyncWrite for TestDuplex with fn flush(_self) {
 }
 
 ///|
+struct ShutdownProbe {
+  events : Array[String]
+}
+
+///|
+impl AsyncWrite for ShutdownProbe with fn write(self, _source, offset~, len~) {
+  ignore(offset)
+  self.events.push("write")
+  len
+}
+
+///|
+impl AsyncWrite for ShutdownProbe with fn flush(self) {
+  self.events.push("flush")
+}
+
+///|
+impl AsyncWrite for ShutdownProbe with fn shutdown(self) {
+  self.events.push("shutdown")
+}
+
+///|
+async test "buffered shutdown flushes pending bytes before the inner shutdown" {
+  let probe : ShutdownProbe = { events: [] }
+  let writer = AsyncBufWriter::new(probe, capacity=8)
+  ignore(AsyncWrite::write(writer, b"ok", offset=0, len=2))
+  AsyncWrite::shutdown(writer)
+  assert_eq(writer.get_ref().events, ["write", "shutdown"])
+}
+
+///|
 async test "copy and copy_bidirectional report committed bytes" {
   let source = AsyncMemoryReader::new(b"copy"[:])
   let destination = AsyncMemoryWriter::new()

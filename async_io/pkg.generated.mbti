@@ -53,7 +53,7 @@ pub struct AsyncBufWriter[W] {
 pub async fn[W : AsyncWrite] AsyncBufWriter::finish(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_mut(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_ref(Self[W]) -> W
-pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes)
+pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
 pub fn[W] AsyncBufWriter::new(W, capacity? : Int) -> Self[W] raise @io.IoError
 pub fn[W] AsyncBufWriter::pending_len(Self[W]) -> Int
 pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]

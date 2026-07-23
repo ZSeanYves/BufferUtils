@@ -77,8 +77,8 @@ pub(open) trait AsyncWrite {
 }
 
 ///|
-impl AsyncWrite with fn shutdown(_self) {
-  ()
+impl AsyncWrite with fn shutdown(self) {
+  AsyncWrite::flush(self)
 }
 
 ///|
