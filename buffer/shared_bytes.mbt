@@ -5,8 +5,7 @@
 /// exposed through `SharedBytes` or split into siblings, a later mutable operation
 /// detaches before writing.
 struct SharedStorage {
-  data : Array[Byte]
-  mut capacity : Int
+  data : FixedArray[Byte]
   mut immutable : Bool
   mut copied_bytes : Int
 }
@@ -24,14 +23,24 @@ pub struct SharedBytes {
 pub fn SharedBytes::from_array(data : ArrayView[Byte]) -> SharedBytes {
   {
     storage: {
-      data: data.to_owned(),
-      capacity: data.length(),
+      data: FixedArray::from_array(data),
       immutable: true,
       copied_bytes: 0,
     },
     start: 0,
     end: data.length(),
   }
+}
+
+///|
+/// Adopt a fixed-array range without copying. The caller must not mutate the
+/// fixed array after handing it to `SharedBytes`.
+pub fn SharedBytes::from_fixed_array(
+  data : FixedArray[Byte],
+  start : Int,
+  end : Int,
+) -> SharedBytes {
+  { storage: { data, immutable: true, copied_bytes: 0 }, start, end }
 }
 
 ///|
@@ -60,7 +69,16 @@ pub fn SharedBytes::is_empty(self : SharedBytes) -> Bool {
 ///|
 /// Return a read-only view over the current range without copying.
 pub fn SharedBytes::view(self : SharedBytes) -> ArrayView[Byte] {
-  self.storage.data[self.start:self.end]
+  self.storage.data.view(start=self.start, end=self.end)
+}
+
+///|
+/// Return a zero-copy Core Bytes view over the current shared range.
+///
+/// The backing storage is immutable for as long as this handle is reachable;
+/// mutable siblings detach through copy-on-write before modifying it.
+pub fn SharedBytes::as_bytes_view(self : SharedBytes) -> BytesView {
+  self.storage.data.unsafe_reinterpret_as_bytes()[self.start:self.end]
 }
 
 ///|
@@ -139,6 +157,12 @@ pub fn SharedBytes::to_array(self : SharedBytes) -> Array[Byte] {
 }
 
 ///|
+/// Materialize the current range as an owned Core Bytes value.
+pub fn SharedBytes::to_bytes(self : SharedBytes) -> Bytes {
+  self.as_bytes_view().to_owned()
+}
+
+///|
 /// Read one byte.
 pub fn SharedBytes::get_u8(self : SharedBytes) -> Byte raise BufferError {
   if self.is_empty() {
@@ -147,6 +171,16 @@ pub fn SharedBytes::get_u8(self : SharedBytes) -> Byte raise BufferError {
   let result = self.storage.data[self.start]
   self.start += 1
   result
+}
+
+///|
+pub fn SharedBytes::get_i8(self : SharedBytes) -> Int raise BufferError {
+  let value = self.get_u8().to_int()
+  if value < 128 {
+    value
+  } else {
+    value - 256
+  }
 }
 
 ///|
@@ -206,6 +240,56 @@ pub fn SharedBytes::get_u64_le(self : SharedBytes) -> UInt64 raise BufferError {
 }
 
 ///|
+pub fn SharedBytes::get_i16_be(self : SharedBytes) -> Int16 raise BufferError {
+  Int16::reinterpret_from_uint16(self.get_u16_be())
+}
+
+///|
+pub fn SharedBytes::get_i16_le(self : SharedBytes) -> Int16 raise BufferError {
+  Int16::reinterpret_from_uint16(self.get_u16_le())
+}
+
+///|
+pub fn SharedBytes::get_i32_be(self : SharedBytes) -> Int raise BufferError {
+  self.get_u32_be().reinterpret_as_int()
+}
+
+///|
+pub fn SharedBytes::get_i32_le(self : SharedBytes) -> Int raise BufferError {
+  self.get_u32_le().reinterpret_as_int()
+}
+
+///|
+pub fn SharedBytes::get_i64_be(self : SharedBytes) -> Int64 raise BufferError {
+  self.get_u64_be().reinterpret_as_int64()
+}
+
+///|
+pub fn SharedBytes::get_i64_le(self : SharedBytes) -> Int64 raise BufferError {
+  self.get_u64_le().reinterpret_as_int64()
+}
+
+///|
+pub fn SharedBytes::get_f32_be(self : SharedBytes) -> Float raise BufferError {
+  Float::reinterpret_from_uint(self.get_u32_be())
+}
+
+///|
+pub fn SharedBytes::get_f32_le(self : SharedBytes) -> Float raise BufferError {
+  Float::reinterpret_from_uint(self.get_u32_le())
+}
+
+///|
+pub fn SharedBytes::get_f64_be(self : SharedBytes) -> Double raise BufferError {
+  self.get_u64_be().reinterpret_as_double()
+}
+
+///|
+pub fn SharedBytes::get_f64_le(self : SharedBytes) -> Double raise BufferError {
+  self.get_u64_le().reinterpret_as_double()
+}
+
+///|
 pub fn SharedBytes::get_utf8(
   self : SharedBytes,
   count : Int,
@@ -213,7 +297,7 @@ pub fn SharedBytes::get_utf8(
   if count < 0 || count > self.remaining() {
     raise BufferError::Underflow(count, self.remaining())
   }
-  let view = self.storage.data[self.start:self.start + count]
+  let view = self.storage.data.view(start=self.start, end=self.start + count)
   let core_bytes = FixedArray::from_array(view).unsafe_reinterpret_as_bytes()
   let decoded = @utf8.decode(core_bytes[:]) catch {
     _ => raise BufferError::InvalidUtf8

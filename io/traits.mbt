@@ -1,17 +1,116 @@
 ///|
+/// A validated immutable byte range used by vectored writes.
+pub struct IoSlice {
+  data : Bytes
+  offset : Int
+  length : Int
+}
+
+///|
+pub fn IoSlice::new(
+  data : Bytes,
+  offset : Int,
+  length : Int,
+) -> IoSlice raise IoError {
+  if offset < 0 || length < 0 || offset > data.length() - length {
+    raise io_error(
+      InvalidInput,
+      "IoSlice::new",
+      message="source range is invalid",
+    )
+  }
+  { data, offset, length }
+}
+
+///|
+pub fn IoSlice::data(self : IoSlice) -> Bytes {
+  self.data
+}
+
+///|
+pub fn IoSlice::offset(self : IoSlice) -> Int {
+  self.offset
+}
+
+///|
+pub fn IoSlice::len(self : IoSlice) -> Int {
+  self.length
+}
+
+///|
+pub fn IoSlice::is_empty(self : IoSlice) -> Bool {
+  self.length == 0
+}
+
+///|
+/// A validated mutable fixed-array range used by vectored reads.
+pub struct IoSliceMut {
+  data : FixedArray[Byte]
+  offset : Int
+  length : Int
+}
+
+///|
+pub fn IoSliceMut::new(
+  data : FixedArray[Byte],
+  offset : Int,
+  length : Int,
+) -> IoSliceMut raise IoError {
+  if offset < 0 || length < 0 || offset > data.length() - length {
+    raise io_error(
+      InvalidInput,
+      "IoSliceMut::new",
+      message="destination range is invalid",
+    )
+  }
+  { data, offset, length }
+}
+
+///|
+pub fn IoSliceMut::data(self : IoSliceMut) -> FixedArray[Byte] {
+  self.data
+}
+
+///|
+pub fn IoSliceMut::offset(self : IoSliceMut) -> Int {
+  self.offset
+}
+
+///|
+pub fn IoSliceMut::len(self : IoSliceMut) -> Int {
+  self.length
+}
+
+///|
+pub fn IoSliceMut::is_empty(self : IoSliceMut) -> Bool {
+  self.length == 0
+}
+
+///|
 /// A fallible source that reads into caller-owned storage.
 pub(open) trait Read {
-  fn read(Self, MutArrayView[Byte]) -> Int raise IoError
-  /// Read directly into a caller-owned fixed array. Implementations backed by
-  /// native handles can override this to avoid an intermediate array copy.
+  /// Read into a caller-owned fixed array range without an intermediate copy.
+  fn read(Self, FixedArray[Byte], Int, Int) -> Int raise IoError
+  /// Explicit copying adapter for ordinary mutable arrays.
+  fn read_array(Self, MutArrayView[Byte]) -> Int raise IoError = _
   fn read_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise IoError = _
-  fn read_vectored(Self, ArrayView[MutArrayView[Byte]]) -> Int raise IoError = _
+  fn read_vectored(Self, ArrayView[IoSliceMut]) -> Int raise IoError = _
   fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
   fn is_read_vectored(Self) -> Bool = _
 }
 
 ///|
 /// The default fixed-array path preserves the slice-based `Read` contract.
+impl Read with fn read_array(self, destination) {
+  let fixed = FixedArray::make(destination.length(), (0).to_byte())
+  let count = Read::read(self, fixed, 0, destination.length())
+  for i in 0..<count {
+    destination[i] = fixed[i]
+  }
+  count
+}
+
+///|
 impl Read with fn read_fixed(self, destination, offset, length) {
   if offset < 0 || length < 0 || offset > destination.length() - length {
     raise io_error(
@@ -20,15 +119,15 @@ impl Read with fn read_fixed(self, destination, offset, length) {
       message="destination range is invalid",
     )
   }
-  Read::read(self, destination.mut_view(start=offset, end=offset + length))
+  Read::read(self, destination, offset, length)
 }
 
 ///|
 /// Default vectored read behavior uses the first non-empty destination.
 impl Read with fn read_vectored(self, destinations) {
-  for destination in destinations {
-    if !destination.is_empty() {
-      return Read::read(self, destination)
+  for item in destinations {
+    if !item.is_empty() {
+      return Read::read(self, item.data(), item.offset(), item.len())
     }
   }
   0
@@ -44,7 +143,7 @@ impl Read with fn is_read_vectored(_self) {
 impl Read with fn read_exact(self, dst) {
   let mut completed = 0
   while completed < dst.length() {
-    let count = Read::read(self, dst.mut_view(start=completed)) catch {
+    let count = Read::read_array(self, dst.mut_view(start=completed)) catch {
       error if error.kind() == Interrupted => {
         let progress = error.progress()
         validate_progress("read", progress, dst.length() - completed)
@@ -76,8 +175,11 @@ impl Read with fn read_exact(self, dst) {
 ///|
 /// A fallible destination that may accept only part of an input view.
 pub(open) trait Write {
-  fn write(Self, ArrayView[Byte]) -> Int raise IoError
-  fn write_vectored(Self, ArrayView[ArrayView[Byte]]) -> Int raise IoError = _
+  /// Write a range of immutable Core Bytes without copying.
+  fn write(Self, Bytes, Int, Int) -> Int raise IoError
+  /// Explicit copying adapter for ordinary arrays.
+  fn write_array(Self, ArrayView[Byte]) -> Int raise IoError = _
+  fn write_vectored(Self, ArrayView[IoSlice]) -> Int raise IoError = _
   fn flush(Self) -> Unit raise IoError
   fn write_all(Self, ArrayView[Byte]) -> Unit raise IoError = _
   fn is_write_vectored(Self) -> Bool = _
@@ -86,12 +188,19 @@ pub(open) trait Write {
 ///|
 /// Default vectored write behavior uses the first non-empty source.
 impl Write with fn write_vectored(self, sources) {
-  for source in sources {
-    if !source.is_empty() {
-      return Write::write(self, source)
+  for item in sources {
+    if !item.is_empty() {
+      return Write::write(self, item.data(), item.offset(), item.len())
     }
   }
   0
+}
+
+///|
+impl Write with fn write_array(self, source) {
+  let fixed = FixedArray::from_array(source)
+  let bytes = fixed.unsafe_reinterpret_as_bytes()
+  Write::write(self, bytes, 0, source.length())
 }
 
 ///|
@@ -111,7 +220,7 @@ pub(open) trait Close {
 impl Write with fn write_all(self, src) {
   let mut completed = 0
   while completed < src.length() {
-    let count = Write::write(self, src[completed:]) catch {
+    let count = Write::write_array(self, src[completed:]) catch {
       error if error.kind() == Interrupted => {
         let progress = error.progress()
         validate_progress("write", progress, src.length() - completed)
@@ -156,6 +265,37 @@ pub fn[R : Read] read_exact_vectored(
 }
 
 ///|
+/// Fill a fixed-array range, preserving the zero-copy native destination.
+pub fn[R : Read] read_exact_fixed(
+  reader : R,
+  destination : FixedArray[Byte],
+  offset : Int,
+  length : Int,
+) -> Unit raise IoError {
+  if offset < 0 || length < 0 || offset > destination.length() - length {
+    raise io_error(
+      InvalidInput,
+      "read_exact_fixed",
+      message="destination range is invalid",
+    )
+  }
+  let mut completed = 0
+  while completed < length {
+    let count = Read::read(
+      reader,
+      destination,
+      offset + completed,
+      length - completed,
+    )
+    validate_progress("read_exact_fixed", count, length - completed)
+    if count == 0 {
+      raise io_error(UnexpectedEof, "read_exact_fixed", progress=completed)
+    }
+    completed += count
+  }
+}
+
+///|
 /// Write every source in order, preserving cumulative partial progress.
 pub fn[W : Write] write_all_vectored(
   writer : W,
@@ -171,11 +311,43 @@ pub fn[W : Write] write_all_vectored(
 }
 
 ///|
+/// Write a Core Bytes range, retrying short writes without copying.
+pub fn[W : Write] write_all_bytes(
+  writer : W,
+  source : Bytes,
+  offset? : Int = 0,
+  len? : Int = source.length() - offset,
+) -> Unit raise IoError {
+  if offset < 0 || len < 0 || offset > source.length() - len {
+    raise io_error(
+      InvalidInput,
+      "write_all_bytes",
+      message="source range is invalid",
+    )
+  }
+  let mut completed = 0
+  while completed < len {
+    let count = Write::write(
+      writer,
+      source,
+      offset + completed,
+      len - completed,
+    )
+    validate_progress("write_all_bytes", count, len - completed)
+    if count == 0 {
+      raise io_error(WriteZero, "write_all_bytes", progress=completed)
+    }
+    completed += count
+  }
+}
+
+///|
 /// A reader that exposes its current buffer for allocation-free parsing.
 pub(open) trait BufRead: Read {
   fn fill_buf(Self) -> ArrayView[Byte] raise IoError
   fn consume(Self, Int) -> Unit raise IoError
   fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
+  fn skip_until(Self, Byte) -> Int raise IoError = _
   fn read_line(Self, StringBuilder) -> Int raise IoError = _
 }
 
@@ -265,6 +437,12 @@ impl BufRead with fn read_until(self, delimiter, dst) {
 }
 
 ///|
+impl BufRead with fn skip_until(self, delimiter) {
+  let scratch : Array[Byte] = []
+  BufRead::read_until(self, delimiter, scratch)
+}
+
+///|
 /// Read a UTF-8 line, including the newline when present.
 impl BufRead with fn read_line(self, dst) {
   let bytes : Array[Byte] = []
@@ -284,16 +462,16 @@ pub fn[R : Read] read_to_end(
   dst : Array[Byte],
 ) -> Int raise IoError {
   let initial = dst.length()
-  let scratch = Array::make(8192, (0).to_byte())
+  let scratch = FixedArray::make(8192, (0).to_byte())
   while true {
-    let count = Read::read(reader, scratch.mut_view()) catch {
+    let count = Read::read(reader, scratch, 0, scratch.length()) catch {
       error => raise error.add_progress(dst.length() - initial)
     }
     validate_progress("read", count, scratch.length())
     if count == 0 {
       break
     }
-    append_bytes(dst, scratch[0:count])
+    append_bytes(dst, scratch.view(end=count))
   }
   dst.length() - initial
 }

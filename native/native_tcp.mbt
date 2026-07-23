@@ -33,12 +33,14 @@ pub fn NativeTcpStream::connect(
 }
 
 ///|
-pub impl @io.Read for NativeTcpStream with fn read(self, dst) {
-  if dst.is_empty() {
+pub impl @io.Read for NativeTcpStream with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise @io.io_error(@io.InvalidInput, "tcp read", path=self.host)
+  }
+  if length == 0 {
     return 0
   }
-  let scratch = FixedArray::make(dst.length(), (0).to_byte())
-  let count = native_tcp_read_ffi(self.handle, scratch, 0, scratch.length())
+  let count = native_tcp_read_ffi(self.handle, dst, offset, length)
   if count < 0 {
     raise native_error(
       "tcp read",
@@ -46,9 +48,6 @@ pub impl @io.Read for NativeTcpStream with fn read(self, dst) {
       -count,
       raw_code=native_tcp_os_error_ffi(self.handle),
     )
-  }
-  for i in 0..<count {
-    dst[i] = scratch[i]
   }
   count
 }
@@ -80,12 +79,14 @@ pub impl @io.Read for NativeTcpStream with fn read_fixed(
 }
 
 ///|
-pub impl @io.Write for NativeTcpStream with fn write(self, src) {
-  if src.is_empty() {
+pub impl @io.Write for NativeTcpStream with fn write(self, src, offset, length) {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise @io.io_error(@io.InvalidInput, "tcp write", path=self.host)
+  }
+  if length == 0 {
     return 0
   }
-  let bytes = Bytes::from_array(src)
-  let count = native_tcp_write_ffi(self.handle, bytes, bytes.length())
+  let count = native_tcp_write_ffi(self.handle, src, offset, length)
   if count < 0 {
     raise native_error(
       "tcp write",
@@ -100,6 +101,73 @@ pub impl @io.Write for NativeTcpStream with fn write(self, src) {
 ///|
 pub impl @io.Write for NativeTcpStream with fn flush(_self) {
   ()
+}
+
+///|
+pub fn NativeTcpStream::shutdown_read(
+  self : NativeTcpStream,
+) -> Unit raise @io.IoError {
+  let status = native_tcp_shutdown_ffi(self.handle, 0)
+  if status != 0 {
+    raise native_error("tcp shutdown_read", self.host, status)
+  }
+}
+
+///|
+pub fn NativeTcpStream::shutdown_write(
+  self : NativeTcpStream,
+) -> Unit raise @io.IoError {
+  let status = native_tcp_shutdown_ffi(self.handle, 1)
+  if status != 0 {
+    raise native_error("tcp shutdown_write", self.host, status)
+  }
+}
+
+///|
+pub fn NativeTcpStream::shutdown_both(
+  self : NativeTcpStream,
+) -> Unit raise @io.IoError {
+  let status = native_tcp_shutdown_ffi(self.handle, 2)
+  if status != 0 {
+    raise native_error("tcp shutdown_both", self.host, status)
+  }
+}
+
+///|
+pub fn NativeTcpStream::set_timeouts(
+  self : NativeTcpStream,
+  read_ms : Int,
+  write_ms : Int,
+) -> Unit raise @io.IoError {
+  if read_ms < 0 || write_ms < 0 {
+    raise @io.io_error(@io.InvalidInput, "tcp timeout", path=self.host)
+  }
+  let status = native_tcp_timeout_ffi(self.handle, read_ms, write_ms)
+  if status != 0 {
+    raise native_error("tcp timeout", self.host, status)
+  }
+}
+
+///|
+pub fn NativeTcpStream::local_port(
+  self : NativeTcpStream,
+) -> Int raise @io.IoError {
+  let port = native_tcp_local_port_ffi(self.handle)
+  if port < 0 {
+    raise native_error("tcp local_port", self.host, -port)
+  }
+  port
+}
+
+///|
+pub fn NativeTcpStream::peer_port(
+  self : NativeTcpStream,
+) -> Int raise @io.IoError {
+  let port = native_tcp_peer_port_ffi(self.handle)
+  if port < 0 {
+    raise native_error("tcp peer_port", self.host, -port)
+  }
+  port
 }
 
 ///|

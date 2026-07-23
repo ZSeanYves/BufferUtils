@@ -72,7 +72,13 @@ impl AsyncRead with fn read_to_end(self) {
 pub(open) trait AsyncWrite {
   async fn write(Self, Bytes, offset~ : Int, len~ : Int) -> Int
   async fn flush(Self) -> Unit
+  async fn shutdown(Self) -> Unit = _
   async fn write_all(Self, Bytes, offset? : Int, len? : Int) -> Unit = _
+}
+
+///|
+impl AsyncWrite with fn shutdown(_self) {
+  ()
 }
 
 ///|
@@ -103,7 +109,9 @@ impl AsyncWrite with fn write_all(
 
 ///|
 pub(open) trait AsyncBufRead: AsyncRead {
-  async fn fill_buf(Self) -> Bytes
+  /// The returned view borrows the reader's internal fixed buffer and is
+  /// invalidated by the next reader operation.
+  async fn fill_buf(Self) -> ArrayView[Byte]
   fn consume(Self, Int) -> Unit raise @syncio.IoError
   async fn read_until(Self, Byte) -> Bytes = _
 }

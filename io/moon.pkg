@@ -1,4 +1,5 @@
 import {
+  "ZSeanYves/bufferutils/buffer",
   "moonbitlang/core/debug",
   "moonbitlang/core/encoding/utf8",
 }

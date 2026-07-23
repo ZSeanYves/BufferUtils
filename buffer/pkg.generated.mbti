@@ -32,6 +32,17 @@ pub fn BytesMut::len(Self) -> Int
 pub fn BytesMut::new(capacity? : Int, max_capacity? : Int) -> Self raise BufferError
 pub fn BytesMut::put_byte(Self, Byte) -> Unit raise BufferError
 pub fn BytesMut::put_bytes(Self, SharedBytes) -> Unit raise BufferError
+pub fn BytesMut::put_f32_be(Self, Float) -> Unit raise BufferError
+pub fn BytesMut::put_f32_le(Self, Float) -> Unit raise BufferError
+pub fn BytesMut::put_f64_be(Self, Double) -> Unit raise BufferError
+pub fn BytesMut::put_f64_le(Self, Double) -> Unit raise BufferError
+pub fn BytesMut::put_i16_be(Self, Int16) -> Unit raise BufferError
+pub fn BytesMut::put_i16_le(Self, Int16) -> Unit raise BufferError
+pub fn BytesMut::put_i32_be(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::put_i32_le(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::put_i64_be(Self, Int64) -> Unit raise BufferError
+pub fn BytesMut::put_i64_le(Self, Int64) -> Unit raise BufferError
+pub fn BytesMut::put_i8(Self, Int) -> Unit raise BufferError
 pub fn BytesMut::put_slice(Self, ArrayView[Byte]) -> Unit raise BufferError
 pub fn BytesMut::put_u16_be(Self, UInt16) -> Unit raise BufferError
 pub fn BytesMut::put_u16_le(Self, UInt16) -> Unit raise BufferError
@@ -42,10 +53,16 @@ pub fn BytesMut::put_u64_le(Self, UInt64) -> Unit raise BufferError
 pub fn BytesMut::put_utf8(Self, StringView) -> Unit raise BufferError
 pub fn BytesMut::remaining_mut(Self) -> Int
 pub fn BytesMut::reserve(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::resize(Self, Int, value? : Byte) -> Unit raise BufferError
+pub fn BytesMut::split(Self) -> Self raise BufferError
 pub fn BytesMut::split_off(Self, Int) -> Self raise BufferError
 pub fn BytesMut::split_to(Self, Int) -> Self raise BufferError
 pub fn BytesMut::truncate(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::try_reclaim(Self, Int) -> Bool raise BufferError
+pub fn BytesMut::try_unsplit(Self, Self) -> Bool
+pub fn BytesMut::unsplit(Self, Self) -> Unit raise BufferError
 pub fn BytesMut::view(Self) -> ArrayView[Byte]
+pub fn[T] BytesMut::with_spare_capacity(Self, Int, (MutArrayView[Byte]) -> (Int, T)) -> T raise BufferError
 pub fn[T] BytesMut::with_writable(Self, (MutArrayView[Byte]) -> T) -> T
 pub impl BufMut for BytesMut
 
@@ -55,11 +72,24 @@ pub struct SharedBytes {
   end : Int
 }
 pub fn SharedBytes::advance(Self, Int) -> Unit raise BufferError
+pub fn SharedBytes::as_bytes_view(Self) -> BytesView
 pub fn SharedBytes::chunk(Self) -> Self
 pub fn SharedBytes::clone(Self) -> Self
 pub fn SharedBytes::copied_bytes(Self) -> Int
 pub fn SharedBytes::copy_to(Self, MutArrayView[Byte]) -> Int
 pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
+pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self
+pub fn SharedBytes::get_f32_be(Self) -> Float raise BufferError
+pub fn SharedBytes::get_f32_le(Self) -> Float raise BufferError
+pub fn SharedBytes::get_f64_be(Self) -> Double raise BufferError
+pub fn SharedBytes::get_f64_le(Self) -> Double raise BufferError
+pub fn SharedBytes::get_i16_be(Self) -> Int16 raise BufferError
+pub fn SharedBytes::get_i16_le(Self) -> Int16 raise BufferError
+pub fn SharedBytes::get_i32_be(Self) -> Int raise BufferError
+pub fn SharedBytes::get_i32_le(Self) -> Int raise BufferError
+pub fn SharedBytes::get_i64_be(Self) -> Int64 raise BufferError
+pub fn SharedBytes::get_i64_le(Self) -> Int64 raise BufferError
+pub fn SharedBytes::get_i8(Self) -> Int raise BufferError
 pub fn SharedBytes::get_u16_be(Self) -> UInt16 raise BufferError
 pub fn SharedBytes::get_u16_le(Self) -> UInt16 raise BufferError
 pub fn SharedBytes::get_u32_be(Self) -> UInt raise BufferError
@@ -75,6 +105,7 @@ pub fn SharedBytes::remaining(Self) -> Int
 pub fn SharedBytes::slice(Self, Int, Int) -> Self raise BufferError
 pub fn SharedBytes::split_to(Self, Int) -> Self raise BufferError
 pub fn SharedBytes::to_array(Self) -> Array[Byte]
+pub fn SharedBytes::to_bytes(Self) -> Bytes
 pub fn SharedBytes::view(Self) -> ArrayView[Byte]
 pub impl Buf for SharedBytes
 

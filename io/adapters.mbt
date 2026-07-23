@@ -26,31 +26,47 @@ pub fn Cursor::to_bytes(self : Cursor) -> Bytes {
 }
 
 ///|
-pub impl Read for Cursor with fn read(self, dst) {
-  let count = Int::min(dst.length(), self.data.length() - self.position)
+pub impl Read for Cursor with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise io_error(
+      InvalidInput,
+      "Cursor::read",
+      message="destination range is invalid",
+    )
+  }
+  let count = Int::min(length, self.data.length() - self.position)
   for i in 0..<count {
-    dst[i] = self.data[self.position + i]
+    dst[offset + i] = self.data[self.position + i]
   }
   self.position += count
   count
 }
 
 ///|
-pub impl Write for Cursor with fn write(self, src) {
-  if src.length() > 2147483647 - self.position {
+pub impl Write for Cursor with fn write(self, src, offset, length) {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise io_error(
+      InvalidInput,
+      "Cursor::write",
+      message="source range is invalid",
+    )
+  }
+  if length > 2147483647 - self.position {
     raise io_error(
       InvalidInput,
       "Cursor::write",
       message="cursor length overflow",
     )
   }
-  let end = self.position + src.length()
+  let end = self.position + length
   if end > self.data.length() {
     self.data.resize(end, (0).to_byte())
   }
-  src.blit_to(self.data, dst_offset=self.position)
+  for i in 0..<length {
+    self.data[self.position + i] = src[offset + i]
+  }
   self.position = end
-  src.length()
+  length
 }
 
 ///|
@@ -119,7 +135,7 @@ pub fn Empty::new() -> Empty {
 }
 
 ///|
-pub impl Read for Empty with fn read(_self, _dst) {
+pub impl Read for Empty with fn read(_self, _dst, _offset, _length) {
   0
 }
 
@@ -151,11 +167,18 @@ pub fn Repeat::new(byte : Byte) -> Repeat {
 }
 
 ///|
-pub impl Read for Repeat with fn read(self, dst) {
-  for i in 0..<dst.length() {
-    dst[i] = self.byte
+pub impl Read for Repeat with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise io_error(
+      InvalidInput,
+      "Repeat::read",
+      message="destination range is invalid",
+    )
   }
-  dst.length()
+  for i in 0..<length {
+    dst[offset + i] = self.byte
+  }
+  length
 }
 
 ///|
@@ -188,16 +211,23 @@ pub fn[R] Take::into_inner(self : Take[R]) -> R {
 }
 
 ///|
-pub impl[R : Read] Read for Take[R] with fn read(self, dst) {
-  if self.remaining == 0L || dst.is_empty() {
+pub impl[R : Read] Read for Take[R] with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise io_error(
+      InvalidInput,
+      "Take::read",
+      message="destination range is invalid",
+    )
+  }
+  if self.remaining == 0L || length == 0 {
     return 0
   }
-  let count = if self.remaining < dst.length().to_int64() {
+  let count = if self.remaining < length.to_int64() {
     self.remaining.to_int()
   } else {
     dst.length()
   }
-  let progress = Read::read(self.inner, dst.mut_view(end=count))
+  let progress = Read::read(self.inner, dst, offset, count)
   validate_progress("Take::read", progress, count)
   self.remaining -= progress.to_int64()
   progress
@@ -217,15 +247,20 @@ pub fn[A, B] Chain::new(first : A, second : B) -> Chain[A, B] {
 }
 
 ///|
-pub impl[A : Read, B : Read] Read for Chain[A, B] with fn read(self, dst) {
+pub impl[A : Read, B : Read] Read for Chain[A, B] with fn read(
+  self,
+  dst,
+  offset,
+  length,
+) {
   if !self.first_done {
-    let count = Read::read(self.first, dst)
+    let count = Read::read(self.first, dst, offset, length)
     if count != 0 {
       return count
     }
     self.first_done = true
   }
-  Read::read(self.second, dst)
+  Read::read(self.second, dst, offset, length)
 }
 
 ///|
@@ -251,12 +286,26 @@ fn[W] LineWriter::discard_prefix(self : LineWriter[W], count : Int) -> Unit {
 }
 
 ///|
-pub impl[W : Write] Write for LineWriter[W] with fn write(self, src) {
+pub impl[W : Write] Write for LineWriter[W] with fn write(
+  self,
+  src,
+  offset,
+  length,
+) {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise io_error(
+      InvalidInput,
+      "LineWriter::write",
+      message="source range is invalid",
+    )
+  }
   match self.pending_error {
     Some(error) => raise error
     None => ()
   }
-  append_bytes(self.buffer, src)
+  for i in 0..<length {
+    self.buffer.push(src[offset + i])
+  }
   let mut complete = 0
   for i, byte in self.buffer {
     if byte == b'\n' {
@@ -275,7 +324,7 @@ pub impl[W : Write] Write for LineWriter[W] with fn write(self, src) {
       _ => self.discard_prefix(complete)
     }
   }
-  src.length()
+  length
 }
 
 ///|
@@ -301,4 +350,103 @@ pub impl[W : Write] Write for LineWriter[W] with fn flush(self) {
 ///|
 pub fn[W] LineWriter::into_parts(self : LineWriter[W]) -> (W, Bytes) {
   (self.inner, Bytes::from_array(self.buffer[:]))
+}
+
+///|
+/// A paired buffered reader and writer for full-duplex transports.
+pub struct BufStream[R, W] {
+  reader : BufReader[R]
+  writer : BufWriter[W]
+}
+
+///|
+pub fn[R, W] BufStream::new(
+  reader : R,
+  writer : W,
+  capacity? : Int = 8192,
+) -> BufStream[R, W] raise IoError {
+  {
+    reader: BufReader::new(reader, capacity~),
+    writer: BufWriter::new(writer, capacity~),
+  }
+}
+
+///|
+pub impl[R : Read, W] Read for BufStream[R, W] with fn read(
+  self,
+  dst,
+  offset,
+  length,
+) {
+  Read::read(self.reader, dst, offset, length)
+}
+
+///|
+pub impl[R : Read, W : Write] BufRead for BufStream[R, W] with fn fill_buf(self) {
+  BufRead::fill_buf(self.reader)
+}
+
+///|
+pub impl[R : Read, W : Write] BufRead for BufStream[R, W] with fn consume(
+  self,
+  count,
+) {
+  BufRead::consume(self.reader, count)
+}
+
+///|
+pub impl[R, W : Write] Write for BufStream[R, W] with fn write(
+  self,
+  src,
+  offset,
+  length,
+) {
+  Write::write(self.writer, src, offset, length)
+}
+
+///|
+pub impl[R, W : Write] Write for BufStream[R, W] with fn flush(self) {
+  Write::flush(self.writer)
+}
+
+///|
+/// A write-only sink contract useful for generic producer code.
+pub(open) trait Sink {
+  fn send(Self, Bytes, Int, Int) -> Unit raise IoError
+  fn close(Self) -> Unit raise IoError
+}
+
+///|
+pub impl[W : Write] Sink for BufWriter[W] with fn send(
+  self,
+  bytes,
+  offset,
+  length,
+) {
+  if offset < 0 || length < 0 || offset > bytes.length() - length {
+    raise io_error(
+      InvalidInput,
+      "Sink::send",
+      message="source range is invalid",
+    )
+  }
+  let mut completed = 0
+  while completed < length {
+    let count = Write::write(
+      self,
+      bytes,
+      offset + completed,
+      length - completed,
+    )
+    validate_progress("Sink::send", count, length - completed)
+    if count == 0 {
+      raise io_error(WriteZero, "Sink::send")
+    }
+    completed += count
+  }
+}
+
+///|
+pub impl[W : Write] Sink for BufWriter[W] with fn close(self) {
+  Write::flush(self)
 }

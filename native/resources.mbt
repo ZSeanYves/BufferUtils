@@ -49,6 +49,70 @@ fn native_path(path : String) -> Bytes raise @io.IoError {
 }
 
 ///|
+/// Native file creation and access policy.
+pub struct NativeOpenOptions {
+  read : Bool
+  write : Bool
+  append : Bool
+  create : Bool
+  truncate : Bool
+  create_new : Bool
+}
+
+///|
+pub fn NativeOpenOptions::new() -> NativeOpenOptions {
+  {
+    read: false,
+    write: false,
+    append: false,
+    create: false,
+    truncate: false,
+    create_new: false,
+  }
+}
+
+///|
+pub fn NativeOpenOptions::read() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), read: true }
+}
+
+///|
+pub fn NativeOpenOptions::write() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), write: true }
+}
+
+///|
+pub fn NativeOpenOptions::write_truncate() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), write: true, create: true, truncate: true }
+}
+
+///|
+pub fn NativeOpenOptions::write_append() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), write: true, append: true, create: true }
+}
+
+///|
+pub fn NativeOpenOptions::read_write() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), read: true, write: true }
+}
+
+///|
+pub fn NativeOpenOptions::write_create_new() -> NativeOpenOptions {
+  { ..NativeOpenOptions::new(), write: true, create_new: true }
+}
+
+///|
+fn NativeOpenOptions::mode(self : NativeOpenOptions) -> Int {
+  64 +
+  (if self.read { 1 } else { 0 }) +
+  (if self.write { 2 } else { 0 }) +
+  (if self.append { 4 } else { 0 }) +
+  (if self.create || self.create_new { 8 } else { 0 }) +
+  (if self.truncate { 16 } else { 0 }) +
+  (if self.create_new { 32 } else { 0 })
+}
+
+///|
 /// A thread-safe external native file resource.
 pub struct NativeFile {
   path : String
@@ -59,8 +123,31 @@ pub struct NativeFile {
 
 ///|
 pub fn NativeFile::open_read(path : String) -> NativeFile raise @io.IoError {
+  NativeFile::open(path, {
+    read: true,
+    write: false,
+    append: false,
+    create: false,
+    truncate: false,
+    create_new: false,
+  })
+}
+
+///|
+pub fn NativeFile::open(
+  path : String,
+  options : NativeOpenOptions,
+) -> NativeFile raise @io.IoError {
+  if !options.read && !options.write {
+    raise @io.io_error(
+      @io.InvalidInput,
+      "open",
+      path~,
+      message="read or write is required",
+    )
+  }
   let encoded = native_path(path)
-  let handle = native_file_open_ffi(encoded, encoded.length(), 0)
+  let handle = native_file_open_ffi(encoded, encoded.length(), options.mode())
   if native_file_is_closed_ffi(handle) != 0 {
     raise native_error(
       "open",
@@ -69,37 +156,31 @@ pub fn NativeFile::open_read(path : String) -> NativeFile raise @io.IoError {
       raw_code=native_file_os_error_ffi(handle),
     )
   }
-  { path, handle, readable: true, writable: false }
+  { path, handle, readable: options.read, writable: options.write }
 }
 
 ///|
 pub fn NativeFile::create(path : String) -> NativeFile raise @io.IoError {
-  let encoded = native_path(path)
-  let handle = native_file_open_ffi(encoded, encoded.length(), 1)
-  if native_file_is_closed_ffi(handle) != 0 {
-    raise native_error(
-      "open",
-      path,
-      native_file_error_ffi(handle),
-      raw_code=native_file_os_error_ffi(handle),
-    )
-  }
-  { path, handle, readable: false, writable: true }
+  NativeFile::open(path, {
+    read: false,
+    write: true,
+    append: false,
+    create: true,
+    truncate: true,
+    create_new: false,
+  })
 }
 
 ///|
 pub fn NativeFile::append(path : String) -> NativeFile raise @io.IoError {
-  let encoded = native_path(path)
-  let handle = native_file_open_ffi(encoded, encoded.length(), 2)
-  if native_file_is_closed_ffi(handle) != 0 {
-    raise native_error(
-      "open",
-      path,
-      native_file_error_ffi(handle),
-      raw_code=native_file_os_error_ffi(handle),
-    )
-  }
-  { path, handle, readable: false, writable: true }
+  NativeFile::open(path, {
+    read: false,
+    write: true,
+    append: true,
+    create: true,
+    truncate: false,
+    create_new: false,
+  })
 }
 
 ///|
@@ -108,15 +189,17 @@ pub fn NativeFile::path(self : NativeFile) -> String {
 }
 
 ///|
-pub impl @io.Read for NativeFile with fn read(self, dst) {
+pub impl @io.Read for NativeFile with fn read(self, dst, offset, length) {
   if !self.readable {
     raise native_error("read", self.path, 7)
   }
-  if dst.is_empty() {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise @io.io_error(@io.InvalidInput, "read", path=self.path)
+  }
+  if length == 0 {
     return 0
   }
-  let scratch = FixedArray::make(dst.length(), (0).to_byte())
-  let count = native_file_read_ffi(self.handle, scratch, 0, scratch.length())
+  let count = native_file_read_ffi(self.handle, dst, offset, length)
   if count < 0 {
     raise native_error(
       "read",
@@ -124,9 +207,6 @@ pub impl @io.Read for NativeFile with fn read(self, dst) {
       -count,
       raw_code=native_file_os_error_ffi(self.handle),
     )
-  }
-  for i in 0..<count {
-    dst[i] = scratch[i]
   }
   count
 }
@@ -161,15 +241,17 @@ pub impl @io.Read for NativeFile with fn read_fixed(
 }
 
 ///|
-pub impl @io.Write for NativeFile with fn write(self, src) {
+pub impl @io.Write for NativeFile with fn write(self, src, offset, length) {
   if !self.writable {
     raise native_error("write", self.path, 7)
   }
-  if src.is_empty() {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise @io.io_error(@io.InvalidInput, "write", path=self.path)
+  }
+  if length == 0 {
     return 0
   }
-  let bytes = Bytes::from_array(src)
-  let count = native_file_write_ffi(self.handle, bytes, bytes.length())
+  let count = native_file_write_ffi(self.handle, src, offset, length)
   if count < 0 {
     raise native_error(
       "write",
@@ -182,11 +264,31 @@ pub impl @io.Write for NativeFile with fn write(self, src) {
 }
 
 ///|
-pub impl @io.Write for NativeFile with fn flush(self) {
-  let status = native_file_flush_ffi(self.handle)
+pub impl @io.Write for NativeFile with fn flush(_self) {
+  ()
+}
+
+///|
+/// Flush file metadata and contents to stable storage.
+pub fn NativeFile::sync_all(self : NativeFile) -> Unit raise @io.IoError {
+  let status = native_file_sync_ffi(self.handle, 0)
   if status != 0 {
     raise native_error(
-      "flush",
+      "sync_all",
+      self.path,
+      status,
+      raw_code=native_file_os_error_ffi(self.handle),
+    )
+  }
+}
+
+///|
+/// Flush file data without requiring metadata persistence.
+pub fn NativeFile::sync_data(self : NativeFile) -> Unit raise @io.IoError {
+  let status = native_file_sync_ffi(self.handle, 1)
+  if status != 0 {
+    raise native_error(
+      "sync_data",
       self.path,
       status,
       raw_code=native_file_os_error_ffi(self.handle),
@@ -337,14 +439,17 @@ pub fn MappedBytes::find_byte(
 }
 
 ///|
-pub impl @io.Read for MappedBytes with fn read(self, dst) {
-  let count = Int::min(dst.length(), self.remaining())
+pub impl @io.Read for MappedBytes with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise @io.io_error(@io.InvalidInput, "mmap read", path=self.path)
+  }
+  let count = Int::min(length, self.remaining())
   if count == 0 {
     return 0
   }
   let bytes = native_mapped_copy_ffi(self.handle, self.position, count)
   for i in 0..<count {
-    dst[i] = bytes[i]
+    dst[offset + i] = bytes[i]
   }
   self.position += count
   count

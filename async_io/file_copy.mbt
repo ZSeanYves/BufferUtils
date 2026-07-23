@@ -21,7 +21,11 @@ pub async fn copy_file(
   on_progress? : (CopyProgress) -> Unit,
 ) -> CopyProgress {
   if buffer_size <= 0 {
-    raise Failure::Failure("buffer_size must be positive")
+    raise @syncio.io_error(
+      @syncio.InvalidInput,
+      "copy_file",
+      message="buffer_size must be positive",
+    )
   }
   let source = @fs.open(source_path, mode=@fs.ReadOnly)
   defer source.close()
@@ -40,12 +44,14 @@ pub async fn copy_file(
       break
     }
     let bytes = buffer.unsafe_reinterpret_as_bytes()
-    @runtime_io.Writer::write(destination, bytes[0:count])
-    progress = {
-      bytes: progress.bytes + count,
-      read_calls: progress.read_calls,
-      write_calls: progress.write_calls + 1,
-    }
+    @async.protect_from_cancel(() => {
+      @runtime_io.Writer::write(destination, bytes[0:count])
+      progress = {
+        bytes: progress.bytes + count,
+        read_calls: progress.read_calls,
+        write_calls: progress.write_calls + 1,
+      }
+    })
     match on_progress {
       Some(callback) => callback(progress)
       None => ()

@@ -2,6 +2,7 @@
 package "ZSeanYves/bufferutils/async_io"
 
 import {
+  "ZSeanYves/bufferutils/buffer",
   "ZSeanYves/bufferutils/io",
   "moonbitlang/async/fs",
   "moonbitlang/async/socket",
@@ -44,14 +45,15 @@ pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]
 
 pub struct AsyncBufWriter[W] {
   inner : W
-  buffer : Array[Byte]
+  buffer : FixedArray[Byte]
   mut start : Int
+  mut end : Int
   capacity : Int
 }
 pub async fn[W : AsyncWrite] AsyncBufWriter::finish(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_mut(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_ref(Self[W]) -> W
-pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, Bytes)
+pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes)
 pub fn[W] AsyncBufWriter::new(W, capacity? : Int) -> Self[W] raise @io.IoError
 pub fn[W] AsyncBufWriter::pending_len(Self[W]) -> Int
 pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]
@@ -122,7 +124,7 @@ pub(all) struct CopyProgress {
 
 // Traits
 pub(open) trait AsyncBufRead : AsyncRead {
-  async fn fill_buf(Self) -> Bytes
+  async fn fill_buf(Self) -> ArrayView[Byte]
   fn consume(Self, Int) -> Unit raise @io.IoError
   async fn read_until(Self, Byte) -> Bytes = _
 }
@@ -149,6 +151,7 @@ pub(open) trait AsyncSeek {
 pub(open) trait AsyncWrite {
   async fn write(Self, Bytes, offset~ : Int, len~ : Int) -> Int
   async fn flush(Self) -> Unit
+  async fn shutdown(Self) -> Unit = _
   async fn write_all(Self, Bytes, offset? : Int, len? : Int) -> Unit = _
 }
 pub impl AsyncWrite for @fs.File

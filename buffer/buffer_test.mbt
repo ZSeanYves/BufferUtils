@@ -210,6 +210,79 @@ test "BytesMut management and split_off preserve contents" {
 }
 
 ///|
+test "v2 typed signed float and spare-capacity APIs preserve ranges" {
+  let mutable = BytesMut::new(capacity=2)
+  mutable.put_i8(-1)
+  mutable.put_i16_be(Int16::from_int(-1234))
+  mutable.put_i32_le(-123456)
+  mutable.put_i64_be(-987654321L)
+  mutable.put_f32_le(1.5)
+  mutable.put_f64_be(-2.25)
+  let bytes = mutable.freeze()
+  assert_eq(bytes.get_i8(), -1)
+  assert_eq(bytes.get_i16_be(), Int16::from_int(-1234))
+  assert_eq(bytes.get_i32_le(), -123456)
+  assert_eq(bytes.get_i64_be(), -987654321L)
+  assert_eq(bytes.get_f32_le(), 1.5)
+  assert_eq(bytes.get_f64_be(), -2.25)
+
+  let spare = BytesMut::new(capacity=4)
+  let committed = spare.with_spare_capacity(2, view => {
+    view[0] = b'x'
+    view[1] = b'y'
+    (2, 7)
+  })
+  assert_eq(committed, 7)
+  assert_eq(spare.freeze().view(), [b'x', b'y'])
+  spare.resize(4, value=b'z')
+  assert_eq(spare.view(), [b'x', b'y', b'z', b'z'])
+}
+
+///|
+test "split unsplit reclaim and zero-copy bytes view" {
+  let mutable = BytesMut::from_array([b'a', b'b', b'c', b'd'][:])
+  let prefix = mutable.split_to(2)
+  assert_true(prefix.try_unsplit(mutable))
+  assert_eq(prefix.view(), [b'a', b'b', b'c', b'd'])
+  assert_eq(prefix.freeze().as_bytes_view().to_owned(), [b'a', b'b', b'c', b'd'])
+  let reclaim = BytesMut::new(capacity=8)
+  reclaim.put_slice([b'a', b'b', b'c'][:])
+  ignore(reclaim.split_to(2))
+  assert_true(reclaim.try_reclaim(3))
+}
+
+///|
+test "v2 buffer invalid branches and remaining typed directions" {
+  let mutable = BytesMut::new(capacity=8)
+  assert_eq(capture_buffer_result(() => mutable.put_i8(128)) is Err(_), true)
+  assert_eq(capture_buffer_result(() => mutable.resize(-1)) is Err(_), true)
+  mutable.put_i16_le(Int16::from_int(-7))
+  mutable.put_i32_be(-8)
+  mutable.put_i64_le(-9L)
+  mutable.put_f32_be(3.5)
+  mutable.put_f64_le(4.5)
+  let bytes = mutable.freeze()
+  assert_eq(bytes.get_i16_le(), Int16::from_int(-7))
+  assert_eq(bytes.get_i32_be(), -8)
+  assert_eq(bytes.get_i64_le(), -9L)
+  assert_eq(bytes.get_f32_be(), 3.5)
+  assert_eq(bytes.get_f64_le(), 4.5)
+
+  let left = BytesMut::from_array([b'a', b'b'][:])
+  let right = BytesMut::from_array([b'c'][:])
+  assert_eq(left.try_unsplit(right), false)
+  left.unsplit(right)
+  assert_eq(left.view(), [b'a', b'b', b'c'])
+  let shared = BytesMut::from_array([b'x', b'y', b'z'][:])
+  ignore(shared.split_to(2))
+  assert_eq(capture_buffer_result(() => shared.try_reclaim(-1)) is Err(_), true)
+  let invalid_spare = capture_buffer_result(() => {
+    ignore(shared.with_spare_capacity(1, _ => (-1, ())))
+  })
+  assert_eq(invalid_spare is Err(_), true)
+}
+
+///|
 test "Buf and BufMut trait dispatch covers the public forwarding surface" {
   let mutable = BytesMut::new(capacity=32)
   assert_true(BufMut::remaining_mut(mutable) > 0)

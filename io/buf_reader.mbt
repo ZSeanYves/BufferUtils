@@ -55,6 +55,76 @@ pub fn[R] BufReader::bypass_read_calls(self : BufReader[R]) -> Int {
 }
 
 ///|
+/// Return the unread portion currently resident in the fixed buffer.
+pub fn[R] BufReader::buffer(self : BufReader[R]) -> ArrayView[Byte] {
+  self.buffer[self.position:self.end]
+}
+
+///|
+/// Ensure up to `count` bytes are buffered and return the available prefix.
+pub fn[R : Read] BufReader::peek(
+  self : BufReader[R],
+  count : Int,
+) -> ArrayView[Byte] raise IoError {
+  if count < 0 {
+    raise io_error(
+      InvalidInput,
+      "BufReader::peek",
+      message="count must be non-negative",
+    )
+  }
+  let available = BufRead::fill_buf(self)
+  available[0:Int::min(count, available.length())]
+}
+
+///|
+/// Seek relative to the logical position without discarding prefetched bytes.
+pub fn[R : Seek] BufReader::seek_relative(
+  self : BufReader[R],
+  offset : Int64,
+) -> Unit raise IoError {
+  ignore(Seek::seek(self, Current(offset)))
+}
+
+///|
+/// Read and decode all UTF-8 lines until EOF.
+pub fn[R : Read] BufReader::lines(
+  self : BufReader[R],
+) -> Array[String] raise IoError {
+  let result : Array[String] = []
+  while true {
+    let line = StringBuilder()
+    let count = BufRead::read_line(self, line)
+    if count == 0 {
+      break
+    }
+    result.push(line.to_string())
+  }
+  result
+}
+
+///|
+/// Split the remaining input at a delimiter, retaining byte segments.
+pub fn[R : Read] BufReader::split(
+  self : BufReader[R],
+  delimiter : Byte,
+) -> Array[Array[Byte]] raise IoError {
+  let result : Array[Array[Byte]] = []
+  while true {
+    let segment : Array[Byte] = []
+    let count = BufRead::read_until(self, delimiter, segment)
+    if count == 0 {
+      break
+    }
+    if segment[segment.length() - 1] == delimiter {
+      segment.truncate(segment.length() - 1)
+    }
+    result.push(segment)
+  }
+  result
+}
+
+///|
 pub fn[R] BufReader::get_ref(self : BufReader[R]) -> R {
   self.inner
 }
@@ -65,30 +135,37 @@ pub fn[R] BufReader::get_mut(self : BufReader[R]) -> R {
 }
 
 ///|
-pub impl[R : Read] Read for BufReader[R] with fn read(self, dst) {
-  if dst.is_empty() {
+pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise io_error(
+      InvalidInput,
+      "BufReader::read",
+      message="destination range is invalid",
+    )
+  }
+  if length == 0 {
     return 0
   }
   if self.buffered_len() > 0 {
-    let count = Int::min(dst.length(), self.buffered_len())
+    let count = Int::min(length, self.buffered_len())
     for i in 0..<count {
-      dst[i] = self.buffer[self.position + i]
+      dst[offset + i] = self.buffer[self.position + i]
     }
     self.position += count
     return count
   }
-  if dst.length() >= self.capacity() {
+  if length >= self.capacity() {
     self.underlying_reads += 1
     self.bypass_reads += 1
-    let count = Read::read(self.inner, dst)
-    validate_progress("BufReader::read", count, dst.length())
+    let count = Read::read(self.inner, dst, offset, length)
+    validate_progress("BufReader::read", count, length)
     self.eof = count == 0
     return count
   }
   let available = BufRead::fill_buf(self)
-  let count = Int::min(dst.length(), available.length())
+  let count = Int::min(length, available.length())
   for i in 0..<count {
-    dst[i] = available[i]
+    dst[offset + i] = available[i]
   }
   self.position += count
   count

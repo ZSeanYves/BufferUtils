@@ -12,7 +12,7 @@ struct FailingWriter {
 }
 
 ///|
-impl Write for FailingWriter with fn write(self, src) {
+impl Write for FailingWriter with fn write(self, src, offset, length) {
   if self.remaining_before_error == 0 {
     raise io_error(
       Backend,
@@ -21,8 +21,10 @@ impl Write for FailingWriter with fn write(self, src) {
       message="injected failure",
     )
   }
-  let count = Int::min(src.length(), self.remaining_before_error)
-  self.data.append(src[0:count])
+  let count = Int::min(length, self.remaining_before_error)
+  for i in 0..<count {
+    self.data.push(src[offset + i])
+  }
   self.remaining_before_error -= count
   count
 }
@@ -46,14 +48,14 @@ struct InterruptOnceReader {
 }
 
 ///|
-impl Read for InterruptOnceReader with fn read(self, dst) {
+impl Read for InterruptOnceReader with fn read(self, dst, offset, length) {
   if !self.interrupted {
     self.interrupted = true
     raise io_error(Interrupted, "read", message="injected interrupt")
   }
-  let count = Int::min(dst.length(), self.data.length() - self.position)
+  let count = Int::min(length, self.data.length() - self.position)
   for i in 0..<count {
-    dst[i] = self.data[self.position + i]
+    dst[offset + i] = self.data[self.position + i]
   }
   self.position += count
   count
@@ -66,15 +68,15 @@ struct InterruptOnceWriter {
 }
 
 ///|
-impl Write for InterruptOnceWriter with fn write(self, src) {
+impl Write for InterruptOnceWriter with fn write(self, src, offset, length) {
   if !self.interrupted {
     self.interrupted = true
     raise io_error(Interrupted, "write", message="injected interrupt")
   }
-  for byte in src {
-    self.data.push(byte)
+  for i in 0..<length {
+    self.data.push(src[offset + i])
   }
-  src.length()
+  length
 }
 
 ///|
@@ -83,9 +85,9 @@ impl Write for InterruptOnceWriter with fn flush(_self) {
 }
 
 ///|
-impl Write for ProgressErrorWriter with fn write(self, src) {
-  if !self.failed && !src.is_empty() {
-    self.data.push(src[0])
+impl Write for ProgressErrorWriter with fn write(self, src, offset, length) {
+  if !self.failed && length > 0 {
+    self.data.push(src[offset])
     self.failed = true
     raise io_error(
       Backend,
@@ -95,8 +97,10 @@ impl Write for ProgressErrorWriter with fn write(self, src) {
       message="failed after one byte",
     )
   }
-  self.data.append(src)
-  src.length()
+  for i in 0..<length {
+    self.data.push(src[offset + i])
+  }
+  length
 }
 
 ///|
@@ -110,7 +114,7 @@ enum InvalidRead {
 }
 
 ///|
-impl Read for InvalidRead with fn read(_self, _dst) {
+impl Read for InvalidRead with fn read(_self, _dst, _offset, _length) {
   -1
 }
 
@@ -121,7 +125,7 @@ enum InvalidWrite {
 }
 
 ///|
-impl Write for InvalidWrite with fn write(self, _src) {
+impl Write for InvalidWrite with fn write(self, _src, _offset, _length) {
   match self {
     InvalidWrite => -1
     ZeroWrite => 0
@@ -139,7 +143,7 @@ enum ErrorRead {
 }
 
 ///|
-impl Read for ErrorRead with fn read(_self, _dst) {
+impl Read for ErrorRead with fn read(_self, _dst, _offset, _length) {
   raise io_error(Backend, "read", message="injected read error")
 }
 
@@ -237,7 +241,7 @@ test "BufReader bypasses an empty internal buffer for large reads" {
   let source = MemoryReader::new(b"abcdefgh")
   let reader = BufReader::new(source, capacity=4)
   let dst = Array::make(8, (0).to_byte())
-  assert_eq(Read::read(reader, dst.mut_view()), 8)
+  assert_eq(Read::read_array(reader, dst.mut_view()), 8)
   assert_eq(reader.bypass_read_calls(), 1)
   assert_eq(reader.underlying_read_calls(), 1)
   inspect(Bytes::from_array(dst[:]), content="b\"abcdefgh\"")
@@ -247,11 +251,11 @@ test "BufReader bypasses an empty internal buffer for large reads" {
 test "BufWriter coalesces small writes and bypasses large writes" {
   let sink = MemoryWriter::new()
   let writer = BufWriter::new(sink, capacity=4)
-  assert_eq(Write::write(writer, [b'a', b'b'][:]), 2)
+  assert_eq(Write::write_array(writer, [b'a', b'b'][:]), 2)
   assert_eq(writer.buffered_len(), 2)
   Write::flush(writer)
   assert_eq(sink.write_calls(), 1)
-  assert_eq(Write::write(writer, [b'c', b'd', b'e', b'f'][:]), 4)
+  assert_eq(Write::write_array(writer, [b'c', b'd', b'e', b'f'][:]), 4)
   assert_eq(writer.bypass_write_calls(), 1)
   inspect(sink.to_bytes(), content="b\"abcdef\"")
 }
@@ -260,7 +264,7 @@ test "BufWriter coalesces small writes and bypasses large writes" {
 test "BufWriter preserves unwritten tail after a later short-write error" {
   let sink : FailingWriter = { data: [], remaining_before_error: 1 }
   let writer = BufWriter::new(sink, capacity=4)
-  ignore(Write::write(writer, [b'a', b'b', b'c'][:]))
+  ignore(Write::write_array(writer, [b'a', b'b', b'c'][:]))
   let result = capture_io_result(() => Write::flush(writer))
   match result {
     Err(error) => assert_eq(error.progress(), 1)
@@ -268,14 +272,30 @@ test "BufWriter preserves unwritten tail after a later short-write error" {
   }
   let (inner, pending) = writer.into_parts()
   inspect(Bytes::from_array(inner.data[:]), content="b\"a\"")
-  inspect(pending, content="b\"bc\"")
+  inspect(pending.to_bytes(), content="b\"bc\"")
+}
+
+///|
+test "BufWriter finish returns a recoverable structured failure" {
+  let sink : FailingWriter = { data: [], remaining_before_error: 0 }
+  let writer = BufWriter::new(sink, capacity=4)
+  ignore(Write::write_array(writer, [b'x'][:]))
+  let result = writer.finish()
+  match result {
+    Err(failure) => {
+      assert_eq(failure.error().kind(), Backend)
+      let recovered = failure.into_inner()
+      assert_eq(recovered.buffered_len(), 1)
+    }
+    Ok(_) => fail("expected recoverable finish failure")
+  }
 }
 
 ///|
 test "BufWriter rejects backend progress attached to an error" {
   let sink : ProgressErrorWriter = { data: [], failed: false }
   let writer = BufWriter::new(sink, capacity=4)
-  ignore(Write::write(writer, [b'a', b'b', b'c'][:]))
+  ignore(Write::write_array(writer, [b'a', b'b', b'c'][:]))
   let result = capture_io_result(() => Write::flush(writer))
   match result {
     Err(error) => assert_eq(error.kind(), ContractViolation)
@@ -283,7 +303,7 @@ test "BufWriter rejects backend progress attached to an error" {
   }
   let (inner, pending) = writer.into_parts()
   inspect(Bytes::from_array(inner.data[:]), content="b\"a\"")
-  inspect(pending, content="b\"abc\"")
+  inspect(pending.to_bytes(), content="b\"abc\"")
 }
 
 ///|
@@ -352,7 +372,7 @@ test "BufReader seeking accounts for unread prefetched bytes" {
   assert_eq(Seek::stream_position(reader), 1L)
   assert_eq(Seek::seek(reader, Current(1L)), 2L)
   let byte = Array::make(1, (0).to_byte())
-  assert_eq(Read::read(reader, byte.mut_view()), 1)
+  assert_eq(Read::read_array(reader, byte.mut_view()), 1)
   assert_eq(byte[0], b'c')
 }
 
@@ -360,10 +380,10 @@ test "BufReader seeking accounts for unread prefetched bytes" {
 test "BufWriter flushes before seek and finish" {
   let cursor = Cursor::new([][:])
   let writer = BufWriter::new(cursor, capacity=4)
-  ignore(Write::write(writer, [b'a', b'b', b'c'][:]))
+  ignore(Write::write_array(writer, [b'a', b'b', b'c'][:]))
   assert_eq(Seek::seek(writer, Start(1L)), 1L)
-  ignore(Write::write(writer, [b'Z'][:]))
-  let inner = writer.finish()
+  ignore(Write::write_array(writer, [b'Z'][:]))
+  let inner = writer.finish().unwrap()
   inspect(inner.to_bytes(), content="b\"aZc\"")
 }
 
@@ -375,10 +395,13 @@ test "Take Chain Empty and Repeat compose through Read" {
   assert_eq(read_to_end(limited, output), 3)
   inspect(Bytes::from_array(output[:]), content="b\"abc\"")
   let empty = Empty::new()
-  assert_eq(Read::read(empty, Array::make(1, (0).to_byte()).mut_view()), 0)
+  assert_eq(
+    Read::read_array(empty, Array::make(1, (0).to_byte()).mut_view()),
+    0,
+  )
   let repeated = Repeat::new(b'x')
   let repeated_output = Array::make(4, (0).to_byte())
-  assert_eq(Read::read(repeated, repeated_output.mut_view()), 4)
+  assert_eq(Read::read_array(repeated, repeated_output.mut_view()), 4)
   inspect(Bytes::from_array(repeated_output[:]), content="b\"xxxx\"")
 }
 
@@ -386,7 +409,7 @@ test "Take Chain Empty and Repeat compose through Read" {
 test "LineWriter flushes complete lines and retains an incomplete tail" {
   let sink = MemoryWriter::new()
   let writer = LineWriter::new(sink)
-  assert_eq(Write::write(writer, [b'a', b'\n', b'b'][:]), 3)
+  assert_eq(Write::write_array(writer, [b'a', b'\n', b'b'][:]), 3)
   inspect(sink.to_bytes(), content="b\"a\\x0a\"")
   let (inner, pending) = writer.into_parts()
   inspect(inner.to_bytes(), content="b\"a\\x0a\"")
@@ -398,7 +421,7 @@ test "sync boundary branches cover buffered reads, EOF, and invalid contracts" {
   let reader = BufReader::new(MemoryReader::new(b"abcd"), capacity=4)
   assert_eq(BufRead::fill_buf(reader).to_owned(), [b'a', b'b', b'c', b'd'])
   let one = Array::make(1, (0).to_byte())
-  assert_eq(Read::read(reader, one.mut_view()), 1)
+  assert_eq(Read::read_array(reader, one.mut_view()), 1)
   assert_eq(one[0], b'a')
   BufRead::consume(reader, 3)
   assert_eq(BufRead::fill_buf(reader), [])
@@ -469,30 +492,30 @@ test "sync boundary branches cover buffered reads, EOF, and invalid contracts" {
 test "LineWriter propagates and retains pending errors" {
   let failing : FailingWriter = { data: [], remaining_before_error: 0 }
   let writer = LineWriter::new(failing)
-  ignore(Write::write(writer, [b'a', b'\n'][:]))
+  ignore(Write::write_array(writer, [b'a', b'\n'][:]))
   assert_eq(
-    capture_io_result(() => Write::write(writer, [b'b'][:])) is Err(_),
+    capture_io_result(() => Write::write_array(writer, [b'b'][:])) is Err(_),
     true,
   )
   assert_eq(capture_io_result(() => Write::flush(writer)) is Err(_), true)
 
   let sink = MemoryWriter::new()
   let writer = LineWriter::new(sink)
-  ignore(Write::write(writer, [b'x', b'\n'][:]))
+  ignore(Write::write_array(writer, [b'x', b'\n'][:]))
   Write::flush(writer)
   assert_eq(sink.to_bytes(), b"x\n")
-  ignore(Write::write(writer, [][:]))
+  ignore(Write::write_array(writer, [][:]))
 }
 
 ///|
 test "BufWriter handles zero writes and flushes before refilling" {
   let zero = BufWriter::new(InvalidWrite::ZeroWrite, capacity=2)
-  ignore(Write::write(zero, [b'x'][:]))
+  ignore(Write::write_array(zero, [b'x'][:]))
   assert_eq(capture_io_result(() => Write::flush(zero)) is Err(_), true)
 
   let sink = MemoryWriter::new(max_chunk=1)
   let writer = BufWriter::new(sink, capacity=3)
-  ignore(Write::write(writer, [b'a', b'b'][:]))
+  ignore(Write::write_array(writer, [b'a', b'b'][:]))
   Write::write_all(writer, [b'c', b'd', b'e', b'f'][:])
   Write::flush(writer)
   assert_eq(writer.get_ref().to_bytes(), b"abcdef")
@@ -554,7 +577,7 @@ test "Cursor, Empty, and Take expose bounds and ownership helpers" {
   let limited = Take::new(MemoryReader::new(b"abcd"), 2L)
   assert_eq(limited.remaining(), 2L)
   let dst = Array::make(1, (0).to_byte())
-  assert_eq(Read::read(limited, dst.mut_view()), 1)
+  assert_eq(Read::read_array(limited, dst.mut_view()), 1)
   let inner = limited.into_inner()
   ignore(inner)
   assert_eq(
@@ -572,7 +595,7 @@ test "BufReader and BufWriter validate construction and expose parts" {
   )
   let reader = BufReader::new(MemoryReader::new(b"x"), capacity=2)
   let empty_dst = Array::make(0, (0).to_byte())
-  assert_eq(Read::read(reader, empty_dst.mut_view()), 0)
+  assert_eq(Read::read_array(reader, empty_dst.mut_view()), 0)
   assert_eq(BufReader::get_ref(reader).remaining(), 1)
   assert_eq(BufReader::get_mut(reader).remaining(), 1)
   let one = Array::make(1, (0).to_byte())
@@ -590,29 +613,135 @@ test "BufReader and BufWriter validate construction and expose parts" {
   assert_eq(writer.underlying_write_calls(), 0)
   assert_eq(writer.get_ref().write_calls(), 0)
   assert_eq(writer.get_mut().write_calls(), 0)
-  assert_eq(Write::write(writer, [][:]), 0)
+  assert_eq(Write::write_array(writer, [][:]), 0)
   let seek_writer = BufWriter::new(Cursor::new([][:]), capacity=2)
-  ignore(Write::write(seek_writer, [b'a', b'b'][:]))
+  ignore(Write::write_array(seek_writer, [b'a', b'b'][:]))
   assert_eq(Seek::stream_position(seek_writer), 2L)
 }
 
 ///|
 test "default vectored and error helpers preserve contracts" {
   let reader = MemoryReader::new(b"abc")
-  let first = Array::make(0, (0).to_byte())
-  let second = Array::make(2, (0).to_byte())
+  let first = FixedArray::make(0, (0).to_byte())
+  let second = FixedArray::make(2, (0).to_byte())
   assert_eq(
-    Read::read_vectored(reader, [first.mut_view(), second.mut_view()][:]),
+    Read::read_vectored(
+      reader,
+      [IoSliceMut::new(first, 0, 0), IoSliceMut::new(second, 0, 2)][:],
+    ),
     2,
   )
   assert_eq(Read::is_read_vectored(reader), false)
   let writer = MemoryWriter::new()
-  let sources : Array[ArrayView[Byte]] = [[][:], [b'a'][:]]
+  let sources = [IoSlice::new(b"", 0, 0), IoSlice::new(b"a", 0, 1)]
   assert_eq(Write::write_vectored(writer, sources[:]), 1)
   assert_eq(Write::is_write_vectored(writer), false)
   assert_eq(error_is_interrupted(), true)
   let overflow = io_error(Backend, "test", progress=2147483647).add_progress(10)
   assert_eq(overflow.progress(), 2147483647)
+}
+
+///|
+test "v2 IoSlice validation and BufReader convenience APIs" {
+  let reader = BufReader::new(MemoryReader::new(b"a\nb\n"), capacity=2)
+  assert_eq(BufReader::peek(reader, 1).to_owned(), [b'a'])
+  assert_eq(BufReader::skip_until(reader, b'\n'), 2)
+  let lines = reader.lines()
+  assert_eq(lines, ["b\n"])
+  let invalid = capture_io_result(() => IoSlice::new(b"x", 2, 0))
+  assert_eq(invalid is Err(_), true)
+  let destination = FixedArray::make(1, (0).to_byte())
+  let invalid_mut = capture_io_result(() => IoSliceMut::new(destination, 0, 2))
+  assert_eq(invalid_mut is Err(_), true)
+}
+
+///|
+test "memory pipe connects reader and writer endpoints" {
+  let (reader, writer) = MemoryPipe::new()
+  ignore(Write::write_array(writer, [b'p', b'i', b'n', b'g'][:]))
+  let output = Array::make(4, (0).to_byte())
+  Read::read_exact(reader, output.mut_view())
+  assert_eq(output, [b'p', b'i', b'n', b'g'])
+  Close::close(writer)
+  assert_true(Close::is_closed(writer))
+}
+
+///|
+test "BufStream and Sink compose independent buffered halves" {
+  let stream = BufStream::new(
+    MemoryReader::new(b"in"),
+    MemoryWriter::new(),
+    capacity=2,
+  )
+  let input = Array::make(2, (0).to_byte())
+  Read::read_exact(stream, input.mut_view())
+  assert_eq(input, [b'i', b'n'])
+  ignore(Write::write_array(stream, [b'o', b'k'][:]))
+  Write::flush(stream)
+
+  let sink = BufWriter::new(MemoryWriter::new(), capacity=2)
+  Sink::send(sink, b"sink", 0, 4)
+  Sink::close(sink)
+  assert_eq(sink.buffered_len(), 0)
+}
+
+///|
+test "v2 adapter primary ranges reject invalid input" {
+  let cursor = Cursor::new([b'x'][:])
+  let destination = FixedArray::make(1, (0).to_byte())
+  assert_eq(
+    capture_io_result(() => Read::read(cursor, destination, 2, 1)) is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => Write::write(cursor, b"x", 2, 1)) is Err(_),
+    true,
+  )
+  let repeated = Repeat::new(b'r')
+  assert_eq(
+    capture_io_result(() => Read::read(repeated, destination, -1, 1)) is Err(_),
+    true,
+  )
+  let limited = Take::new(MemoryReader::new(b"x"), 1L)
+  assert_eq(
+    capture_io_result(() => Read::read(limited, destination, 2, 1)) is Err(_),
+    true,
+  )
+  let line_writer = LineWriter::new(MemoryWriter::new())
+  assert_eq(
+    capture_io_result(() => Write::write(line_writer, b"x", 2, 1)) is Err(_),
+    true,
+  )
+}
+
+///|
+test "BufReader v2 buffer split and relative seek helpers" {
+  let reader = BufReader::new(MemoryReader::new(b"a,b"), capacity=2)
+  assert_eq(reader.peek(1).to_owned(), [b'a'])
+  assert_eq(reader.buffer().to_owned(), [b'a', b','])
+  assert_eq(reader.split(b','), [[b'a'], [b'b']])
+  assert_true(
+    try {
+      ignore(reader.peek(-1))
+      false
+    } catch {
+      _ => true
+    },
+  )
+
+  let seekable = BufReader::new(Cursor::new([b'a', b'b', b'c'][:]), capacity=2)
+  ignore(BufRead::fill_buf(seekable))
+  seekable.seek_relative(1L)
+  assert_eq(Seek::stream_position(seekable), 1L)
+  let destination = FixedArray::make(1, (0).to_byte())
+  assert_true(
+    try {
+      ignore(Read::read(seekable, destination, 2, 1))
+      false
+    } catch {
+      _ => true
+    },
+  )
 }
 
 ///|

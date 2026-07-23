@@ -34,11 +34,18 @@ pub fn MemoryReader::read_calls(self : MemoryReader) -> Int {
 }
 
 ///|
-pub impl Read for MemoryReader with fn read(self, dst) {
+pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
+  if offset < 0 || length < 0 || offset > dst.length() - length {
+    raise io_error(
+      InvalidInput,
+      "MemoryReader::read",
+      message="destination range is invalid",
+    )
+  }
   self.read_calls += 1
-  let count = Int::min(Int::min(dst.length(), self.remaining()), self.max_chunk)
+  let count = Int::min(Int::min(length, self.remaining()), self.max_chunk)
   for i in 0..<count {
-    dst[i] = self.data[self.position + i]
+    dst[offset + i] = self.data[self.position + i]
   }
   self.position += count
   count
@@ -84,14 +91,140 @@ pub fn MemoryWriter::flush_calls(self : MemoryWriter) -> Int {
 }
 
 ///|
-pub impl Write for MemoryWriter with fn write(self, src) {
+pub impl Write for MemoryWriter with fn write(self, src, offset, length) {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise io_error(
+      InvalidInput,
+      "MemoryWriter::write",
+      message="source range is invalid",
+    )
+  }
   self.write_calls += 1
-  let count = Int::min(src.length(), self.max_chunk)
-  append_bytes(self.data, src[0:count])
+  let count = Int::min(length, self.max_chunk)
+  for i in 0..<count {
+    self.data.push(src[offset + i])
+  }
   count
 }
 
 ///|
 pub impl Write for MemoryWriter with fn flush(self) {
   self.flush_calls += 1
+}
+
+///|
+/// Shared state backing an in-memory byte pipe.
+pub struct MemoryPipeState {
+  data : Array[Byte]
+  mut position : Int
+  mut writer_closed : Bool
+  mut reader_closed : Bool
+}
+
+///|
+pub struct MemoryPipeReader {
+  state : MemoryPipeState
+}
+
+///|
+pub struct MemoryPipeWriter {
+  state : MemoryPipeState
+}
+
+///|
+pub struct MemoryPipe {}
+
+///|
+/// Create connected in-memory reader and writer endpoints.
+pub fn MemoryPipe::new() -> (MemoryPipeReader, MemoryPipeWriter) {
+  let _marker : MemoryPipe = MemoryPipe::{  }
+  let state : MemoryPipeState = {
+    data: [],
+    position: 0,
+    writer_closed: false,
+    reader_closed: false,
+  }
+  (MemoryPipeReader::{ state, }, MemoryPipeWriter::{ state, })
+}
+
+///|
+pub impl Read for MemoryPipeReader with fn read(
+  self,
+  destination,
+  offset,
+  length,
+) {
+  if offset < 0 || length < 0 || offset > destination.length() - length {
+    raise io_error(
+      InvalidInput,
+      "MemoryPipeReader::read",
+      message="destination range is invalid",
+    )
+  }
+  let available = self.state.data.length() - self.state.position
+  if available == 0 {
+    return 0
+  }
+  let count = Int::min(length, available)
+  for i in 0..<count {
+    destination[offset + i] = self.state.data[self.state.position + i]
+  }
+  self.state.position += count
+  count
+}
+
+///|
+pub impl BufRead for MemoryPipeReader with fn fill_buf(self) {
+  self.state.data[self.state.position:]
+}
+
+///|
+pub impl BufRead for MemoryPipeReader with fn consume(self, count) {
+  if count < 0 || count > self.state.data.length() - self.state.position {
+    raise io_error(InvalidInput, "MemoryPipeReader::consume")
+  }
+  self.state.position += count
+}
+
+///|
+pub impl Write for MemoryPipeWriter with fn write(self, source, offset, length) {
+  if self.state.reader_closed {
+    raise io_error(BrokenPipe, "MemoryPipeWriter::write")
+  }
+  if offset < 0 || length < 0 || offset > source.length() - length {
+    raise io_error(
+      InvalidInput,
+      "MemoryPipeWriter::write",
+      message="source range is invalid",
+    )
+  }
+  for i in 0..<length {
+    self.state.data.push(source[offset + i])
+  }
+  length
+}
+
+///|
+pub impl Write for MemoryPipeWriter with fn flush(_self) {
+  ()
+}
+
+///|
+pub impl Close for MemoryPipeReader with fn close(self) {
+  self.state.reader_closed = true
+}
+
+///|
+pub impl Close for MemoryPipeReader with fn is_closed(self) {
+  self.state.reader_closed
+}
+
+///|
+pub impl Close for MemoryPipeWriter with fn close(self) {
+  self.state.writer_closed = true
+}
+
+///|
+pub impl Close for MemoryPipeWriter with fn is_closed(self) {
+  self.state.writer_closed
 }

@@ -1,4 +1,5 @@
 import {
+  "ZSeanYves/bufferutils/buffer",
   "ZSeanYves/bufferutils/io" @syncio,
   "moonbitlang/async",
   "moonbitlang/async/fs",

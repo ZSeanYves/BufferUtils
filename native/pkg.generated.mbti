@@ -34,8 +34,11 @@ pub struct NativeFile {
 }
 pub fn NativeFile::append(String) -> Self raise @io.IoError
 pub fn NativeFile::create(String) -> Self raise @io.IoError
+pub fn NativeFile::open(String, NativeOpenOptions) -> Self raise @io.IoError
 pub fn NativeFile::open_read(String) -> Self raise @io.IoError
 pub fn NativeFile::path(Self) -> String
+pub fn NativeFile::sync_all(Self) -> Unit raise @io.IoError
+pub fn NativeFile::sync_data(Self) -> Unit raise @io.IoError
 pub impl @io.Close for NativeFile
 pub impl @io.Read for NativeFile
 pub impl @io.Seek for NativeFile
@@ -44,6 +47,22 @@ pub impl @io.Write for NativeFile
 type NativeFileHandle
 
 type NativeMappedHandle
+
+pub struct NativeOpenOptions {
+  read : Bool
+  write : Bool
+  append : Bool
+  create : Bool
+  truncate : Bool
+  create_new : Bool
+}
+pub fn NativeOpenOptions::new() -> Self
+pub fn NativeOpenOptions::read() -> Self
+pub fn NativeOpenOptions::read_write() -> Self
+pub fn NativeOpenOptions::write() -> Self
+pub fn NativeOpenOptions::write_append() -> Self
+pub fn NativeOpenOptions::write_create_new() -> Self
+pub fn NativeOpenOptions::write_truncate() -> Self
 
 type NativeSocketHandle
 
@@ -62,6 +81,12 @@ pub struct NativeTcpStream {
   handle : NativeSocketHandle
 }
 pub fn NativeTcpStream::connect(String, Int) -> Self raise @io.IoError
+pub fn NativeTcpStream::local_port(Self) -> Int raise @io.IoError
+pub fn NativeTcpStream::peer_port(Self) -> Int raise @io.IoError
+pub fn NativeTcpStream::set_timeouts(Self, Int, Int) -> Unit raise @io.IoError
+pub fn NativeTcpStream::shutdown_both(Self) -> Unit raise @io.IoError
+pub fn NativeTcpStream::shutdown_read(Self) -> Unit raise @io.IoError
+pub fn NativeTcpStream::shutdown_write(Self) -> Unit raise @io.IoError
 pub impl @io.Close for NativeTcpStream
 pub impl @io.Read for NativeTcpStream
 pub impl @io.Write for NativeTcpStream

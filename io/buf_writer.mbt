@@ -2,10 +2,33 @@
 /// A generic buffered writer over any `Write` implementation.
 struct BufWriter[W] {
   inner : W
-  buffer : Array[Byte]
+  buffer : FixedArray[Byte]
   capacity : Int
+  mut start : Int
+  mut end : Int
   mut underlying_writes : Int
   mut bypass_writes : Int
+}
+
+///|
+/// A failed `finish` operation retaining the recoverable buffered writer.
+pub struct BufWriterFinishError[W] {
+  writer : BufWriter[W]
+  error : IoError
+}
+
+///|
+pub fn[W] BufWriterFinishError::error(
+  self : BufWriterFinishError[W],
+) -> IoError {
+  self.error
+}
+
+///|
+pub fn[W] BufWriterFinishError::into_inner(
+  self : BufWriterFinishError[W],
+) -> BufWriter[W] {
+  self.writer
 }
 
 ///|
@@ -23,8 +46,10 @@ pub fn[W] BufWriter::new(
   }
   {
     inner,
-    buffer: Array::new(capacity~),
+    buffer: FixedArray::make(capacity, (0).to_byte()),
     capacity,
+    start: 0,
+    end: 0,
     underlying_writes: 0,
     bypass_writes: 0,
   }
@@ -37,7 +62,7 @@ pub fn[W] BufWriter::capacity(self : BufWriter[W]) -> Int {
 
 ///|
 pub fn[W] BufWriter::buffered_len(self : BufWriter[W]) -> Int {
-  self.buffer.length()
+  self.end - self.start
 }
 
 ///|
@@ -61,12 +86,16 @@ pub fn[W] BufWriter::get_mut(self : BufWriter[W]) -> W {
 }
 
 ///|
-fn[W] BufWriter::discard_prefix(self : BufWriter[W], count : Int) -> Unit {
-  let remaining = self.buffer.length() - count
-  for i in 0..<remaining {
-    self.buffer[i] = self.buffer[count + i]
+fn[W] BufWriter::compact(self : BufWriter[W]) -> Unit {
+  if self.start == 0 {
+    return
   }
-  self.buffer.resize(remaining, (0).to_byte())
+  let remaining = self.end - self.start
+  for i in 0..<remaining {
+    self.buffer[i] = self.buffer[self.start + i]
+  }
+  self.start = 0
+  self.end = remaining
 }
 
 ///|
@@ -74,12 +103,14 @@ fn[W : Write] BufWriter::flush_pending(
   self : BufWriter[W],
 ) -> Unit raise IoError {
   let mut completed = 0
-  while !self.buffer.is_empty() {
+  while self.start < self.end {
     self.underlying_writes += 1
-    let count = Write::write(self.inner, self.buffer[:]) catch {
+    let bytes = self.buffer.unsafe_reinterpret_as_bytes()
+    let pending = self.end - self.start
+    let count = Write::write(self.inner, bytes, self.start, pending) catch {
       error => {
         let progress = error.progress()
-        validate_progress("BufWriter::flush", progress, self.buffer.length())
+        validate_progress("BufWriter::flush", progress, pending)
         if progress != 0 {
           raise io_error(
             ContractViolation,
@@ -91,7 +122,7 @@ fn[W : Write] BufWriter::flush_pending(
         raise error.add_progress(completed)
       }
     }
-    validate_progress("BufWriter::flush", count, self.buffer.length())
+    validate_progress("BufWriter::flush", count, pending)
     if count == 0 {
       raise io_error(
         WriteZero,
@@ -99,29 +130,48 @@ fn[W : Write] BufWriter::flush_pending(
         message="destination accepted zero buffered bytes",
       )
     }
-    self.discard_prefix(count)
+    self.start += count
     completed += count
   }
+  self.start = 0
+  self.end = 0
 }
 
 ///|
-pub impl[W : Write] Write for BufWriter[W] with fn write(self, src) {
-  if src.is_empty() {
+pub impl[W : Write] Write for BufWriter[W] with fn write(
+  self,
+  src,
+  offset,
+  length,
+) {
+  if offset < 0 || length < 0 || offset > src.length() - length {
+    raise io_error(
+      InvalidInput,
+      "BufWriter::write",
+      message="source range is invalid",
+    )
+  }
+  if length == 0 {
     return 0
   }
-  if !self.buffer.is_empty() &&
-    src.length() > self.capacity - self.buffer.length() {
+  if self.buffered_len() > 0 && length > self.capacity - self.end {
     self.flush_pending()
   }
-  if self.buffer.is_empty() && src.length() >= self.capacity {
+  if self.buffered_len() == 0 && length >= self.capacity {
     self.underlying_writes += 1
     self.bypass_writes += 1
-    let count = Write::write(self.inner, src)
-    validate_progress("BufWriter::write", count, src.length())
+    let count = Write::write(self.inner, src, offset, length)
+    validate_progress("BufWriter::write", count, length)
     return count
   }
-  let count = Int::min(src.length(), self.capacity - self.buffer.length())
-  append_bytes(self.buffer, src[0:count])
+  if self.end + length > self.capacity {
+    self.compact()
+  }
+  let count = Int::min(length, self.capacity - self.end)
+  for i in 0..<count {
+    self.buffer[self.end + i] = src[offset + i]
+  }
+  self.end += count
   count
 }
 
@@ -133,9 +183,14 @@ pub impl[W : Write] Write for BufWriter[W] with fn flush(self) {
 
 ///|
 /// Flush and return the wrapped writer.
-pub fn[W : Write] BufWriter::finish(self : BufWriter[W]) -> W raise IoError {
-  Write::flush(self)
-  self.inner
+pub fn[W : Write] BufWriter::finish(
+  self : BufWriter[W],
+) -> Result[W, BufWriterFinishError[W]] {
+  try Write::flush(self) catch {
+    error => Err({ writer: self, error })
+  } noraise {
+    _ => Ok(self.inner)
+  }
 }
 
 ///|
@@ -153,6 +208,11 @@ pub impl[W : Write + Seek] Seek for BufWriter[W] with fn stream_position(self) {
 ///|
 /// Return the wrapped writer and a copy of bytes still pending in the buffer.
 /// This method performs no I/O and therefore cannot lose recovery state.
-pub fn[W] BufWriter::into_parts(self : BufWriter[W]) -> (W, Bytes) {
-  (self.inner, Bytes::from_array(self.buffer[:]))
+pub fn[W] BufWriter::into_parts(
+  self : BufWriter[W],
+) -> (W, @buffer.SharedBytes) {
+  (
+    self.inner,
+    @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),
+  )
 }

@@ -32,7 +32,7 @@ async test "async buffered seek accounts for unread and pending bytes" {
     AsyncMemoryReader::new(b"abcdef"[:]),
     capacity=4,
   )
-  assert_eq(AsyncBufRead::fill_buf(reader), b"abcd")
+  assert_eq(AsyncBufRead::fill_buf(reader).to_owned(), [b'a', b'b', b'c', b'd'])
   AsyncBufRead::consume(reader, 1)
   assert_eq(AsyncSeek::stream_position(reader), 1L)
   assert_eq(AsyncSeek::seek(reader, Current(1L)), 2L)
@@ -97,7 +97,7 @@ async test "AsyncBufWriter retains the uncommitted tail after flush failure" {
   assert_eq(failed, true)
   let (recovered, pending) = writer.into_parts()
   assert_eq(Bytes::from_array(recovered.output), b"ab")
-  assert_eq(pending, b"cdef")
+  assert_eq(pending.to_bytes(), b"cdef")
 }
 
 ///|
@@ -531,7 +531,7 @@ async test "async buffered wrappers cover EOF, invalid ranges, and write failure
   assert_eq(invalid, true)
   let line = AsyncBufRead::read_until(reader, b'\n')
   assert_eq(line, b"abc")
-  assert_eq(AsyncBufRead::fill_buf(reader), [])
+  assert_eq(AsyncBufRead::fill_buf(reader).to_owned(), [])
   assert_eq(AsyncBufReader::get_ref(reader).position, 3)
   assert_eq(
     try {

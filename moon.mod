@@ -1,6 +1,6 @@
 name = "ZSeanYves/bufferutils"
 
-version = "1.0.0"
+version = "0.36.0"
 
 readme = "README.md"
 
@@ -8,9 +8,9 @@ repository = "https://github.com/ZSeanYves/BufferUtils.git"
 
 license = "Apache-2.0"
 
-keywords = [ "reader", "writer" ]
+keywords = [ "zero-copy", "buffer", "bytes", "reader", "writer", "io" ]
 
-description = "Rust-inspired byte buffers and generic synchronous, native, and async I/O for MoonBit."
+description = "Zero-copy shared byte buffers with high-performance synchronous, native, and async I/O for MoonBit."
 
 preferred_target = "native"
 

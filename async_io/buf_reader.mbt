@@ -78,7 +78,7 @@ pub impl[R : AsyncRead] AsyncBufRead for AsyncBufReader[R] with fn fill_buf(
   if self.buffered_len() == 0 {
     ignore(self.refill())
   }
-  Bytes::makei(self.buffered_len(), i => self.buffer[self.start + i])
+  self.buffer[self.start:self.end]
 }
 
 ///|

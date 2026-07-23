@@ -16,6 +16,13 @@ extern "C" fn native_file_open_ffi(
 ) -> NativeFileHandle = "bufferutils_file_open"
 
 ///|
+#borrow(handle)
+extern "C" fn native_file_sync_ffi(
+  handle : NativeFileHandle,
+  data_only : Int,
+) -> Int = "bufferutils_file_sync"
+
+///|
 #borrow(handle, destination)
 extern "C" fn native_file_read_ffi(
   handle : NativeFileHandle,
@@ -29,12 +36,9 @@ extern "C" fn native_file_read_ffi(
 extern "C" fn native_file_write_ffi(
   handle : NativeFileHandle,
   source : Bytes,
+  offset : Int,
   length : Int,
 ) -> Int = "bufferutils_file_write"
-
-///|
-#borrow(handle)
-extern "C" fn native_file_flush_ffi(handle : NativeFileHandle) -> Int = "bufferutils_file_flush"
 
 ///|
 #borrow(handle)
@@ -144,6 +148,10 @@ extern "C" fn native_tcp_accept_ffi(
 extern "C" fn native_tcp_local_port_ffi(listener : NativeSocketHandle) -> Int = "bufferutils_tcp_local_port"
 
 ///|
+#borrow(socket)
+extern "C" fn native_tcp_peer_port_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_peer_port"
+
+///|
 #borrow(socket, destination)
 extern "C" fn native_tcp_read_ffi(
   socket : NativeSocketHandle,
@@ -157,12 +165,28 @@ extern "C" fn native_tcp_read_ffi(
 extern "C" fn native_tcp_write_ffi(
   socket : NativeSocketHandle,
   source : Bytes,
+  offset : Int,
   length : Int,
 ) -> Int = "bufferutils_tcp_write"
 
 ///|
 #borrow(socket)
 extern "C" fn native_tcp_close_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_close"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_shutdown_ffi(
+  socket : NativeSocketHandle,
+  how : Int,
+) -> Int = "bufferutils_tcp_shutdown"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_timeout_ffi(
+  socket : NativeSocketHandle,
+  read_ms : Int,
+  write_ms : Int,
+) -> Int = "bufferutils_tcp_timeout"
 
 ///|
 #borrow(socket)

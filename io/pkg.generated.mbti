@@ -2,17 +2,22 @@
 package "ZSeanYves/bufferutils/io"
 
 import {
+  "ZSeanYves/bufferutils/buffer",
   "moonbitlang/core/debug",
 }
 
 // Values
 pub fn io_error(IoErrorKind, String, context? : String, path? : String, raw_code? : Int, progress? : Int, message? : String) -> IoError
 
+pub fn[R : Read] read_exact_fixed(R, FixedArray[Byte], Int, Int) -> Unit raise IoError
+
 pub fn[R : Read] read_exact_vectored(R, ArrayView[MutArrayView[Byte]]) -> Unit raise IoError
 
 pub fn[R : Read] read_to_end(R, Array[Byte]) -> Int raise IoError
 
 pub fn[R : Read] read_to_string(R) -> String raise IoError
+
+pub fn[W : Write] write_all_bytes(W, Bytes, offset? : Int, len? : Int) -> Unit raise IoError
 
 pub fn[W : Write] write_all_vectored(W, ArrayView[ArrayView[Byte]]) -> Unit raise IoError
 
@@ -32,6 +37,7 @@ pub fn IoError::raw_code(Self) -> Int
 
 // Types and methods
 type BufReader[R]
+pub fn[R] BufReader::buffer(Self[R]) -> ArrayView[Byte]
 pub fn[R] BufReader::buffered_len(Self[R]) -> Int
 pub fn[R] BufReader::bypass_read_calls(Self[R]) -> Int
 pub fn[R] BufReader::capacity(Self[R]) -> Int
@@ -39,24 +45,45 @@ pub fn[R] BufReader::get_mut(Self[R]) -> R
 pub fn[R] BufReader::get_ref(Self[R]) -> R
 pub fn[R] BufReader::into_inner(Self[R]) -> R
 pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
+pub fn[R : Read] BufReader::lines(Self[R]) -> Array[String] raise IoError
 pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
+pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
+pub fn[R : Seek] BufReader::seek_relative(Self[R], Int64) -> Unit raise IoError
+pub fn[R : Read] BufReader::split(Self[R], Byte) -> Array[Array[Byte]] raise IoError
 pub fn[R] BufReader::underlying_read_calls(Self[R]) -> Int
 pub impl[R : Read] BufRead for BufReader[R]
 pub impl[R : Read] Read for BufReader[R]
 pub impl[R : Seek] Seek for BufReader[R]
 
+pub struct BufStream[R, W] {
+  reader : BufReader[R]
+  writer : BufWriter[W]
+}
+pub fn[R, W] BufStream::new(R, W, capacity? : Int) -> Self[R, W] raise IoError
+pub impl[R : Read, W : Write] BufRead for BufStream[R, W]
+pub impl[R : Read, W] Read for BufStream[R, W]
+pub impl[R, W : Write] Write for BufStream[R, W]
+
 type BufWriter[W]
 pub fn[W] BufWriter::buffered_len(Self[W]) -> Int
 pub fn[W] BufWriter::bypass_write_calls(Self[W]) -> Int
 pub fn[W] BufWriter::capacity(Self[W]) -> Int
-pub fn[W : Write] BufWriter::finish(Self[W]) -> W raise IoError
+pub fn[W : Write] BufWriter::finish(Self[W]) -> Result[W, BufWriterFinishError[W]]
 pub fn[W] BufWriter::get_mut(Self[W]) -> W
 pub fn[W] BufWriter::get_ref(Self[W]) -> W
-pub fn[W] BufWriter::into_parts(Self[W]) -> (W, Bytes)
+pub fn[W] BufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes)
 pub fn[W] BufWriter::new(W, capacity? : Int) -> Self[W] raise IoError
 pub fn[W] BufWriter::underlying_write_calls(Self[W]) -> Int
 pub impl[W : Write + Seek] Seek for BufWriter[W]
+pub impl[W : Write] Sink for BufWriter[W]
 pub impl[W : Write] Write for BufWriter[W]
+
+pub struct BufWriterFinishError[W] {
+  writer : BufWriter[W]
+  error : IoError
+}
+pub fn[W] BufWriterFinishError::error(Self[W]) -> IoError
+pub fn[W] BufWriterFinishError::into_inner(Self[W]) -> BufWriter[W]
 
 pub struct Chain[A, B] {
   first : A
@@ -121,6 +148,28 @@ pub(all) struct IoFailure {
   message : String
 } derive(Eq, @debug.Debug)
 
+pub struct IoSlice {
+  data : Bytes
+  offset : Int
+  length : Int
+}
+pub fn IoSlice::data(Self) -> Bytes
+pub fn IoSlice::is_empty(Self) -> Bool
+pub fn IoSlice::len(Self) -> Int
+pub fn IoSlice::new(Bytes, Int, Int) -> Self raise IoError
+pub fn IoSlice::offset(Self) -> Int
+
+pub struct IoSliceMut {
+  data : FixedArray[Byte]
+  offset : Int
+  length : Int
+}
+pub fn IoSliceMut::data(Self) -> FixedArray[Byte]
+pub fn IoSliceMut::is_empty(Self) -> Bool
+pub fn IoSliceMut::len(Self) -> Int
+pub fn IoSliceMut::new(FixedArray[Byte], Int, Int) -> Self raise IoError
+pub fn IoSliceMut::offset(Self) -> Int
+
 pub struct LineWriter[W] {
   inner : W
   buffer : Array[Byte]
@@ -129,6 +178,30 @@ pub struct LineWriter[W] {
 pub fn[W] LineWriter::into_parts(Self[W]) -> (W, Bytes)
 pub fn[W] LineWriter::new(W) -> Self[W]
 pub impl[W : Write] Write for LineWriter[W]
+
+pub struct MemoryPipe {
+}
+pub fn MemoryPipe::new() -> (MemoryPipeReader, MemoryPipeWriter)
+
+pub struct MemoryPipeReader {
+  state : MemoryPipeState
+}
+pub impl BufRead for MemoryPipeReader
+pub impl Close for MemoryPipeReader
+pub impl Read for MemoryPipeReader
+
+pub struct MemoryPipeState {
+  data : Array[Byte]
+  mut position : Int
+  mut writer_closed : Bool
+  mut reader_closed : Bool
+}
+
+pub struct MemoryPipeWriter {
+  state : MemoryPipeState
+}
+pub impl Close for MemoryPipeWriter
+pub impl Write for MemoryPipeWriter
 
 type MemoryReader
 pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
@@ -171,6 +244,7 @@ pub(open) trait BufRead : Read {
   fn fill_buf(Self) -> ArrayView[Byte] raise IoError
   fn consume(Self, Int) -> Unit raise IoError
   fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
+  fn skip_until(Self, Byte) -> Int raise IoError = _
   fn read_line(Self, StringBuilder) -> Int raise IoError = _
 }
 
@@ -180,9 +254,10 @@ pub(open) trait Close {
 }
 
 pub(open) trait Read {
-  fn read(Self, MutArrayView[Byte]) -> Int raise IoError
+  fn read(Self, FixedArray[Byte], Int, Int) -> Int raise IoError
+  fn read_array(Self, MutArrayView[Byte]) -> Int raise IoError = _
   fn read_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise IoError = _
-  fn read_vectored(Self, ArrayView[MutArrayView[Byte]]) -> Int raise IoError = _
+  fn read_vectored(Self, ArrayView[IoSliceMut]) -> Int raise IoError = _
   fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
   fn is_read_vectored(Self) -> Bool = _
 }
@@ -193,9 +268,15 @@ pub(open) trait Seek {
   fn rewind(Self) -> Unit raise IoError = _
 }
 
+pub(open) trait Sink {
+  fn send(Self, Bytes, Int, Int) -> Unit raise IoError
+  fn close(Self) -> Unit raise IoError
+}
+
 pub(open) trait Write {
-  fn write(Self, ArrayView[Byte]) -> Int raise IoError
-  fn write_vectored(Self, ArrayView[ArrayView[Byte]]) -> Int raise IoError = _
+  fn write(Self, Bytes, Int, Int) -> Int raise IoError
+  fn write_array(Self, ArrayView[Byte]) -> Int raise IoError = _
+  fn write_vectored(Self, ArrayView[IoSlice]) -> Int raise IoError = _
   fn flush(Self) -> Unit raise IoError
   fn write_all(Self, ArrayView[Byte]) -> Unit raise IoError = _
   fn is_write_vectored(Self) -> Bool = _

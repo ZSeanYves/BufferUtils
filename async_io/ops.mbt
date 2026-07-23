@@ -14,9 +14,11 @@ pub async fn[R : AsyncRead, W : AsyncWrite] copy(
     if count == 0 {
       break
     }
-    let bytes = Bytes::makei(count, i => buffer[i])
-    AsyncWrite::write_all(writer, bytes)
-    total += count
+    let bytes = buffer.unsafe_reinterpret_as_bytes()
+    @async.protect_from_cancel(() => {
+      AsyncWrite::write_all(writer, bytes, offset=0, len=count)
+      total += count
+    })
   }
   total
 }
@@ -28,8 +30,16 @@ pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidire
   right : B,
 ) -> (Int, Int) {
   @async.with_task_group(group => {
-    let left_to_right = group.spawn(() => copy(left, right))
-    let right_to_left = group.spawn(() => copy(right, left))
+    let left_to_right = group.spawn(() => {
+      let count = copy(left, right)
+      AsyncWrite::shutdown(right)
+      count
+    })
+    let right_to_left = group.spawn(() => {
+      let count = copy(right, left)
+      AsyncWrite::shutdown(left)
+      count
+    })
     (left_to_right.wait(), right_to_left.wait())
   })
 }
