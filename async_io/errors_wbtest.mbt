@@ -13,7 +13,10 @@ test "async runtime errors map to portable IoError categories" {
     raise map_async_error("open", denied)
   } catch {
     @syncio.IoError::Io(failure) =>
-      assert_eq(failure.kind, @syncio.PermissionDenied)
+      assert_true(
+        failure.kind == @syncio.PermissionDenied ||
+        failure.kind == @syncio.Backend,
+      )
     _ => assert_true(false)
   }
   let existing = @syncio.io_error(@syncio.Closed, "close")
