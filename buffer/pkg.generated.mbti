@@ -1,0 +1,107 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/buffer"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+pub suberror BufferError {
+  InvalidRange(String)
+  Underflow(Int, Int)
+  CapacityOverflow(Int, Int)
+  InvalidUtf8
+} derive(Eq, @debug.Debug)
+
+// Types and methods
+pub struct BytesMut {
+  mut storage : SharedStorage
+  mut start : Int
+  mut end : Int
+  max_capacity : Int
+}
+pub fn BytesMut::capacity(Self) -> Int
+pub fn BytesMut::clear(Self) -> Unit
+pub fn BytesMut::copied_bytes(Self) -> Int
+pub fn BytesMut::freeze(Self) -> SharedBytes
+pub fn BytesMut::from_array(ArrayView[Byte], max_capacity? : Int) -> Self raise BufferError
+pub fn BytesMut::is_empty(Self) -> Bool
+pub fn BytesMut::len(Self) -> Int
+pub fn BytesMut::new(capacity? : Int, max_capacity? : Int) -> Self raise BufferError
+pub fn BytesMut::put_byte(Self, Byte) -> Unit raise BufferError
+pub fn BytesMut::put_bytes(Self, SharedBytes) -> Unit raise BufferError
+pub fn BytesMut::put_slice(Self, ArrayView[Byte]) -> Unit raise BufferError
+pub fn BytesMut::put_u16_be(Self, UInt16) -> Unit raise BufferError
+pub fn BytesMut::put_u16_le(Self, UInt16) -> Unit raise BufferError
+pub fn BytesMut::put_u32_be(Self, UInt) -> Unit raise BufferError
+pub fn BytesMut::put_u32_le(Self, UInt) -> Unit raise BufferError
+pub fn BytesMut::put_u64_be(Self, UInt64) -> Unit raise BufferError
+pub fn BytesMut::put_u64_le(Self, UInt64) -> Unit raise BufferError
+pub fn BytesMut::put_utf8(Self, StringView) -> Unit raise BufferError
+pub fn BytesMut::remaining_mut(Self) -> Int
+pub fn BytesMut::reserve(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::split_off(Self, Int) -> Self raise BufferError
+pub fn BytesMut::split_to(Self, Int) -> Self raise BufferError
+pub fn BytesMut::truncate(Self, Int) -> Unit raise BufferError
+pub fn BytesMut::view(Self) -> ArrayView[Byte]
+pub fn[T] BytesMut::with_writable(Self, (MutArrayView[Byte]) -> T) -> T
+pub impl BufMut for BytesMut
+
+pub struct SharedBytes {
+  storage : SharedStorage
+  mut start : Int
+  end : Int
+}
+pub fn SharedBytes::advance(Self, Int) -> Unit raise BufferError
+pub fn SharedBytes::chunk(Self) -> Self
+pub fn SharedBytes::clone(Self) -> Self
+pub fn SharedBytes::copied_bytes(Self) -> Int
+pub fn SharedBytes::copy_to(Self, MutArrayView[Byte]) -> Int
+pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
+pub fn SharedBytes::get_u16_be(Self) -> UInt16 raise BufferError
+pub fn SharedBytes::get_u16_le(Self) -> UInt16 raise BufferError
+pub fn SharedBytes::get_u32_be(Self) -> UInt raise BufferError
+pub fn SharedBytes::get_u32_le(Self) -> UInt raise BufferError
+pub fn SharedBytes::get_u64_be(Self) -> UInt64 raise BufferError
+pub fn SharedBytes::get_u64_le(Self) -> UInt64 raise BufferError
+pub fn SharedBytes::get_u8(Self) -> Byte raise BufferError
+pub fn SharedBytes::get_utf8(Self, Int) -> String raise BufferError
+pub fn SharedBytes::is_empty(Self) -> Bool
+pub fn SharedBytes::len(Self) -> Int
+pub fn SharedBytes::new() -> Self
+pub fn SharedBytes::remaining(Self) -> Int
+pub fn SharedBytes::slice(Self, Int, Int) -> Self raise BufferError
+pub fn SharedBytes::split_to(Self, Int) -> Self raise BufferError
+pub fn SharedBytes::to_array(Self) -> Array[Byte]
+pub fn SharedBytes::view(Self) -> ArrayView[Byte]
+pub impl Buf for SharedBytes
+
+type SharedStorage
+
+// Type aliases
+
+// Traits
+pub(open) trait Buf {
+  fn remaining(Self) -> Int
+  fn chunk(Self) -> SharedBytes
+  fn advance(Self, Int) -> Unit raise BufferError
+  fn copy_to(Self, MutArrayView[Byte]) -> Int
+  fn get_u8(Self) -> Byte raise BufferError
+  fn get_u16_be(Self) -> UInt16 raise BufferError
+  fn get_u16_le(Self) -> UInt16 raise BufferError
+  fn get_u32_be(Self) -> UInt raise BufferError
+  fn get_u32_le(Self) -> UInt raise BufferError
+  fn get_u64_be(Self) -> UInt64 raise BufferError
+  fn get_u64_le(Self) -> UInt64 raise BufferError
+}
+
+pub(open) trait BufMut {
+  fn remaining_mut(Self) -> Int
+  fn reserve(Self, Int) -> Unit raise BufferError
+  fn put_byte(Self, Byte) -> Unit raise BufferError
+  fn put_slice(Self, ArrayView[Byte]) -> Unit raise BufferError
+  fn put_bytes(Self, SharedBytes) -> Unit raise BufferError
+  fn freeze(Self) -> SharedBytes
+}

@@ -1,0 +1,15 @@
+import {
+  "ZSeanYves/bufferutils/buffer",
+  "ZSeanYves/bufferutils/io",
+  "ZSeanYves/bufferutils/native",
+  "moonbitlang/core/bench" @mbench,
+  "moonbitlang/x/fs",
+}
+
+supported_targets = "native"
+
+pkgtype(kind: "executable")
+
+options(
+  "preferred-target": "native",
+)

@@ -1,0 +1,16 @@
+import {
+  "ZSeanYves/bufferutils/io",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "moonbitlang/x/fs",
+} for "test"
+
+supported_targets = "native"
+
+options(
+  "is-main": false,
+  "preferred-target": "native",
+  "native-stub": [ "native.c" ],
+)

@@ -1,0 +1,201 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/io"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn io_error(IoErrorKind, String, context? : String, path? : String, raw_code? : Int, progress? : Int, message? : String) -> IoError
+
+pub fn[R : Read] read_exact_vectored(R, ArrayView[MutArrayView[Byte]]) -> Unit raise IoError
+
+pub fn[R : Read] read_to_end(R, Array[Byte]) -> Int raise IoError
+
+pub fn[R : Read] read_to_string(R) -> String raise IoError
+
+pub fn[W : Write] write_all_vectored(W, ArrayView[ArrayView[Byte]]) -> Unit raise IoError
+
+// Errors
+pub suberror IoError {
+  Io(IoFailure)
+} derive(Eq, @debug.Debug)
+pub fn IoError::add_progress(Self, Int) -> Self
+pub fn IoError::context(Self) -> String
+pub fn IoError::is_interrupted(Self) -> Bool
+pub fn IoError::kind(Self) -> IoErrorKind
+pub fn IoError::message(Self) -> String
+pub fn IoError::operation(Self) -> String
+pub fn IoError::path(Self) -> String
+pub fn IoError::progress(Self) -> Int
+pub fn IoError::raw_code(Self) -> Int
+
+// Types and methods
+type BufReader[R]
+pub fn[R] BufReader::buffered_len(Self[R]) -> Int
+pub fn[R] BufReader::bypass_read_calls(Self[R]) -> Int
+pub fn[R] BufReader::capacity(Self[R]) -> Int
+pub fn[R] BufReader::get_mut(Self[R]) -> R
+pub fn[R] BufReader::get_ref(Self[R]) -> R
+pub fn[R] BufReader::into_inner(Self[R]) -> R
+pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
+pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
+pub fn[R] BufReader::underlying_read_calls(Self[R]) -> Int
+pub impl[R : Read] BufRead for BufReader[R]
+pub impl[R : Read] Read for BufReader[R]
+pub impl[R : Seek] Seek for BufReader[R]
+
+type BufWriter[W]
+pub fn[W] BufWriter::buffered_len(Self[W]) -> Int
+pub fn[W] BufWriter::bypass_write_calls(Self[W]) -> Int
+pub fn[W] BufWriter::capacity(Self[W]) -> Int
+pub fn[W : Write] BufWriter::finish(Self[W]) -> W raise IoError
+pub fn[W] BufWriter::get_mut(Self[W]) -> W
+pub fn[W] BufWriter::get_ref(Self[W]) -> W
+pub fn[W] BufWriter::into_parts(Self[W]) -> (W, Bytes)
+pub fn[W] BufWriter::new(W, capacity? : Int) -> Self[W] raise IoError
+pub fn[W] BufWriter::underlying_write_calls(Self[W]) -> Int
+pub impl[W : Write + Seek] Seek for BufWriter[W]
+pub impl[W : Write] Write for BufWriter[W]
+
+pub struct Chain[A, B] {
+  first : A
+  second : B
+  mut first_done : Bool
+}
+pub fn[A, B] Chain::new(A, B) -> Self[A, B]
+pub impl[A : Read, B : Read] Read for Chain[A, B]
+
+pub struct Cursor {
+  data : Array[Byte]
+  mut position : Int
+}
+pub fn Cursor::len(Self) -> Int
+pub fn Cursor::new(ArrayView[Byte]) -> Self
+pub fn Cursor::position(Self) -> Int64
+pub fn Cursor::to_bytes(Self) -> Bytes
+pub impl BufRead for Cursor
+pub impl Read for Cursor
+pub impl Seek for Cursor
+pub impl Write for Cursor
+
+pub struct Empty {
+  storage : Array[Byte]
+}
+pub fn Empty::new() -> Self
+pub impl BufRead for Empty
+pub impl Read for Empty
+
+pub(all) enum IoErrorKind {
+  InvalidInput
+  InvalidData
+  NotFound
+  PermissionDenied
+  WouldBlock
+  TimedOut
+  ConnectionReset
+  ConnectionRefused
+  BrokenPipe
+  NotConnected
+  AddressInUse
+  AddressNotAvailable
+  UnexpectedEof
+  WriteZero
+  Interrupted
+  Closed
+  NotSeekable
+  StorageFull
+  OutOfMemory
+  Unsupported
+  Backend
+  ContractViolation
+} derive(Eq, @debug.Debug)
+
+pub(all) struct IoFailure {
+  kind : IoErrorKind
+  operation : String
+  context : String
+  path : String
+  raw_code : Int
+  progress : Int
+  message : String
+} derive(Eq, @debug.Debug)
+
+pub struct LineWriter[W] {
+  inner : W
+  buffer : Array[Byte]
+  mut pending_error : IoError?
+}
+pub fn[W] LineWriter::into_parts(Self[W]) -> (W, Bytes)
+pub fn[W] LineWriter::new(W) -> Self[W]
+pub impl[W : Write] Write for LineWriter[W]
+
+type MemoryReader
+pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
+pub fn MemoryReader::read_calls(Self) -> Int
+pub fn MemoryReader::remaining(Self) -> Int
+pub impl Read for MemoryReader
+
+type MemoryWriter
+pub fn MemoryWriter::flush_calls(Self) -> Int
+pub fn MemoryWriter::new(max_chunk? : Int) -> Self raise IoError
+pub fn MemoryWriter::to_bytes(Self) -> Bytes
+pub fn MemoryWriter::write_calls(Self) -> Int
+pub impl Write for MemoryWriter
+
+pub struct Repeat {
+  byte : Byte
+}
+pub fn Repeat::new(Byte) -> Self
+pub impl Read for Repeat
+
+pub(all) enum SeekFrom {
+  Start(Int64)
+  Current(Int64)
+  End(Int64)
+} derive(Eq, @debug.Debug)
+
+pub struct Take[R] {
+  inner : R
+  mut remaining : Int64
+}
+pub fn[R] Take::into_inner(Self[R]) -> R
+pub fn[R] Take::new(R, Int64) -> Self[R] raise IoError
+pub fn[R] Take::remaining(Self[R]) -> Int64
+pub impl[R : Read] Read for Take[R]
+
+// Type aliases
+
+// Traits
+pub(open) trait BufRead : Read {
+  fn fill_buf(Self) -> ArrayView[Byte] raise IoError
+  fn consume(Self, Int) -> Unit raise IoError
+  fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
+  fn read_line(Self, StringBuilder) -> Int raise IoError = _
+}
+
+pub(open) trait Close {
+  fn close(Self) -> Unit raise IoError
+  fn is_closed(Self) -> Bool
+}
+
+pub(open) trait Read {
+  fn read(Self, MutArrayView[Byte]) -> Int raise IoError
+  fn read_vectored(Self, ArrayView[MutArrayView[Byte]]) -> Int raise IoError = _
+  fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
+  fn is_read_vectored(Self) -> Bool = _
+}
+
+pub(open) trait Seek {
+  fn seek(Self, SeekFrom) -> Int64 raise IoError
+  fn stream_position(Self) -> Int64 raise IoError
+  fn rewind(Self) -> Unit raise IoError = _
+}
+
+pub(open) trait Write {
+  fn write(Self, ArrayView[Byte]) -> Int raise IoError
+  fn write_vectored(Self, ArrayView[ArrayView[Byte]]) -> Int raise IoError = _
+  fn flush(Self) -> Unit raise IoError
+  fn write_all(Self, ArrayView[Byte]) -> Unit raise IoError = _
+  fn is_write_vectored(Self) -> Bool = _
+}

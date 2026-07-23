@@ -1,0 +1,155 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/async_io"
+
+import {
+  "ZSeanYves/bufferutils/io",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/socket",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub async fn[R : AsyncRead, W : AsyncWrite] copy(R, W, buffer_size? : Int) -> Int
+
+pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional(A, B) -> (Int, Int)
+
+pub async fn copy_file(StringView, StringView, buffer_size? : Int, on_progress? : (CopyProgress) -> Unit) -> CopyProgress
+
+pub async fn read_file(StringView) -> Bytes
+
+pub async fn[R : AsyncRead] read_to_end(R) -> Bytes
+
+pub async fn[W : AsyncWrite] write_all(W, Bytes) -> Unit
+
+pub async fn write_file(StringView, BytesView) -> Unit
+
+// Errors
+
+// Types and methods
+pub struct AsyncBufReader[R] {
+  inner : R
+  buffer : FixedArray[Byte]
+  mut start : Int
+  mut end : Int
+}
+pub fn[R] AsyncBufReader::buffered_len(Self[R]) -> Int
+pub fn[R] AsyncBufReader::get_mut(Self[R]) -> R
+pub fn[R] AsyncBufReader::get_ref(Self[R]) -> R
+pub fn[R] AsyncBufReader::into_inner(Self[R]) -> R
+pub fn[R] AsyncBufReader::into_parts(Self[R]) -> (R, Bytes)
+pub fn[R] AsyncBufReader::new(R, capacity? : Int) -> Self[R] raise @io.IoError
+pub impl[R : AsyncRead] AsyncBufRead for AsyncBufReader[R]
+pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R]
+pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]
+
+pub struct AsyncBufWriter[W] {
+  inner : W
+  buffer : Array[Byte]
+  mut start : Int
+  capacity : Int
+}
+pub async fn[W : AsyncWrite] AsyncBufWriter::finish(Self[W]) -> W
+pub fn[W] AsyncBufWriter::get_mut(Self[W]) -> W
+pub fn[W] AsyncBufWriter::get_ref(Self[W]) -> W
+pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, Bytes)
+pub fn[W] AsyncBufWriter::new(W, capacity? : Int) -> Self[W] raise @io.IoError
+pub fn[W] AsyncBufWriter::pending_len(Self[W]) -> Int
+pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]
+pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W]
+
+pub struct AsyncFile {
+  file : @fs.File
+  mut position : Int64
+  mut closed : Bool
+}
+pub async fn AsyncFile::create(StringView) -> Self
+pub async fn AsyncFile::open_read(StringView) -> Self
+pub impl AsyncClose for AsyncFile
+pub impl AsyncRead for AsyncFile
+pub impl AsyncSeek for AsyncFile
+pub impl AsyncWrite for AsyncFile
+
+pub struct AsyncMemoryReader {
+  data : Bytes
+  mut position : Int
+  mut closed : Bool
+}
+pub fn AsyncMemoryReader::new(BytesView) -> Self
+pub impl AsyncClose for AsyncMemoryReader
+pub impl AsyncRead for AsyncMemoryReader
+pub impl AsyncSeek for AsyncMemoryReader
+
+pub struct AsyncMemoryWriter {
+  data : Array[Byte]
+  mut closed : Bool
+}
+pub fn AsyncMemoryWriter::bytes(Self) -> Bytes
+pub fn AsyncMemoryWriter::new() -> Self
+pub impl AsyncClose for AsyncMemoryWriter
+pub impl AsyncWrite for AsyncMemoryWriter
+
+pub(all) enum AsyncSeekFrom {
+  Start(Int64)
+  Current(Int64)
+  End(Int64)
+} derive(Eq, @debug.Debug)
+
+pub struct AsyncTcpListener {
+  server : @socket.TcpServer
+  mut closed : Bool
+}
+pub async fn AsyncTcpListener::accept(Self) -> AsyncTcpStream
+pub async fn AsyncTcpListener::bind(String) -> Self
+pub fn AsyncTcpListener::local_port(Self) -> Int
+pub impl AsyncClose for AsyncTcpListener
+
+pub struct AsyncTcpStream {
+  stream : @socket.Tcp
+  mut closed : Bool
+}
+pub async fn AsyncTcpStream::connect(StringView, Int) -> Self
+pub impl AsyncClose for AsyncTcpStream
+pub impl AsyncRead for AsyncTcpStream
+pub impl AsyncWrite for AsyncTcpStream
+
+pub(all) struct CopyProgress {
+  bytes : Int
+  read_calls : Int
+  write_calls : Int
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
+pub(open) trait AsyncBufRead : AsyncRead {
+  async fn fill_buf(Self) -> Bytes
+  fn consume(Self, Int) -> Unit raise @io.IoError
+  async fn read_until(Self, Byte) -> Bytes = _
+}
+
+pub(open) trait AsyncClose {
+  async fn close(Self) -> Unit
+  fn is_closed(Self) -> Bool
+}
+
+pub(open) trait AsyncRead {
+  async fn read(Self, FixedArray[Byte], offset? : Int, max_len? : Int) -> Int
+  async fn read_exact(Self, FixedArray[Byte], offset? : Int, len? : Int) -> Unit = _
+  async fn read_to_end(Self) -> Bytes = _
+}
+pub impl AsyncRead for @fs.File
+pub impl AsyncRead for @socket.Tcp
+
+pub(open) trait AsyncSeek {
+  async fn seek(Self, AsyncSeekFrom) -> Int64
+  async fn stream_position(Self) -> Int64 = _
+  async fn rewind(Self) -> Unit = _
+}
+
+pub(open) trait AsyncWrite {
+  async fn write(Self, Bytes, offset~ : Int, len~ : Int) -> Int
+  async fn flush(Self) -> Unit
+  async fn write_all(Self, Bytes, offset? : Int, len? : Int) -> Unit = _
+}
+pub impl AsyncWrite for @fs.File
+pub impl AsyncWrite for @socket.Tcp

@@ -1,0 +1,71 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/native"
+
+import {
+  "ZSeanYves/bufferutils/io",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct MappedBytes {
+  path : String
+  handle : NativeMappedHandle
+  mut position : Int
+}
+pub fn MappedBytes::copy_range(Self, Int, Int) -> Bytes raise @io.IoError
+pub fn MappedBytes::find_byte(Self, Byte) -> Int raise @io.IoError
+pub fn MappedBytes::len(Self) -> Int
+pub fn MappedBytes::open(String) -> Self raise @io.IoError
+pub fn MappedBytes::read_byte_at(Self, Int) -> Byte raise @io.IoError
+pub fn MappedBytes::remaining(Self) -> Int
+pub fn MappedBytes::slice(Self, Int, Int) -> Self raise @io.IoError
+pub impl @io.Close for MappedBytes
+pub impl @io.Read for MappedBytes
+pub impl @io.Seek for MappedBytes
+
+pub struct NativeFile {
+  path : String
+  handle : NativeFileHandle
+  readable : Bool
+  writable : Bool
+}
+pub fn NativeFile::append(String) -> Self raise @io.IoError
+pub fn NativeFile::create(String) -> Self raise @io.IoError
+pub fn NativeFile::open_read(String) -> Self raise @io.IoError
+pub fn NativeFile::path(Self) -> String
+pub impl @io.Close for NativeFile
+pub impl @io.Read for NativeFile
+pub impl @io.Seek for NativeFile
+pub impl @io.Write for NativeFile
+
+type NativeFileHandle
+
+type NativeMappedHandle
+
+type NativeSocketHandle
+
+pub struct NativeTcpListener {
+  host : String
+  handle : NativeSocketHandle
+}
+pub fn NativeTcpListener::accept(Self) -> NativeTcpStream raise @io.IoError
+pub fn NativeTcpListener::bind(String, Int) -> Self raise @io.IoError
+pub fn NativeTcpListener::local_port(Self) -> Int raise @io.IoError
+pub impl @io.Close for NativeTcpListener
+
+pub struct NativeTcpStream {
+  host : String
+  port : Int
+  handle : NativeSocketHandle
+}
+pub fn NativeTcpStream::connect(String, Int) -> Self raise @io.IoError
+pub impl @io.Close for NativeTcpStream
+pub impl @io.Read for NativeTcpStream
+pub impl @io.Write for NativeTcpStream
+
+// Type aliases
+
+// Traits
