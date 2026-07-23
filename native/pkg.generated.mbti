@@ -37,8 +37,10 @@ pub fn NativeFile::create(String) -> Self raise @io.IoError
 pub fn NativeFile::open(String, NativeOpenOptions) -> Self raise @io.IoError
 pub fn NativeFile::open_read(String) -> Self raise @io.IoError
 pub fn NativeFile::path(Self) -> String
+pub fn NativeFile::read_syscalls(Self) -> Int
 pub fn NativeFile::sync_all(Self) -> Unit raise @io.IoError
 pub fn NativeFile::sync_data(Self) -> Unit raise @io.IoError
+pub fn NativeFile::write_syscalls(Self) -> Int
 pub impl @io.Close for NativeFile
 pub impl @io.Read for NativeFile
 pub impl @io.Seek for NativeFile
@@ -83,10 +85,12 @@ pub struct NativeTcpStream {
 pub fn NativeTcpStream::connect(String, Int) -> Self raise @io.IoError
 pub fn NativeTcpStream::local_port(Self) -> Int raise @io.IoError
 pub fn NativeTcpStream::peer_port(Self) -> Int raise @io.IoError
+pub fn NativeTcpStream::read_syscalls(Self) -> Int
 pub fn NativeTcpStream::set_timeouts(Self, Int, Int) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_both(Self) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_read(Self) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_write(Self) -> Unit raise @io.IoError
+pub fn NativeTcpStream::write_syscalls(Self) -> Int
 pub impl @io.Close for NativeTcpStream
 pub impl @io.Read for NativeTcpStream
 pub impl @io.Write for NativeTcpStream

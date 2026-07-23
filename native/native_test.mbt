@@ -97,6 +97,63 @@ test "NativeFile fixed-array reads honor destination offsets" {
 }
 
 ///|
+test "NativeFile vectored I/O preserves ordering and syscall accounting" {
+  ensure_native_test_dir()
+  let path = native_test_dir + "/vectored.bin"
+  let writer = NativeFile::create(path)
+  let before_write = writer.write_syscalls()
+  let sources = [
+    @io.IoSlice::new(b"", 0, 0),
+    @io.IoSlice::new(b"-ab-", 1, 2),
+    @io.IoSlice::new(b"cd", 0, 2),
+  ]
+  let write_vectored = @io.Write::is_write_vectored(writer)
+  let written = @io.Write::write_vectored(writer, sources[:])
+  assert_eq(written, if write_vectored { 4 } else { 2 })
+  assert_eq(writer.write_syscalls() - before_write, 1)
+  if !write_vectored {
+    assert_eq(@io.Write::write(writer, b"cd", 0, 2), 2)
+  }
+  @io.Close::close(writer)
+
+  let reader = NativeFile::open_read(path)
+  let first = FixedArray::make(3, b'-')
+  let second = FixedArray::make(3, b'-')
+  let before_read = reader.read_syscalls()
+  let destinations = [
+    @io.IoSliceMut::new(first, 1, 2),
+    @io.IoSliceMut::new(second, 0, 2),
+  ]
+  let read_vectored = @io.Read::is_read_vectored(reader)
+  let read = @io.Read::read_vectored(reader, destinations[:])
+  assert_eq(read, if read_vectored { 4 } else { 2 })
+  if !read_vectored {
+    assert_eq(@io.Read::read(reader, second, 0, 2), 2)
+  }
+  assert_eq(first.unsafe_reinterpret_as_bytes(), b"-ab")
+  assert_eq(second.unsafe_reinterpret_as_bytes(), b"cd-")
+  assert_eq(
+    reader.read_syscalls() - before_read,
+    if read_vectored {
+      1
+    } else {
+      2
+    },
+  )
+  let empty = [@io.IoSliceMut::new(first, 0, 0)]
+  assert_eq(@io.Read::read_vectored(reader, empty[:]), 0)
+  assert_eq(
+    reader.read_syscalls() - before_read,
+    if read_vectored {
+      1
+    } else {
+      2
+    },
+  )
+  @io.Close::close(reader)
+}
+
+///|
 test "NativeFile v1 reports closed and missing resources structurally" {
   let missing = try {
     ignore(NativeFile::open_read(native_test_dir + "/missing.bin"))
@@ -258,6 +315,36 @@ test "NativeTcp performs a loopback roundtrip and closes idempotently" {
   @io.Close::close(listener)
   assert_eq(@io.Close::is_closed(client), true)
   assert_eq(@io.Close::is_closed(listener), true)
+}
+
+///|
+test "NativeTcp uses one vectored syscall per ordered message" {
+  let listener = NativeTcpListener::bind("127.0.0.1", 0)
+  let client = NativeTcpStream::connect("127.0.0.1", listener.local_port())
+  let server = listener.accept()
+  let before_write = client.write_syscalls()
+  let message = [
+    @io.IoSlice::new(b"vec", 0, 3),
+    @io.IoSlice::new(b"tored", 0, 5),
+  ]
+  assert_eq(@io.Write::write_vectored(client, message[:]), 8)
+  assert_eq(client.write_syscalls() - before_write, 1)
+  assert_eq(@io.Write::is_write_vectored(client), true)
+  let left = FixedArray::make(3, (0).to_byte())
+  let right = FixedArray::make(5, (0).to_byte())
+  let destinations = [
+    @io.IoSliceMut::new(left, 0, 3),
+    @io.IoSliceMut::new(right, 0, 5),
+  ]
+  let before_read = server.read_syscalls()
+  assert_eq(@io.Read::read_vectored(server, destinations[:]), 8)
+  assert_eq(left.unsafe_reinterpret_as_bytes(), b"vec")
+  assert_eq(right.unsafe_reinterpret_as_bytes(), b"tored")
+  assert_eq(server.read_syscalls() - before_read, 1)
+  assert_eq(@io.Read::is_read_vectored(server), true)
+  @io.Close::close(client)
+  @io.Close::close(server)
+  @io.Close::close(listener)
 }
 
 ///|

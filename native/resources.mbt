@@ -241,6 +241,56 @@ pub impl @io.Read for NativeFile with fn read_fixed(
 }
 
 ///|
+pub impl @io.Read for NativeFile with fn read_vectored(self, destinations) {
+  if !self.readable {
+    raise native_error("read_vectored", self.path, 7)
+  }
+  if native_file_is_read_vectored_ffi(self.handle) == 0 {
+    for destination in destinations {
+      if !destination.is_empty() {
+        return @io.Read::read(
+          self,
+          destination.data(),
+          destination.offset(),
+          destination.len(),
+        )
+      }
+    }
+    return 0
+  }
+  let count = Int::min(destinations.length(), 64)
+  let buffers = FixedArray::make(count, FixedArray::make(0, (0).to_byte()))
+  let offsets = FixedArray::make(count, 0)
+  let lengths = FixedArray::make(count, 0)
+  for i in 0..<count {
+    buffers[i] = destinations[i].data()
+    offsets[i] = destinations[i].offset()
+    lengths[i] = destinations[i].len()
+  }
+  let result = native_file_read_vectored_ffi(
+    self.handle,
+    buffers,
+    offsets,
+    lengths,
+    count,
+  )
+  if result < 0 {
+    raise native_error(
+      "read_vectored",
+      self.path,
+      -result,
+      raw_code=native_file_os_error_ffi(self.handle),
+    )
+  }
+  result
+}
+
+///|
+pub impl @io.Read for NativeFile with fn is_read_vectored(self) {
+  native_file_is_read_vectored_ffi(self.handle) != 0
+}
+
+///|
 pub impl @io.Write for NativeFile with fn write(self, src, offset, length) {
   if !self.writable {
     raise native_error("write", self.path, 7)
@@ -261,6 +311,66 @@ pub impl @io.Write for NativeFile with fn write(self, src, offset, length) {
     )
   }
   count
+}
+
+///|
+pub impl @io.Write for NativeFile with fn write_vectored(self, sources) {
+  if !self.writable {
+    raise native_error("write_vectored", self.path, 7)
+  }
+  if native_file_is_write_vectored_ffi(self.handle) == 0 {
+    for source in sources {
+      if !source.is_empty() {
+        return @io.Write::write(
+          self,
+          source.data(),
+          source.offset(),
+          source.len(),
+        )
+      }
+    }
+    return 0
+  }
+  let count = Int::min(sources.length(), 64)
+  let buffers = FixedArray::make(count, b"")
+  let offsets = FixedArray::make(count, 0)
+  let lengths = FixedArray::make(count, 0)
+  for i in 0..<count {
+    buffers[i] = sources[i].data()
+    offsets[i] = sources[i].offset()
+    lengths[i] = sources[i].len()
+  }
+  let result = native_file_write_vectored_ffi(
+    self.handle,
+    buffers,
+    offsets,
+    lengths,
+    count,
+  )
+  if result < 0 {
+    raise native_error(
+      "write_vectored",
+      self.path,
+      -result,
+      raw_code=native_file_os_error_ffi(self.handle),
+    )
+  }
+  result
+}
+
+///|
+pub impl @io.Write for NativeFile with fn is_write_vectored(self) {
+  native_file_is_write_vectored_ffi(self.handle) != 0
+}
+
+///|
+pub fn NativeFile::read_syscalls(self : NativeFile) -> Int {
+  native_file_read_syscalls_ffi(self.handle)
+}
+
+///|
+pub fn NativeFile::write_syscalls(self : NativeFile) -> Int {
+  native_file_write_syscalls_ffi(self.handle)
 }
 
 ///|

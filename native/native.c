@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #endif
 
 typedef struct bufferutils_file_payload {
@@ -35,6 +36,8 @@ typedef struct bufferutils_file_payload {
   int32_t closed;
   int32_t error;
   int32_t os_error;
+  int32_t read_syscalls;
+  int32_t write_syscalls;
 #if defined(_WIN32)
   CRITICAL_SECTION lock;
 #else
@@ -75,6 +78,8 @@ typedef struct bufferutils_socket_payload {
   int32_t closed;
   int32_t error;
   int32_t os_error;
+  int32_t read_syscalls;
+  int32_t write_syscalls;
 #if defined(_WIN32)
   int32_t winsock_started;
   CRITICAL_SECTION lock;
@@ -205,6 +210,8 @@ static void v1_socket_init(bufferutils_socket_payload *socket) {
 #else
   pthread_mutex_init(&socket->lock, NULL);
 #endif
+  socket->read_syscalls = 0;
+  socket->write_syscalls = 0;
 }
 
 static int v1_socket_from_addrinfo(
@@ -391,6 +398,8 @@ MOONBIT_FFI_EXPORT void *bufferutils_file_open(
   file->closed = 1;
   file->error = BUFFERUTILS_V1_OPEN_FAILED;
   file->os_error = 0;
+  file->read_syscalls = 0;
+  file->write_syscalls = 0;
 #if defined(_WIN32)
   InitializeCriticalSection(&file->lock);
 #else
@@ -477,6 +486,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_read(
   if (len == 0) return 0;
   dst += offset;
   v1_file_lock(file);
+  file->read_syscalls += 1;
 #if defined(_WIN32)
   DWORD count = 0;
   BOOL ok = ReadFile(file->file, dst, (DWORD)len, &count, NULL);
@@ -508,6 +518,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write(
   if (len == 0) return 0;
   src += offset;
   v1_file_lock(file);
+  file->write_syscalls += 1;
 #if defined(_WIN32)
   DWORD count = 0;
   BOOL ok = WriteFile(file->file, src, (DWORD)len, &count, NULL);
@@ -637,6 +648,95 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_close(void *payload) {
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_is_closed(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
   return file == NULL || file->closed;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_vectored(
+  void *payload, uint8_t **buffers, const int32_t *offsets,
+  const int32_t *lengths, int32_t count
+) {
+  bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
+  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+#if defined(_WIN32)
+  (void)buffers; (void)offsets; (void)lengths; (void)count;
+  return -BUFFERUTILS_V1_UNSUPPORTED;
+#else
+  struct iovec iov[64];
+  int used = 0;
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    iov[used].iov_base = buffers[i] + offsets[i];
+    iov[used].iov_len = (size_t)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  v1_file_lock(file);
+  file->read_syscalls += 1;
+  ssize_t result = readv(file->file, iov, used);
+  if (result < 0) {
+    file->os_error = errno;
+    file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_READ_FAILED);
+  }
+  v1_file_unlock(file);
+  return result < 0 ? -file->error : (int32_t)result;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_write_vectored(
+  void *payload, const uint8_t **buffers, const int32_t *offsets,
+  const int32_t *lengths, int32_t count
+) {
+  bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
+  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+#if defined(_WIN32)
+  (void)buffers; (void)offsets; (void)lengths; (void)count;
+  return -BUFFERUTILS_V1_UNSUPPORTED;
+#else
+  struct iovec iov[64];
+  int used = 0;
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    iov[used].iov_base = (void *)(buffers[i] + offsets[i]);
+    iov[used].iov_len = (size_t)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  v1_file_lock(file);
+  file->write_syscalls += 1;
+  ssize_t result = writev(file->file, iov, used);
+  if (result < 0) {
+    file->os_error = errno;
+    file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_WRITE_FAILED);
+  }
+  v1_file_unlock(file);
+  return result < 0 ? -file->error : (int32_t)result;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_is_read_vectored(void *payload) {
+#if defined(_WIN32)
+  (void)payload; return 0;
+#else
+  return 1;
+#endif
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_is_write_vectored(void *payload) {
+#if defined(_WIN32)
+  (void)payload; return 0;
+#else
+  return 1;
+#endif
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_syscalls(void *payload) {
+  bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
+  return file == NULL ? 0 : file->read_syscalls;
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_file_write_syscalls(void *payload) {
+  bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
+  return file == NULL ? 0 : file->write_syscalls;
 }
 
 static bufferutils_mapping_owner *v1_mapping_owner_new(void) {
@@ -1008,6 +1108,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
   if (len == 0) return 0;
   dst += offset;
   v1_socket_lock(socket);
+  socket->read_syscalls += 1;
 #if defined(_WIN32)
   int count = recv(socket->socket, (char *)dst, len, 0);
 #else
@@ -1034,6 +1135,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(
   if (len == 0) return 0;
   src += offset;
   v1_socket_lock(socket);
+  socket->write_syscalls += 1;
 #if defined(_WIN32)
   int count = send(socket->socket, (const char *)src, len, 0);
 #else
@@ -1049,6 +1151,122 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(
   }
   v1_socket_unlock(socket);
   return count < 0 ? -socket->error : count;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_vectored(
+  void *payload, uint8_t **buffers, const int32_t *offsets,
+  const int32_t *lengths, int32_t count
+) {
+  bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
+  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  int used = 0;
+#if defined(_WIN32)
+  WSABUF parts[64];
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    parts[used].buf = (CHAR *)(buffers[i] + offsets[i]);
+    parts[used].len = (ULONG)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  DWORD received = 0;
+  DWORD flags = 0;
+  v1_socket_lock(socket);
+  socket->read_syscalls += 1;
+  int status = WSARecv(socket->socket, parts, (DWORD)used, &received, &flags, NULL, NULL);
+  if (status != 0) {
+    socket->os_error = WSAGetLastError();
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
+  }
+  v1_socket_unlock(socket);
+  return status == 0 ? (int32_t)received : -socket->error;
+#else
+  struct iovec parts[64];
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    parts[used].iov_base = buffers[i] + offsets[i];
+    parts[used].iov_len = (size_t)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  v1_socket_lock(socket);
+  socket->read_syscalls += 1;
+  ssize_t result = readv(socket->socket, parts, used);
+  if (result < 0) {
+    socket->os_error = errno;
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
+  }
+  v1_socket_unlock(socket);
+  return result < 0 ? -socket->error : (int32_t)result;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_vectored(
+  void *payload, const uint8_t **buffers, const int32_t *offsets,
+  const int32_t *lengths, int32_t count
+) {
+  bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
+  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  int used = 0;
+#if defined(_WIN32)
+  WSABUF parts[64];
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    parts[used].buf = (CHAR *)(buffers[i] + offsets[i]);
+    parts[used].len = (ULONG)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  DWORD sent = 0;
+  v1_socket_lock(socket);
+  socket->write_syscalls += 1;
+  int status = WSASend(socket->socket, parts, (DWORD)used, &sent, 0, NULL, NULL);
+  if (status != 0) {
+    socket->os_error = WSAGetLastError();
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
+  }
+  v1_socket_unlock(socket);
+  return status == 0 ? (int32_t)sent : -socket->error;
+#else
+  struct iovec parts[64];
+  for (int i = 0; i < count; i++) {
+    if (offsets[i] < 0 || lengths[i] < 0 || (lengths[i] > 0 && buffers[i] == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+    if (lengths[i] == 0) continue;
+    parts[used].iov_base = (void *)(buffers[i] + offsets[i]);
+    parts[used].iov_len = (size_t)lengths[i];
+    used++;
+  }
+  if (used == 0) return 0;
+  v1_socket_lock(socket);
+  socket->write_syscalls += 1;
+  ssize_t result = writev(socket->socket, parts, used);
+  if (result < 0) {
+    socket->os_error = errno;
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
+  }
+  v1_socket_unlock(socket);
+  return result < 0 ? -socket->error : (int32_t)result;
+#endif
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_is_read_vectored(void *payload) {
+  (void)payload; return 1;
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_is_write_vectored(void *payload) {
+  (void)payload; return 1;
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_syscalls(void *payload) {
+  bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
+  return socket == NULL ? 0 : socket->read_syscalls;
+}
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_syscalls(void *payload) {
+  bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
+  return socket == NULL ? 0 : socket->write_syscalls;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_close(void *payload) {

@@ -79,6 +79,40 @@ pub impl @io.Read for NativeTcpStream with fn read_fixed(
 }
 
 ///|
+pub impl @io.Read for NativeTcpStream with fn read_vectored(self, destinations) {
+  let count = Int::min(destinations.length(), 64)
+  let buffers = FixedArray::make(count, FixedArray::make(0, (0).to_byte()))
+  let offsets = FixedArray::make(count, 0)
+  let lengths = FixedArray::make(count, 0)
+  for i in 0..<count {
+    buffers[i] = destinations[i].data()
+    offsets[i] = destinations[i].offset()
+    lengths[i] = destinations[i].len()
+  }
+  let result = native_tcp_read_vectored_ffi(
+    self.handle,
+    buffers,
+    offsets,
+    lengths,
+    count,
+  )
+  if result < 0 {
+    raise native_error(
+      "tcp read_vectored",
+      self.host,
+      -result,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
+  }
+  result
+}
+
+///|
+pub impl @io.Read for NativeTcpStream with fn is_read_vectored(self) {
+  native_tcp_is_read_vectored_ffi(self.handle) != 0
+}
+
+///|
 pub impl @io.Write for NativeTcpStream with fn write(self, src, offset, length) {
   if offset < 0 || length < 0 || offset > src.length() - length {
     raise @io.io_error(@io.InvalidInput, "tcp write", path=self.host)
@@ -96,6 +130,50 @@ pub impl @io.Write for NativeTcpStream with fn write(self, src, offset, length) 
     )
   }
   count
+}
+
+///|
+pub impl @io.Write for NativeTcpStream with fn write_vectored(self, sources) {
+  let count = Int::min(sources.length(), 64)
+  let buffers = FixedArray::make(count, b"")
+  let offsets = FixedArray::make(count, 0)
+  let lengths = FixedArray::make(count, 0)
+  for i in 0..<count {
+    buffers[i] = sources[i].data()
+    offsets[i] = sources[i].offset()
+    lengths[i] = sources[i].len()
+  }
+  let result = native_tcp_write_vectored_ffi(
+    self.handle,
+    buffers,
+    offsets,
+    lengths,
+    count,
+  )
+  if result < 0 {
+    raise native_error(
+      "tcp write_vectored",
+      self.host,
+      -result,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
+  }
+  result
+}
+
+///|
+pub impl @io.Write for NativeTcpStream with fn is_write_vectored(self) {
+  native_tcp_is_write_vectored_ffi(self.handle) != 0
+}
+
+///|
+pub fn NativeTcpStream::read_syscalls(self : NativeTcpStream) -> Int {
+  native_tcp_read_syscalls_ffi(self.handle)
+}
+
+///|
+pub fn NativeTcpStream::write_syscalls(self : NativeTcpStream) -> Int {
+  native_tcp_write_syscalls_ffi(self.handle)
 }
 
 ///|
