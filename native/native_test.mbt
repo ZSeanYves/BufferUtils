@@ -114,7 +114,15 @@ test "NativeFile vectored I/O preserves ordering and syscall accounting" {
   if !write_vectored {
     assert_eq(@io.Write::write(writer, b"cd", 0, 2), 2)
   }
+  assert_eq(@io.Write::write_vectored(writer, [][:]), 0)
   @io.Close::close(writer)
+  let closed_write = try {
+    ignore(@io.Write::write_vectored(writer, sources[:]))
+    false
+  } catch {
+    _ => true
+  }
+  assert_eq(closed_write, true)
 
   let reader = NativeFile::open_read(path)
   let first = FixedArray::make(3, b'-')
@@ -151,6 +159,39 @@ test "NativeFile vectored I/O preserves ordering and syscall accounting" {
     },
   )
   @io.Close::close(reader)
+}
+
+///|
+test "NativeFile vectored methods retain access and closed errors" {
+  ensure_native_test_dir()
+  let path = native_test_dir + "/vectored-errors.bin"
+  @fs.write_bytes_to_file(path, b"x")
+  let reader = NativeFile::open_read(path)
+  let writable = FixedArray::make(1, (0).to_byte())
+  let destinations = [@io.IoSliceMut::new(writable, 0, 1)]
+  let write_on_read_only = try {
+    ignore(@io.Read::read_vectored(reader, destinations[:]))
+    false
+  } catch {
+    error => error.kind() == @io.InvalidInput
+  }
+  assert_eq(write_on_read_only, false)
+  let sources = [@io.IoSlice::new(b"x", 0, 1)]
+  let write_error = try {
+    ignore(@io.Write::write_vectored(reader, sources[:]))
+    false
+  } catch {
+    error => error.kind() == @io.InvalidInput
+  }
+  assert_eq(write_error, true)
+  @io.Close::close(reader)
+  let closed_result = try {
+    ignore(@io.Read::read_vectored(reader, destinations[:]))
+    false
+  } catch {
+    error => error.kind() == @io.Closed
+  }
+  assert_eq(closed_result, true)
 }
 
 ///|

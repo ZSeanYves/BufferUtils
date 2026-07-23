@@ -3,7 +3,7 @@
 /// already structured I/O errors retain their identity; runtime OS failures
 /// receive the same portable categories as synchronous I/O.
 fn map_async_error(operation : String, err : Error) -> Error {
-  if @async.is_cancellation_error(err) || @async.is_being_cancelled() {
+  if @async.is_cancellation_error(err) {
     return err
   }
   match err {

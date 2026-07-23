@@ -5,6 +5,7 @@ import {
   "moonbitlang/async/fs",
   "moonbitlang/async/io" @runtime_io,
   "moonbitlang/async/os_error",
+  "moonbitlang/async/types" @async_types,
   "moonbitlang/async/socket",
   "moonbitlang/core/debug",
 }
