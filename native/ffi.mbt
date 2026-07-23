@@ -20,6 +20,7 @@ extern "C" fn native_file_open_ffi(
 extern "C" fn native_file_read_ffi(
   handle : NativeFileHandle,
   destination : FixedArray[Byte],
+  offset : Int,
   length : Int,
 ) -> Int = "bufferutils_file_read"
 
@@ -147,6 +148,7 @@ extern "C" fn native_tcp_local_port_ffi(listener : NativeSocketHandle) -> Int = 
 extern "C" fn native_tcp_read_ffi(
   socket : NativeSocketHandle,
   destination : FixedArray[Byte],
+  offset : Int,
   length : Int,
 ) -> Int = "bufferutils_tcp_read"
 

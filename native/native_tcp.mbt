@@ -38,7 +38,7 @@ pub impl @io.Read for NativeTcpStream with fn read(self, dst) {
     return 0
   }
   let scratch = FixedArray::make(dst.length(), (0).to_byte())
-  let count = native_tcp_read_ffi(self.handle, scratch, scratch.length())
+  let count = native_tcp_read_ffi(self.handle, scratch, 0, scratch.length())
   if count < 0 {
     raise native_error(
       "tcp read",
@@ -49,6 +49,32 @@ pub impl @io.Read for NativeTcpStream with fn read(self, dst) {
   }
   for i in 0..<count {
     dst[i] = scratch[i]
+  }
+  count
+}
+
+///|
+/// Native fixed-array reads avoid allocating a scratch buffer per syscall.
+pub impl @io.Read for NativeTcpStream with fn read_fixed(
+  self,
+  destination,
+  offset,
+  max_len,
+) {
+  if offset < 0 || max_len < 0 || offset > destination.length() - max_len {
+    raise @io.io_error(@io.InvalidInput, "tcp read", path=self.host)
+  }
+  if max_len == 0 {
+    return 0
+  }
+  let count = native_tcp_read_ffi(self.handle, destination, offset, max_len)
+  if count < 0 {
+    raise native_error(
+      "tcp read",
+      self.host,
+      -count,
+      raw_code=native_tcp_os_error_ffi(self.handle),
+    )
   }
   count
 }

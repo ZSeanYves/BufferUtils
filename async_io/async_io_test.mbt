@@ -373,7 +373,6 @@ async test "async file adapters support read-only open and direct runtime adapte
   let file = AsyncFile::open_read(path)
   let data = FixedArray::make(7, (0).to_byte())
   AsyncRead::read_exact(file, data)
-  AsyncWrite::flush(file)
   assert_eq(data.unsafe_reinterpret_as_bytes(), b"adapter")
   AsyncClose::close(file)
   let closed_seek = try {

@@ -116,7 +116,7 @@ pub impl @io.Read for NativeFile with fn read(self, dst) {
     return 0
   }
   let scratch = FixedArray::make(dst.length(), (0).to_byte())
-  let count = native_file_read_ffi(self.handle, scratch, scratch.length())
+  let count = native_file_read_ffi(self.handle, scratch, 0, scratch.length())
   if count < 0 {
     raise native_error(
       "read",
@@ -127,6 +127,35 @@ pub impl @io.Read for NativeFile with fn read(self, dst) {
   }
   for i in 0..<count {
     dst[i] = scratch[i]
+  }
+  count
+}
+
+///|
+/// Native fixed-array reads write directly into the caller's destination.
+pub impl @io.Read for NativeFile with fn read_fixed(
+  self,
+  destination,
+  offset,
+  max_len,
+) {
+  if !self.readable {
+    raise native_error("read", self.path, 7)
+  }
+  if offset < 0 || max_len < 0 || offset > destination.length() - max_len {
+    raise @io.io_error(@io.InvalidInput, "read", path=self.path)
+  }
+  if max_len == 0 {
+    return 0
+  }
+  let count = native_file_read_ffi(self.handle, destination, offset, max_len)
+  if count < 0 {
+    raise native_error(
+      "read",
+      self.path,
+      -count,
+      raw_code=native_file_os_error_ffi(self.handle),
+    )
   }
   count
 }

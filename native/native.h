@@ -41,6 +41,7 @@ MOONBIT_FFI_EXPORT void *bufferutils_file_open(
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_read(
   void *file,
   uint8_t *dst,
+  int32_t offset,
   int32_t len
 );
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_write(
@@ -96,6 +97,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_local_port(void *listener);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
   void *socket,
   uint8_t *dst,
+  int32_t offset,
   int32_t len
 );
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(

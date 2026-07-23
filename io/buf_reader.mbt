@@ -2,7 +2,7 @@
 /// A generic buffered reader over any `Read` implementation.
 struct BufReader[R] {
   inner : R
-  buffer : Array[Byte]
+  buffer : FixedArray[Byte]
   mut position : Int
   mut end : Int
   mut eof : Bool
@@ -25,7 +25,7 @@ pub fn[R] BufReader::new(
   }
   {
     inner,
-    buffer: Array::make(capacity, (0).to_byte()),
+    buffer: FixedArray::make(capacity, (0).to_byte()),
     position: 0,
     end: 0,
     eof: false,
@@ -105,7 +105,7 @@ pub impl[R : Read] BufRead for BufReader[R] with fn fill_buf(self) {
   self.position = 0
   self.end = 0
   self.underlying_reads += 1
-  let count = Read::read(self.inner, self.buffer.mut_view())
+  let count = Read::read_fixed(self.inner, self.buffer, 0, self.buffer.length())
   validate_progress("BufReader::fill_buf", count, self.buffer.length())
   self.end = count
   self.eof = count == 0

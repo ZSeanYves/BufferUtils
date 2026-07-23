@@ -2,9 +2,25 @@
 /// A fallible source that reads into caller-owned storage.
 pub(open) trait Read {
   fn read(Self, MutArrayView[Byte]) -> Int raise IoError
+  /// Read directly into a caller-owned fixed array. Implementations backed by
+  /// native handles can override this to avoid an intermediate array copy.
+  fn read_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise IoError = _
   fn read_vectored(Self, ArrayView[MutArrayView[Byte]]) -> Int raise IoError = _
   fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
   fn is_read_vectored(Self) -> Bool = _
+}
+
+///|
+/// The default fixed-array path preserves the slice-based `Read` contract.
+impl Read with fn read_fixed(self, destination, offset, length) {
+  if offset < 0 || length < 0 || offset > destination.length() - length {
+    raise io_error(
+      InvalidInput,
+      "read_fixed",
+      message="destination range is invalid",
+    )
+  }
+  Read::read(self, destination.mut_view(start=offset, end=offset + length))
 }
 
 ///|

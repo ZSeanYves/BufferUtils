@@ -447,12 +447,13 @@ MOONBIT_FFI_EXPORT void *bufferutils_file_open(
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_read(
-  void *payload, uint8_t *dst, int32_t len
+  void *payload, uint8_t *dst, int32_t offset, int32_t len
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
   if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
-  if (len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  if (offset < 0 || len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
+  dst += offset;
   v1_file_lock(file);
 #if defined(_WIN32)
   DWORD count = 0;
@@ -926,12 +927,13 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_local_port(void *payload) {
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
-  void *payload, uint8_t *dst, int32_t len
+  void *payload, uint8_t *dst, int32_t offset, int32_t len
 ) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
   if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
-  if (len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  if (offset < 0 || len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
+  dst += offset;
   v1_socket_lock(socket);
 #if defined(_WIN32)
   int count = recv(socket->socket, (char *)dst, len, 0);
