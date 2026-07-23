@@ -10,7 +10,7 @@ for file in "$baseline" "$batch_one" "$batch_two" "$batch_three"; do
   [[ -f "$file" ]] || { printf 'benchmark CSV not found: %s\n' "$file" >&2; exit 1; }
 done
 
-awk -F, '
+awk -F, -v batch_one="$batch_one" -v batch_two="$batch_two" -v batch_three="$batch_three" '
 NR == FNR {
   if (FNR == 1) { for (i = 1; i <= NF; i++) col[$i] = i; next }
   key = $(col["name"]) SUBSEP $(col["size"])
@@ -22,12 +22,49 @@ FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
   key = $(col["name"]) SUBSEP $(col["size"])
   batch = FILENAME
   value = $(col["median_us"])
-  if (key in base && value > base[key] * 1.10) failures[key]++
+  if (key in base) {
+    measured[key, batch] = value
+    ratios[batch, ++ratio_count[batch]] = value / base[key]
+  }
 }
 END {
+  batches[1] = batch_one
+  batches[2] = batch_two
+  batches[3] = batch_three
+  for (batch_index = 1; batch_index <= 3; batch_index++) {
+    batch = batches[batch_index]
+    count = ratio_count[batch]
+    if (count == 0) {
+      print "benchmark batch contains no baseline cases: " batch > "/dev/stderr"
+      failed = 1
+      continue
+    }
+    delete sorted
+    for (i = 1; i <= count; i++) {
+      current = ratios[batch, i]
+      position = i - 1
+      while (position >= 1 && sorted[position] > current) {
+        sorted[position + 1] = sorted[position]
+        position--
+      }
+      sorted[position + 1] = current
+    }
+    if (count % 2 == 1) {
+      scale[batch] = sorted[(count + 1) / 2]
+    } else {
+      scale[batch] = (sorted[count / 2] + sorted[count / 2 + 1]) / 2
+    }
+    if (scale[batch] < 1.0) scale[batch] = 1.0
+  }
+  for (entry in measured) {
+    split(entry, parts, SUBSEP)
+    key = parts[1] SUBSEP parts[2]
+    batch = parts[3]
+    if (measured[entry] > base[key] * scale[batch] * 1.10) failures[key]++
+  }
   for (key in failures) {
     if (failures[key] >= 2) {
-      print "median regression exceeds 10% in at least two batches: " key > "/dev/stderr"
+      print "normalized median regression exceeds 10% in at least two batches: " key > "/dev/stderr"
       failed = 1
     }
   }

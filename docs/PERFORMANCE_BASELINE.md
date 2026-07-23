@@ -1,8 +1,7 @@
 # Ubuntu x86_64 Baseline Procedure
 
-The 0.37 Ubuntu baseline is generated on a fixed
-produced on a pinned `ubuntu-x86_64` runner with the
-same MoonBit toolchain as CI:
+The 0.37 Ubuntu baseline is produced on the pinned `ubuntu-24.04` workflow
+runner with the same MoonBit toolchain as CI:
 
 ```text
 for batch in 1 2 3; do
@@ -18,7 +17,10 @@ cp .tmp/bufferutils-bench/toolchain.txt bench/baselines/ubuntu-x86_64.meta
 ```
 
 Run three batches of 50 samples for each 1 KiB, 64 KiB, 1 MiB, and 64 MiB
-case. Store both baseline files in the repository. Subsequent CI uses
-`scripts/check_performance_batches` and fails only after two of three batches
-regress by more than 10%. Non-Ubuntu targets run structural, copy-count, and
-correctness gates only.
+case. Store both baseline files in the repository. Subsequent CI normalizes
+each batch by the median ratio across matching workloads to account for the
+speed class of the shared GitHub runner. It fails only after the same workload
+in two of three batches exceeds that normalized baseline by more than 10%.
+A uniform slowdown across the suite is diagnostic rather than an automatic
+failure; a dedicated runner is required for an absolute-time gate. Non-Ubuntu
+targets run structural, copy-count, and correctness gates only.
