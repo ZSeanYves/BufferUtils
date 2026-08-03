@@ -79,7 +79,8 @@ NR == 1 { next }
     }
   }
   if (name == "sync_vectored_fallback") {
-    if (copied != bytes || calls != iterations * 2) {
+    expected_copied = implementation == "moonbit" ? bytes * 2 : bytes
+    if (copied != expected_copied || calls != iterations * 2) {
       fail("vectored fallback structure mismatch: " row)
     }
   }

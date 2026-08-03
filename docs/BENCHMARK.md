@@ -29,12 +29,18 @@ inside the timer, and reads counters after timing stops. Iterations double
 until the measured median is at least 10ms. Every invocation performs 10
 warmups, 30 measured samples, and three batches.
 
-Fake writers account exact accepted bytes and calls, but sample only the first
-and last accepted byte plus the accepted length into an observed checksum.
-Scanning every accepted byte in a fake sink would make short-write rows measure
-the checksum loop instead of the I/O abstraction. MoonBit and Rust use the same
-sampling rule; the checksum is consumed after timing to prevent dead-code
-elimination.
+Fake writers copy every accepted byte into a fixture allocated before timing,
+account exact accepted bytes and calls, and sample the scratch buffer's first
+and last byte plus the accepted length into an observed checksum. This makes a
+reported sink copy a real memory copy without adding a second full checksum
+scan. MoonBit and Rust use the same rule; the checksum is consumed after timing
+to prevent dead-code elimination.
+
+MoonBit array-based vectored fallback performs its documented explicit
+ArrayView-to-fixed-array adapter copy before the sink copy, so it records two
+copies per byte. Rust records the single sink copy. The structural gate checks
+these implementation-specific facts instead of assigning both a fabricated
+common value.
 
 The 16-byte short-write contract uses a 1KiB payload. Repeating the same
 contract with a 1MiB payload creates 65,536 dynamic calls per iteration and

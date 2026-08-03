@@ -14,6 +14,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 4194304
 
 ///|
+let benchmark_keeper : @mbench.Bench = @mbench.Bench()
+
+///|
 struct AsyncBenchCounters {
   copied_bytes : Int64
   underlying_calls : Int64
@@ -64,6 +67,7 @@ impl @async_io.AsyncRead for RepeatingAsyncReader with fn read(
 
 ///|
 struct CountingAsyncWriter {
+  scratch : FixedArray[Byte]
   mut bytes : Int64
   mut calls : Int64
   mut checksum : Int
@@ -76,20 +80,24 @@ impl @async_io.AsyncWrite for CountingAsyncWriter with fn write(
   offset~,
   len~,
 ) {
+  let count = Int::min(len, self.scratch.length())
+  for i in 0..<count {
+    self.scratch[i] = source[offset + i]
+  }
   let mut checksum = self.checksum
-  if len > 0 {
+  if count > 0 {
     checksum = (
         checksum +
-        source[offset].to_int() +
-        source[offset + len - 1].to_int() +
-        len
+        self.scratch[0].to_int() +
+        self.scratch[count - 1].to_int() +
+        count
       ) %
       65521
   }
   self.checksum = checksum
-  self.bytes += len.to_int64()
+  self.bytes += count.to_int64()
   self.calls += 1L
-  len
+  count
 }
 
 ///|
@@ -130,10 +138,16 @@ async fn run_async_copy_once(
     remaining_bytes: total,
     calls: 0L,
   }
-  let writer : CountingAsyncWriter = { bytes: 0L, calls: 0L, checksum: 0 }
+  let writer : CountingAsyncWriter = {
+    scratch: FixedArray::make(payload.length(), (0).to_byte()),
+    bytes: 0L,
+    calls: 0L,
+    checksum: 0,
+  }
   let started = @mbench.monotonic_clock_start()
   let copied = @async_io.copy(reader, writer, buffer_size=8192)
   let elapsed = @mbench.monotonic_clock_end(started)
+  benchmark_keeper.keep(writer.checksum)
   if copied.to_int64() != total || writer.bytes != total {
     fail("async copy benchmark lost progress")
   }

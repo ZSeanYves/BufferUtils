@@ -20,6 +20,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 4194304
 
 ///|
+let benchmark_keeper : @mbench.Bench = @mbench.Bench()
+
+///|
 let bench_sizes : Array[Int] = [1024, 1024 * 1024]
 
 ///|
@@ -89,25 +92,38 @@ impl @io.Read for CyclingReader with fn read(self, dst, offset, length) {
 ///|
 struct CountingWriter {
   max_chunk : Int
+  scratch : FixedArray[Byte]
   mut calls : Int
   mut bytes : Int64
   mut checksum : Int
 }
 
 ///|
-fn CountingWriter::new(max_chunk? : Int = 2147483647) -> CountingWriter {
-  { max_chunk, calls: 0, bytes: 0L, checksum: 0 }
+fn CountingWriter::new(
+  max_chunk? : Int = 2147483647,
+  scratch_capacity? : Int = 8192,
+) -> CountingWriter {
+  {
+    max_chunk,
+    scratch: FixedArray::make(scratch_capacity, (0).to_byte()),
+    calls: 0,
+    bytes: 0L,
+    checksum: 0,
+  }
 }
 
 ///|
 impl @io.Write for CountingWriter with fn write(self, src, offset, length) {
-  let count = Int::min(length, self.max_chunk)
+  let count = Int::min(length, Int::min(self.max_chunk, self.scratch.length()))
+  for i in 0..<count {
+    self.scratch[i] = src[offset + i]
+  }
   let mut checksum = self.checksum
   if count > 0 {
     checksum = (
         checksum +
-        src[offset].to_int() +
-        src[offset + count - 1].to_int() +
+        self.scratch[0].to_int() +
+        self.scratch[count - 1].to_int() +
         count
       ) %
       65521
@@ -130,7 +146,8 @@ fn CountingWriter::calls(self : CountingWriter) -> Int {
 
 ///|
 fn CountingWriter::observed_bytes(self : CountingWriter) -> Int64 {
-  self.bytes + self.checksum.to_int64() * 0L
+  benchmark_keeper.keep(self.checksum)
+  self.bytes
 }
 
 ///|
@@ -429,11 +446,11 @@ fn raw_read_case(size : Int) -> BenchmarkCase {
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
       let reader = CyclingReader::new(payload)
-      let output = Array::make(size, (0).to_byte())
+      let output = FixedArray::make(size, (0).to_byte())
       {
         run: () => {
           for _ in 0..<iterations {
-            @io.Read::read_exact(reader, output.mut_view())
+            @io.read_exact_fixed(reader, output, 0, size)
           }
         },
         observe: () => {
@@ -499,19 +516,20 @@ fn buffered_read_case(
 ///|
 fn raw_write_case(size : Int, chunk_size : Int, name : String) -> BenchmarkCase {
   let payload = pattern_bytes(size)
+  let payload_bytes = Bytes::from_array(payload)
   {
     name,
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let writer = CountingWriter::new()
+      let writer = CountingWriter::new(scratch_capacity=chunk_size)
       {
         run: () => {
           for _ in 0..<iterations {
             let mut offset = 0
             while offset < size {
               let count = Int::min(chunk_size, size - offset)
-              @io.Write::write_all(writer, payload[offset:offset + count])
+              @io.write_all_bytes(writer, payload_bytes, offset~, len=count)
               offset += count
             }
           }
@@ -537,19 +555,24 @@ fn buffered_write_case(
   name : String,
 ) -> BenchmarkCase {
   let payload = pattern_bytes(size)
+  let payload_bytes = Bytes::from_array(payload)
   {
     name,
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let writer = @io.BufWriter::new(CountingWriter::new(), capacity=8192)
+      let scratch_capacity = if chunk_size >= 8192 { chunk_size } else { 8192 }
+      let writer = @io.BufWriter::new(
+        CountingWriter::new(scratch_capacity~),
+        capacity=8192,
+      )
       {
         run: () => {
           for _ in 0..<iterations {
             let mut offset = 0
             while offset < size {
               let count = Int::min(chunk_size, size - offset)
-              @io.Write::write_all(writer, payload[offset:offset + count])
+              @io.write_all_bytes(writer, payload_bytes, offset~, len=count)
               offset += count
             }
             @io.Write::flush(writer)
@@ -572,16 +595,17 @@ fn buffered_write_case(
 ///|
 fn short_write_case(size : Int, max_chunk : Int) -> BenchmarkCase {
   let payload = pattern_bytes(size)
+  let payload_bytes = Bytes::from_array(payload)
   {
     name: "sync_short_write_\{max_chunk}",
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let writer = CountingWriter::new(max_chunk~)
+      let writer = CountingWriter::new(max_chunk~, scratch_capacity=max_chunk)
       {
         run: () => {
           for _ in 0..<iterations {
-            @io.Write::write_all(writer, payload[:])
+            @io.write_all_bytes(writer, payload_bytes)
           }
         },
         observe: () => {
@@ -608,7 +632,7 @@ fn vectored_write_case() -> BenchmarkCase {
     size: 8,
     bytes_per_iteration: 8L,
     prepare: iterations => {
-      let writer = CountingWriter::new()
+      let writer = CountingWriter::new(scratch_capacity=8)
       {
         run: () => {
           for _ in 0..<iterations {
@@ -618,7 +642,7 @@ fn vectored_write_case() -> BenchmarkCase {
         observe: () => {
           ignore(writer.observed_bytes())
           {
-            copied_bytes: 8L * iterations.to_int64(),
+            copied_bytes: 16L * iterations.to_int64(),
             underlying_calls: writer.calls().to_int64(),
             syscalls: 0,
           }

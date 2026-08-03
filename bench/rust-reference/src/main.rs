@@ -159,6 +159,7 @@ impl Read for CyclingReader {
 
 struct CountingWriter {
     max_chunk: usize,
+    scratch: Vec<u8>,
     calls: u64,
     bytes: u64,
     checksum: u64,
@@ -196,6 +197,7 @@ impl AsyncRead for AsyncRepeatingReader {
 }
 
 struct AsyncCountingWriter {
+    scratch: Vec<u8>,
     bytes: u64,
     calls: u64,
     checksum: u64,
@@ -207,13 +209,18 @@ impl AsyncWrite for AsyncCountingWriter {
         _cx: &mut Context<'_>,
         source: &[u8],
     ) -> Poll<io::Result<usize>> {
-        if let (Some(first), Some(last)) = (source.first(), source.last()) {
-            self.checksum =
-                (self.checksum + *first as u64 + *last as u64 + source.len() as u64) % 65_521;
+        let count = source.len().min(self.scratch.len());
+        self.scratch[..count].copy_from_slice(&source[..count]);
+        if count > 0 {
+            self.checksum = (self.checksum
+                + self.scratch[0] as u64
+                + self.scratch[count - 1] as u64
+                + count as u64)
+                % 65_521;
         }
-        self.bytes += source.len() as u64;
+        self.bytes += count as u64;
         self.calls += 1;
-        Poll::Ready(Ok(source.len()))
+        Poll::Ready(Ok(count))
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -232,9 +239,10 @@ struct AsyncCopyState {
 }
 
 impl CountingWriter {
-    fn new(max_chunk: usize) -> Self {
+    fn new(max_chunk: usize, scratch_capacity: usize) -> Self {
         Self {
             max_chunk,
+            scratch: vec![0; scratch_capacity],
             calls: 0,
             bytes: 0,
             checksum: 0,
@@ -245,11 +253,14 @@ impl CountingWriter {
 impl Write for CountingWriter {
     fn write(&mut self, source: &[u8]) -> io::Result<usize> {
         let source = black_box(source);
-        let count = source.len().min(self.max_chunk);
+        let count = source.len().min(self.max_chunk).min(self.scratch.len());
+        self.scratch[..count].copy_from_slice(&source[..count]);
         if count > 0 {
-            self.checksum =
-                (self.checksum + source[0] as u64 + source[count - 1] as u64 + count as u64)
-                    % 65_521;
+            self.checksum = (self.checksum
+                + self.scratch[0] as u64
+                + self.scratch[count - 1] as u64
+                + count as u64)
+                % 65_521;
         }
         self.calls += 1;
         self.bytes += count as u64;
@@ -375,7 +386,7 @@ fn write_cases(size: usize) {
     print_case(
         "sync_raw_small_write",
         size,
-        |_| CountingWriter::new(usize::MAX),
+        |_| CountingWriter::new(usize::MAX, 32),
         |writer, iterations| {
             for _ in 0..iterations {
                 for chunk in payload.chunks(32) {
@@ -397,7 +408,7 @@ fn write_cases(size: usize) {
     print_case(
         "sync_bufwriter_small",
         size,
-        |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX)),
+        |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, 8192)),
         |writer, iterations| {
             for _ in 0..iterations {
                 for chunk in payload.chunks(32) {
@@ -421,7 +432,7 @@ fn write_cases(size: usize) {
         print_case(
             "sync_bufwriter_bypass",
             size,
-            |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX)),
+            |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, size)),
             |writer, iterations| {
                 for _ in 0..iterations {
                     writer.write_all(&payload).unwrap();
@@ -444,7 +455,7 @@ fn write_cases(size: usize) {
         print_case(
             "sync_short_write_16",
             size,
-            |_| CountingWriter::new(16),
+            |_| CountingWriter::new(16, 16),
             |writer, iterations| {
                 for _ in 0..iterations {
                     writer.write_all(&payload).unwrap();
@@ -467,7 +478,7 @@ fn vectored_case() {
     print_case(
         "sync_vectored_fallback",
         8,
-        |_| CountingWriter::new(usize::MAX),
+        |_| CountingWriter::new(usize::MAX, 8),
         |writer, iterations| {
             for _ in 0..iterations {
                 for source in sources {
@@ -505,6 +516,7 @@ fn async_copy_case(size: usize) {
                     calls: 0,
                 },
                 writer: AsyncCountingWriter {
+                    scratch: vec![0; payload.len()],
                     bytes: 0,
                     calls: 0,
                     checksum: 0,
