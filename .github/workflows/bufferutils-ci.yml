@@ -1,4 +1,4 @@
-name: BufferUtils 0.37 CI
+name: BufferUtils 0.40 CI
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  EXPECTED_MOON_VERSION: "0.1.20260803"
+  EXPECTED_MOONC_VERSION: "v0.10.6+62c2592d1-dev"
+
 jobs:
   validate:
     name: validate (${{ matrix.os }})
@@ -15,50 +19,81 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install MoonBit (Unix)
-        if: runner.os != 'Windows'
+      - name: Install pinned MoonBit (Linux)
+        if: runner.os == 'Linux'
         shell: bash
+        run: |
+          chmod +x scripts/install_pinned_moonbit_linux
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+
+      - name: Install matching MoonBit nightly (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MOONBIT_INSTALL_DEV: "1"
+          MOONBIT_INSTALL_VERSION: nightly
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
-      - name: Install MoonBit (Windows)
+      - name: Install matching MoonBit nightly (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:MOONBIT_INSTALL_DEV = "1"
+          $env:MOONBIT_INSTALL_VERSION = "nightly"
           Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Verify, format, and generate interfaces
+      - name: Verify fixed toolchain identity
         shell: bash
         run: |
-          moon version
+          moon version --all | tee .moon-version.txt
+          grep -F "moon $EXPECTED_MOON_VERSION" .moon-version.txt
+          grep -F "moonc $EXPECTED_MOONC_VERSION" .moon-version.txt
+
+      - name: Format, interfaces, checks, docs, and tests
+        shell: bash
+        run: |
           moon update
           moon fmt --check
           moon info --target all
           scripts/normalize_interfaces
           git diff --exit-code
-
-      - name: Test all stable targets
-        shell: bash
-        run: |
           moon check --target all --deny-warn
           moon test --target all --deny-warn
-          moon test native --target native --deny-warn
-          moon test async_io --target native --deny-warn
+          moon doc --frozen
           moon check examples --target native --deny-warn
           moon test examples --target native --deny-warn
           scripts/check_api_surface
 
+  critical-contracts:
+    name: critical contract checklist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned MoonBit
+        shell: bash
+        run: |
+          chmod +x scripts/install_pinned_moonbit_linux scripts/check_critical_contracts
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+      - name: Run hard contract checklist
+        shell: bash
+        run: |
+          moon update
+          scripts/check_critical_contracts
+
   sanitizers:
     name: ${{ matrix.sanitizer }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -69,14 +104,14 @@ jobs:
           - sanitizer: tsan
             compiler: scripts/clang-tsan
             options: halt_on_error=1
-
     steps:
       - uses: actions/checkout@v5
-      - name: Install MoonBit
+      - name: Install pinned MoonBit
         shell: bash
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          chmod +x scripts/install_pinned_moonbit_linux
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
       - name: Run native sanitizer tests
         shell: bash
         env:
@@ -90,65 +125,81 @@ jobs:
             --target native --release --deny-warn
 
   coverage:
-    name: library coverage budget
-    runs-on: ubuntu-latest
+    name: coverage 95 overall and 90 per package
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Install MoonBit
+      - name: Install pinned MoonBit
         shell: bash
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-      - name: Enforce 90 percent library coverage
+          chmod +x scripts/install_pinned_moonbit_linux
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+      - name: Enforce coverage budgets
         shell: bash
         run: |
           moon update
           moon coverage clean
           moon test --target native --enable-coverage --deny-warn
-          mkdir -p .tmp
-          moon coverage report -f summary > .tmp/bufferutils-coverage-summary.txt
-          scripts/check_coverage_budget .tmp/bufferutils-coverage-summary.txt 90
+          mkdir -p .tmp/coverage
+          moon coverage report -f summary > .tmp/coverage/all.txt
+          for package in buffer io async_io native; do
+            moon coverage report -f summary -p "$package" > ".tmp/coverage/$package.txt"
+          done
+          scripts/check_coverage_budget .tmp/coverage/all.txt 95 90 \
+            buffer=.tmp/coverage/buffer.txt \
+            io=.tmp/coverage/io.txt \
+            async_io=.tmp/coverage/async_io.txt \
+            native=.tmp/coverage/native.txt
 
   performance:
-    name: performance batches and regression budget
+    name: MoonBit and Rust performance ratios
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Install MoonBit
+      - name: Install pinned MoonBit
         shell: bash
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-      - name: Run performance gate
+          chmod +x scripts/install_pinned_moonbit_linux
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+      - name: Install Rust 1.97.1
+        shell: bash
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup override set 1.97.1
+      - name: Run three calibrated batches per implementation
         shell: bash
         run: |
           moon update
           mkdir -p .tmp/bufferutils-bench
-          moon version --all > .tmp/bufferutils-bench/toolchain.txt
-          for batch in 1 2 3; do
+          /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-rss.txt \
             moon run bench --target native --release \
-              > ".tmp/bufferutils-bench/results-${batch}.csv"
-            scripts/check_performance_budget \
-              ".tmp/bufferutils-bench/results-${batch}.csv"
-          done
-          if [[ -f bench/baselines/ubuntu-x86_64.csv ]]; then
-            cmp -s bench/baselines/ubuntu-x86_64.meta \
-              .tmp/bufferutils-bench/toolchain.txt || {
-                echo "MoonBit toolchain changed; regenerate the performance baseline" >&2
-                exit 1
-              }
+            > .tmp/bufferutils-bench/moonbit.csv
+          /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-async-rss.txt \
+            moon run bench_async --target native --release \
+            > .tmp/bufferutils-bench/moonbit-async.csv
+          tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv \
+            >> .tmp/bufferutils-bench/moonbit.csv
+          /usr/bin/time -v -o .tmp/bufferutils-bench/rust-rss.txt \
+            cargo run --release --locked \
+              --manifest-path bench/rust-reference/Cargo.toml \
+            > .tmp/bufferutils-bench/rust.csv
+          scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
+          scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
+          if [[ -f bench/baselines/ubuntu-x86_64-ratios.csv ]]; then
             scripts/check_performance_batches \
-              bench/baselines/ubuntu-x86_64.csv \
-              .tmp/bufferutils-bench/results-1.csv \
-              .tmp/bufferutils-bench/results-2.csv \
-              .tmp/bufferutils-bench/results-3.csv
+              bench/baselines/ubuntu-x86_64-ratios.csv \
+              .tmp/bufferutils-bench/moonbit.csv \
+              .tmp/bufferutils-bench/rust.csv
+          else
+            scripts/build_performance_baseline \
+              .tmp/bufferutils-bench/ubuntu-x86_64-ratios.csv \
+              .tmp/bufferutils-bench/moonbit.csv \
+              .tmp/bufferutils-bench/rust.csv
           fi
-      - name: Upload benchmark batches
+      - name: Upload benchmark evidence
         uses: actions/upload-artifact@v4
         with:
-          name: ubuntu-x86_64-performance-batches
-          path: |
-            .tmp/bufferutils-bench/results-1.csv
-            .tmp/bufferutils-bench/results-2.csv
-            .tmp/bufferutils-bench/results-3.csv
-            .tmp/bufferutils-bench/toolchain.txt
+          name: ubuntu-x86_64-performance-evidence
+          path: .tmp/bufferutils-bench
