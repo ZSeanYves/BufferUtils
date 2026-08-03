@@ -1,34 +1,23 @@
-# Ubuntu x86_64 Baseline Procedure
+# Ubuntu x86_64 Ratio Baseline
 
-The 0.37 Ubuntu baseline is produced on the pinned `ubuntu-24.04` workflow
-runner with the same MoonBit toolchain as CI:
+The release baseline is generated only from the `ubuntu-24.04` CI runner using
+the pinned MoonBit Linux archive and Rust 1.97.1 lockfile.
 
-```text
-for batch in 1 2 3; do
-  moon run bench --target native --release > .tmp/bufferutils-bench/results-${batch}.csv
-  scripts/check_performance_budget .tmp/bufferutils-bench/results-${batch}.csv
-done
-moon version --all > .tmp/bufferutils-bench/toolchain.txt
-scripts/build_performance_baseline bench/baselines/ubuntu-x86_64.csv \
-  .tmp/bufferutils-bench/results-1.csv \
-  .tmp/bufferutils-bench/results-2.csv \
-  .tmp/bufferutils-bench/results-3.csv
-cp .tmp/bufferutils-bench/toolchain.txt bench/baselines/ubuntu-x86_64.meta
+```bash
+scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
+scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
+scripts/build_performance_baseline \
+  bench/baselines/ubuntu-x86_64-ratios.csv \
+  .tmp/bufferutils-bench/moonbit.csv \
+  .tmp/bufferutils-bench/rust.csv
 ```
 
-Run three batches of 50 samples for each 1 KiB, 64 KiB, 1 MiB, and 64 MiB
-case. Store both baseline files in the repository. Subsequent CI normalizes
-each batch by the median ratio within each workload family to account for CPU,
-allocator, and filesystem differences between shared GitHub runners. It fails
-only after the same workload in two of three batches exceeds that normalized
-family baseline by more than 10%. A uniform family slowdown is diagnostic
-rather than an automatic failure; a dedicated runner is required for an
-absolute-time gate. Native file and mmap timings are likewise diagnostic on
-the shared runner, while their structural, copy-count, call-count, and syscall
-budgets remain mandatory. Non-Ubuntu targets run structural, copy-count, and
-correctness gates only.
+The baseline contains `name,size,moonbit_over_rust`. It is never generated
+from macOS or a developer workstation and is not updated merely because a gate
+failed. The CI artifact must include both source CSVs, peak-RSS reports, exact
+toolchain identities, and a passing structural check.
 
-Rows with a baseline median below 50 microseconds remain recorded but do not
-make the shared-runner job fail. Their 10% window is too small to separate code
-changes from scheduler noise; a longer workload is required before promotion
-to the timing gate.
+For each later run, the current ratio is calculated independently in all three
+batches. A case fails only when its ratio exceeds the committed ratio by more
+than 15% in at least two batches. Native file/mmap/TCP timings remain reported
+but are excluded from shared-runner failure decisions.

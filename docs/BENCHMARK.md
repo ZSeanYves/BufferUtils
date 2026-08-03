@@ -1,43 +1,50 @@
 # Benchmark Guide
 
-Run:
+BufferUtils uses Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 as the fixed
+comparison toolchain. `Cargo.lock` is committed under `bench/rust-reference`.
 
-~~~bash
+Run both implementations:
+
+```bash
 mkdir -p .tmp/bufferutils-bench
-moon run bench --target native --release > .tmp/bufferutils-bench/results.csv
-scripts/check_performance_budget
-~~~
+moon run bench --target native --release > .tmp/bufferutils-bench/moonbit.csv
+moon run bench_async --target native --release \
+  > .tmp/bufferutils-bench/moonbit-async.csv
+tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv \
+  >> .tmp/bufferutils-bench/moonbit.csv
+cargo run --release --locked --manifest-path bench/rust-reference/Cargo.toml \
+  > .tmp/bufferutils-bench/rust.csv
+scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
+scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
+```
 
-The runner performs 5 warmups and 50 measured samples for 1KB, 64KB, 1MB, and
-64MB. Small writes, short writes, vectored writes, native reads, and mmap are
-reported as separate fixed-size workloads so a 1-byte short-write test cannot
-turn a 64 MiB sample into billions of calls.
-Each row contains:
+The exact CSV schema is:
 
-~~~text
-name,size,bytes,temp_file,median_us,p95_us,min_us,max_us,copied_bytes,allocations,underlying_calls,syscalls,median_mib_per_s
-~~~
+```text
+implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s
+```
 
-The groups include shared split/freeze, COW mutation, raw and buffered
-synchronous read/write, small and short writes, vectored writes, native file
-read/write, and mmap scan. `copied_bytes` is the storage instrumentation value;
-split/freeze rows must be zero. Results are local regression evidence, not
-portable throughput claims.
+Each case constructs its fixture outside the timer, runs only the operation
+inside the timer, and reads counters after timing stops. Iterations double
+until the measured median is at least 10ms. Every invocation performs 10
+warmups, 30 measured samples, and three batches.
 
-CI runs three batches on `ubuntu-24.04`. For each batch,
-`scripts/check_performance_batches` first calculates the median ratio within
-each workload family (buffer, sync read/write, native read/write, and mmap) and
-uses it to normalize shared-runner speed (never making a faster runner stricter
-than the raw baseline). It fails only when the same case still exceeds its
-family-normalized baseline median by 10% in at least two batches. The baseline
-metadata must match `moon version --all`.
+The structural gate rejects fake or inconsistent counters. It verifies O(1)
+clone/slice/split/freeze copy zero payload bytes, COW copies the detached
+range, growth copies the retained prefix, buffered small I/O records both
+copies, bypass records one underlying call, vectored fallback records two
+calls, and MoonBit native file rows match real FFI syscall counters.
+Async copy is compared against Tokio with explicit read/write-call counts. TCP
+loopback reports zero for unavailable runtime syscall counters instead of
+inventing a value, and is diagnostic rather than ratio-gated.
 
-Native file and mmap timing remains in every batch and its structural,
-copy-count, call-count, and syscall contracts are enforced. Absolute native
-timing is diagnostic on GitHub's shared runners because filesystem latency and
-throughput vary independently of CPU speed; it is not part of the failure
-decision until a dedicated runner is available.
+`scripts/build_performance_baseline` calculates the median per-case
+MoonBit/Rust ratio across three batches using per-iteration time. Native file,
+mmap, TCP, and real-disk rows are diagnostic on shared runners. The regression
+gate fails only when a comparable case ratio is more than 15% worse than the
+committed Ubuntu baseline in at least two of three batches. There is no
+workload-family normalization and no absolute requirement to equal Rust.
 
-Cases whose committed median is below 50 microseconds are also diagnostic.
-A 10% delta at that scale is smaller than shared-runner scheduling noise; these
-cases must be lengthened before they can become hard timing gates.
+Peak RSS is collected by a separate process wrapper and is not placed in the
+CSV. Setup cost, filesystem timing, and RSS remain visible diagnostic evidence
+rather than being mixed into the gated operation timing.

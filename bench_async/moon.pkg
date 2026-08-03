@@ -1,0 +1,13 @@
+import {
+  "ZSeanYves/bufferutils/async_io",
+  "moonbitlang/async",
+  "moonbitlang/core/bench" @mbench,
+}
+
+supported_targets = "native"
+
+pkgtype(kind: "executable")
+
+options(
+  "preferred-target": "native",
+)

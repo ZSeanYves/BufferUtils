@@ -6,7 +6,17 @@ package "ZSeanYves/bufferutils/bench"
 // Errors
 
 // Types and methods
+type BenchCounters
+
 type BenchStats
+
+type BenchmarkCase
+
+type CountingWriter
+
+type CyclingReader
+
+type PreparedRun
 
 // Type aliases
 
