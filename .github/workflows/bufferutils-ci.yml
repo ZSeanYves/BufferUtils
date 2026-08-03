@@ -174,18 +174,22 @@ jobs:
         run: |
           moon update
           mkdir -p .tmp/bufferutils-bench
-          /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-rss.txt \
-            stdbuf -oL moon run bench --target native --release \
-            | tee .tmp/bufferutils-bench/moonbit.csv
-          /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-async-rss.txt \
-            stdbuf -oL moon run bench_async --target native --release \
-            | tee .tmp/bufferutils-bench/moonbit-async.csv
-          tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv \
-            >> .tmp/bufferutils-bench/moonbit.csv
-          /usr/bin/time -v -o .tmp/bufferutils-bench/rust-rss.txt \
-            stdbuf -oL cargo run --release --locked \
-              --manifest-path bench/rust-reference/Cargo.toml \
-            | tee .tmp/bufferutils-bench/rust.csv
+          for batch in 1 2 3; do
+            /usr/bin/time -v \
+              -o ".tmp/bufferutils-bench/moonbit-rss-batch-$batch.txt" \
+              stdbuf -oL moon run bench --target native --release -- "$batch" \
+              | tee ".tmp/bufferutils-bench/moonbit-batch-$batch.csv"
+            /usr/bin/time -v \
+              -o ".tmp/bufferutils-bench/moonbit-async-rss-batch-$batch.txt" \
+              stdbuf -oL moon run bench_async --target native --release -- "$batch" \
+              | tee ".tmp/bufferutils-bench/moonbit-async-batch-$batch.csv"
+            /usr/bin/time -v \
+              -o ".tmp/bufferutils-bench/rust-rss-batch-$batch.txt" \
+              stdbuf -oL cargo run --release --locked \
+                --manifest-path bench/rust-reference/Cargo.toml -- "$batch" \
+              | tee ".tmp/bufferutils-bench/rust-batch-$batch.csv"
+          done
+          scripts/merge_performance_batches .tmp/bufferutils-bench
           scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
           scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
           if [[ -f bench/baselines/ubuntu-x86_64-ratios.csv ]]; then

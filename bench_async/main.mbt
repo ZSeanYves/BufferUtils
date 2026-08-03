@@ -5,9 +5,6 @@ let warmup_samples = 10
 let measured_samples = 30
 
 ///|
-let benchmark_batches = 3
-
-///|
 let minimum_sample_us = 10000.0
 
 ///|
@@ -259,24 +256,37 @@ fn throughput(bytes : Int64, micros : Double) -> Double {
 }
 
 ///|
-async fn print_case(name : String, size : Int) -> Unit {
+async fn print_case(name : String, size : Int, batch : Int) -> Unit {
   let payload = pattern_bytes(size)
-  for batch in 1..<=benchmark_batches {
-    let stats = measure_case(name, payload)
-    let bytes = size.to_int64() * stats.iterations.to_int64()
-    println(
-      "moonbit,\{name},\{size},\{batch},\{stats.iterations},\{stats.median_us},\{stats.p95_us},\{bytes},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{throughput(bytes, stats.median_us)}",
-    )
+  let stats = measure_case(name, payload)
+  let bytes = size.to_int64() * stats.iterations.to_int64()
+  println(
+    "moonbit,\{name},\{size},\{batch},\{stats.iterations},\{stats.median_us},\{stats.p95_us},\{bytes},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{throughput(bytes, stats.median_us)}",
+  )
+}
+
+///|
+fn selected_batch() -> Int {
+  let args = @env.args()
+  if args.length() != 2 {
+    abort("usage: bench_async BATCH")
+  }
+  match args[1] {
+    "1" => 1
+    "2" => 2
+    "3" => 3
+    _ => abort("benchmark batch must be 1, 2, or 3")
   }
 }
 
 ///|
 async fn main {
+  let batch = selected_batch()
   println(
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
   for size in [1024, 1024 * 1024] {
-    print_case("async_copy", size)
-    print_case("tcp_loopback", size)
+    print_case("async_copy", size, batch)
+    print_case("tcp_loopback", size, batch)
   }
 }

@@ -8,7 +8,6 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 const WARMUPS: usize = 10;
 const SAMPLES: usize = 30;
-const BATCHES: usize = 3;
 const MIN_SAMPLE_US: f64 = 10_000.0;
 const MAX_ITERATIONS: usize = 16_777_216;
 
@@ -100,6 +99,7 @@ where
 fn print_case<S, Setup, Run, Observe>(
     name: &str,
     size: usize,
+    batch: usize,
     setup: Setup,
     run: Run,
     observe: Observe,
@@ -108,20 +108,18 @@ fn print_case<S, Setup, Run, Observe>(
     Run: Fn(&mut S, usize),
     Observe: Fn(&S, usize) -> Counters,
 {
-    for batch in 1..=BATCHES {
-        let stats = measure(&setup, &run, &observe);
-        let bytes = size as u64 * stats.iterations as u64;
-        let throughput = bytes as f64 / 1_048_576.0 / (stats.median_us / 1_000_000.0);
-        println!(
-            "rust,{name},{size},{batch},{},{},{},{bytes},{},{},{},{throughput}",
-            stats.iterations,
-            stats.median_us,
-            stats.p95_us,
-            stats.counters.copied_bytes,
-            stats.counters.underlying_calls,
-            stats.counters.syscalls,
-        );
-    }
+    let stats = measure(&setup, &run, &observe);
+    let bytes = size as u64 * stats.iterations as u64;
+    let throughput = bytes as f64 / 1_048_576.0 / (stats.median_us / 1_000_000.0);
+    println!(
+        "rust,{name},{size},{batch},{},{},{},{bytes},{},{},{},{throughput}",
+        stats.iterations,
+        stats.median_us,
+        stats.p95_us,
+        stats.counters.copied_bytes,
+        stats.counters.underlying_calls,
+        stats.counters.syscalls,
+    );
 }
 
 struct CyclingReader {
@@ -272,11 +270,12 @@ impl Write for CountingWriter {
     }
 }
 
-fn buffer_cases(size: usize) {
+fn buffer_cases(size: usize, batch: usize) {
     let payload = pattern_bytes(size);
     print_case(
         "buffer_shared_clone",
         size,
+        batch,
         |_| Bytes::copy_from_slice(&payload),
         |source, iterations| {
             for _ in 0..iterations {
@@ -290,6 +289,7 @@ fn buffer_cases(size: usize) {
     print_case(
         "buffer_shared_slice",
         size,
+        batch,
         |_| Bytes::copy_from_slice(&payload),
         |source, iterations| {
             for _ in 0..iterations {
@@ -303,6 +303,7 @@ fn buffer_cases(size: usize) {
     print_case(
         "buffer_shared_split",
         size,
+        batch,
         |_| Bytes::copy_from_slice(&payload),
         |source, iterations| {
             for _ in 0..iterations {
@@ -314,11 +315,12 @@ fn buffer_cases(size: usize) {
     );
 }
 
-fn read_cases(size: usize) {
+fn read_cases(size: usize, batch: usize) {
     let payload = pattern_bytes(size);
     print_case(
         "sync_raw_read",
         size,
+        batch,
         |_| (CyclingReader::new(payload.clone()), vec![0; size]),
         |state, iterations| {
             for _ in 0..iterations {
@@ -336,6 +338,7 @@ fn read_cases(size: usize) {
     print_case(
         "sync_bufreader_small",
         size,
+        batch,
         |_| {
             (
                 BufReader::with_capacity(8192, CyclingReader::new(payload.clone())),
@@ -361,6 +364,7 @@ fn read_cases(size: usize) {
         print_case(
             "sync_bufreader_bypass",
             size,
+            batch,
             |_| {
                 (
                     BufReader::with_capacity(8192, CyclingReader::new(payload.clone())),
@@ -381,11 +385,12 @@ fn read_cases(size: usize) {
     }
 }
 
-fn write_cases(size: usize) {
+fn write_cases(size: usize, batch: usize) {
     let payload = pattern_bytes(size);
     print_case(
         "sync_raw_small_write",
         size,
+        batch,
         |_| CountingWriter::new(usize::MAX, 32),
         |writer, iterations| {
             for _ in 0..iterations {
@@ -408,6 +413,7 @@ fn write_cases(size: usize) {
     print_case(
         "sync_bufwriter_small",
         size,
+        batch,
         |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, 8192)),
         |writer, iterations| {
             for _ in 0..iterations {
@@ -432,6 +438,7 @@ fn write_cases(size: usize) {
         print_case(
             "sync_bufwriter_bypass",
             size,
+            batch,
             |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, size)),
             |writer, iterations| {
                 for _ in 0..iterations {
@@ -455,6 +462,7 @@ fn write_cases(size: usize) {
         print_case(
             "sync_short_write_16",
             size,
+            batch,
             |_| CountingWriter::new(16, 16),
             |writer, iterations| {
                 for _ in 0..iterations {
@@ -473,11 +481,12 @@ fn write_cases(size: usize) {
     }
 }
 
-fn vectored_case() {
+fn vectored_case(batch: usize) {
     let sources: [&[u8]; 2] = [b"vec", b"tored"];
     print_case(
         "sync_vectored_fallback",
         8,
+        batch,
         |_| CountingWriter::new(usize::MAX, 8),
         |writer, iterations| {
             for _ in 0..iterations {
@@ -497,11 +506,12 @@ fn vectored_case() {
     );
 }
 
-fn async_copy_case(size: usize) {
+fn async_copy_case(size: usize, batch: usize) {
     let payload = pattern_bytes(size);
     print_case(
         "async_copy",
         size,
+        batch,
         |iterations| {
             let total = size * iterations;
             AsyncCopyState {
@@ -542,14 +552,19 @@ fn async_copy_case(size: usize) {
 }
 
 fn main() {
+    let batch = std::env::args()
+        .nth(1)
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| (1..=3).contains(value))
+        .expect("usage: bufferutils-rust-reference BATCH (1, 2, or 3)");
     println!(
         "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s"
     );
-    vectored_case();
+    vectored_case(batch);
     for size in [1024, 1024 * 1024] {
-        buffer_cases(size);
-        read_cases(size);
-        write_cases(size);
-        async_copy_case(size);
+        buffer_cases(size, batch);
+        read_cases(size, batch);
+        write_cases(size, batch);
+        async_copy_case(size, batch);
     }
 }

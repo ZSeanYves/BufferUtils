@@ -11,9 +11,6 @@ let warmup_samples = 10
 let measured_samples = 30
 
 ///|
-let benchmark_batches = 3
-
-///|
 let minimum_sample_us = 10000.0
 
 ///|
@@ -802,21 +799,33 @@ fn benchmark_cases() -> Array[BenchmarkCase] {
 }
 
 ///|
-fn run_benchmarks() -> Unit raise {
+fn selected_batch() -> Int {
+  let args = @env.args()
+  if args.length() != 2 {
+    abort("usage: bench BATCH")
+  }
+  match args[1] {
+    "1" => 1
+    "2" => 2
+    "3" => 3
+    _ => abort("benchmark batch must be 1, 2, or 3")
+  }
+}
+
+///|
+fn run_benchmarks(batch : Int) -> Unit raise {
   println(
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
   let cases = benchmark_cases()
-  for batch in 1..<=benchmark_batches {
-    for case in cases {
-      print_result(case, batch, measure(case))
-    }
+  for case in cases {
+    print_result(case, batch, measure(case))
   }
 }
 
 ///|
 fn main {
-  run_benchmarks() catch {
+  run_benchmarks(selected_batch()) catch {
     error => {
       println("benchmark failed")
       println(error)
