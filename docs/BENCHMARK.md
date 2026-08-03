@@ -29,6 +29,18 @@ inside the timer, and reads counters after timing stops. Iterations double
 until the measured median is at least 10ms. Every invocation performs 10
 warmups, 30 measured samples, and three batches.
 
+Fake writers account exact accepted bytes and calls, but sample only the first
+and last accepted byte plus the accepted length into an observed checksum.
+Scanning every accepted byte in a fake sink would make short-write rows measure
+the checksum loop instead of the I/O abstraction. MoonBit and Rust use the same
+sampling rule; the checksum is consumed after timing to prevent dead-code
+elimination.
+
+The 16-byte short-write contract uses a 1KiB payload. Repeating the same
+contract with a 1MiB payload creates 65,536 dynamic calls per iteration and
+dominated shared-runner time without adding a distinct behavioral case; large
+payload behavior remains covered by the raw, buffered and bypass workloads.
+
 The structural gate rejects fake or inconsistent counters. It verifies O(1)
 clone/slice/split/freeze copy zero payload bytes, COW copies the detached
 range, growth copies the retained prefix, buffered small I/O records both

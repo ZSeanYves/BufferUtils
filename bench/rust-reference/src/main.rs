@@ -207,8 +207,9 @@ impl AsyncWrite for AsyncCountingWriter {
         _cx: &mut Context<'_>,
         source: &[u8],
     ) -> Poll<io::Result<usize>> {
-        for byte in source {
-            self.checksum = (self.checksum + *byte as u64) % 65_521;
+        if let (Some(first), Some(last)) = (source.first(), source.last()) {
+            self.checksum =
+                (self.checksum + *first as u64 + *last as u64 + source.len() as u64) % 65_521;
         }
         self.bytes += source.len() as u64;
         self.calls += 1;
@@ -245,8 +246,10 @@ impl Write for CountingWriter {
     fn write(&mut self, source: &[u8]) -> io::Result<usize> {
         let source = black_box(source);
         let count = source.len().min(self.max_chunk);
-        for byte in &source[..count] {
-            self.checksum = (self.checksum + *byte as u64) % 65_521;
+        if count > 0 {
+            self.checksum =
+                (self.checksum + source[0] as u64 + source[count - 1] as u64 + count as u64)
+                    % 65_521;
         }
         self.calls += 1;
         self.bytes += count as u64;
@@ -380,10 +383,13 @@ fn write_cases(size: usize) {
                 }
             }
         },
-        |writer, _| Counters {
-            copied_bytes: writer.bytes,
-            underlying_calls: writer.calls,
-            syscalls: 0,
+        |writer, _| {
+            black_box(writer.checksum);
+            Counters {
+                copied_bytes: writer.bytes,
+                underlying_calls: writer.calls,
+                syscalls: 0,
+            }
         },
     );
 
@@ -400,10 +406,13 @@ fn write_cases(size: usize) {
                 writer.flush().unwrap();
             }
         },
-        |writer, iterations| Counters {
-            copied_bytes: size as u64 * iterations as u64 * 2,
-            underlying_calls: writer.get_ref().calls,
-            syscalls: 0,
+        |writer, iterations| {
+            black_box(writer.get_ref().checksum);
+            Counters {
+                copied_bytes: size as u64 * iterations as u64 * 2,
+                underlying_calls: writer.get_ref().calls,
+                syscalls: 0,
+            }
         },
     );
 
@@ -419,30 +428,38 @@ fn write_cases(size: usize) {
                     writer.flush().unwrap();
                 }
             },
-            |writer, iterations| Counters {
-                copied_bytes: size as u64 * iterations as u64,
-                underlying_calls: writer.get_ref().calls,
-                syscalls: 0,
+            |writer, iterations| {
+                black_box(writer.get_ref().checksum);
+                Counters {
+                    copied_bytes: size as u64 * iterations as u64,
+                    underlying_calls: writer.get_ref().calls,
+                    syscalls: 0,
+                }
             },
         );
     }
 
-    let payload = pattern_bytes(size);
-    print_case(
-        "sync_short_write_16",
-        size,
-        |_| CountingWriter::new(16),
-        |writer, iterations| {
-            for _ in 0..iterations {
-                writer.write_all(&payload).unwrap();
-            }
-        },
-        |writer, _| Counters {
-            copied_bytes: writer.bytes,
-            underlying_calls: writer.calls,
-            syscalls: 0,
-        },
-    );
+    if size == 1024 {
+        let payload = pattern_bytes(size);
+        print_case(
+            "sync_short_write_16",
+            size,
+            |_| CountingWriter::new(16),
+            |writer, iterations| {
+                for _ in 0..iterations {
+                    writer.write_all(&payload).unwrap();
+                }
+            },
+            |writer, _| {
+                black_box(writer.checksum);
+                Counters {
+                    copied_bytes: writer.bytes,
+                    underlying_calls: writer.calls,
+                    syscalls: 0,
+                }
+            },
+        );
+    }
 }
 
 fn vectored_case() {
@@ -458,10 +475,13 @@ fn vectored_case() {
                 }
             }
         },
-        |writer, _| Counters {
-            copied_bytes: writer.bytes,
-            underlying_calls: writer.calls,
-            syscalls: 0,
+        |writer, _| {
+            black_box(writer.checksum);
+            Counters {
+                copied_bytes: writer.bytes,
+                underlying_calls: writer.calls,
+                syscalls: 0,
+            }
         },
     );
 }
@@ -498,10 +518,13 @@ fn async_copy_case(size: usize) {
                 .unwrap();
             assert_eq!(copied, state.writer.bytes);
         },
-        |state, _| Counters {
-            copied_bytes: state.writer.bytes * 2,
-            underlying_calls: state.reader.calls + state.writer.calls,
-            syscalls: 0,
+        |state, _| {
+            black_box(state.writer.checksum);
+            Counters {
+                copied_bytes: state.writer.bytes * 2,
+                underlying_calls: state.reader.calls + state.writer.calls,
+                syscalls: 0,
+            }
         },
     );
 }

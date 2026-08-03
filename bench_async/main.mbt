@@ -77,8 +77,14 @@ impl @async_io.AsyncWrite for CountingAsyncWriter with fn write(
   len~,
 ) {
   let mut checksum = self.checksum
-  for i in 0..<len {
-    checksum = (checksum + source[offset + i].to_int()) % 65521
+  if len > 0 {
+    checksum = (
+        checksum +
+        source[offset].to_int() +
+        source[offset + len - 1].to_int() +
+        len
+      ) %
+      65521
   }
   self.checksum = checksum
   self.bytes += len.to_int64()

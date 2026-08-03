@@ -155,6 +155,7 @@ jobs:
   performance:
     name: MoonBit and Rust performance ratios
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Install pinned MoonBit
@@ -174,17 +175,17 @@ jobs:
           moon update
           mkdir -p .tmp/bufferutils-bench
           /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-rss.txt \
-            moon run bench --target native --release \
-            > .tmp/bufferutils-bench/moonbit.csv
+            stdbuf -oL moon run bench --target native --release \
+            | tee .tmp/bufferutils-bench/moonbit.csv
           /usr/bin/time -v -o .tmp/bufferutils-bench/moonbit-async-rss.txt \
-            moon run bench_async --target native --release \
-            > .tmp/bufferutils-bench/moonbit-async.csv
+            stdbuf -oL moon run bench_async --target native --release \
+            | tee .tmp/bufferutils-bench/moonbit-async.csv
           tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv \
             >> .tmp/bufferutils-bench/moonbit.csv
           /usr/bin/time -v -o .tmp/bufferutils-bench/rust-rss.txt \
-            cargo run --release --locked \
+            stdbuf -oL cargo run --release --locked \
               --manifest-path bench/rust-reference/Cargo.toml \
-            > .tmp/bufferutils-bench/rust.csv
+            | tee .tmp/bufferutils-bench/rust.csv
           scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
           scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
           if [[ -f bench/baselines/ubuntu-x86_64-ratios.csv ]]; then
