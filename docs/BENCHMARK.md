@@ -73,6 +73,12 @@ run's downloadable artifact is the source of truth for raw rows and per-batch
 peak RSS; the baseline contains only median per-case ratios used by the
 regression gate.
 
+The current baseline came from GitHub Actions run `30825629699` at commit
+`68518f7`. All comparable rows had three batches; 17 of 20 cases had less than
+7% max/min ratio spread. Three 1MiB raw/bypass cases shared one third-batch
+outlier, which the specified two-of-three regression rule intentionally does
+not turn into a failure.
+
 Peak RSS is collected by a separate process wrapper and is not placed in the
 CSV. Setup cost, filesystem timing, and RSS remain visible diagnostic evidence
 rather than being mixed into the gated operation timing.
