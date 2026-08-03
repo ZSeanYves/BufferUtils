@@ -2,34 +2,91 @@
 set -euo pipefail
 
 summary=${1:-.tmp/bufferutils-coverage-summary.txt}
-minimum=${2:-90}
+overall_minimum=${2:-95}
+package_minimum=${3:-90}
+shift "$(( $# >= 3 ? 3 : $# ))"
 
 if [[ ! -f "$summary" ]]; then
   printf 'coverage summary not found: %s\n' "$summary" >&2
   exit 1
 fi
 
-awk -v minimum="$minimum" '
-/^bench\// {
-  split($2, counts, "/")
-  bench_covered += counts[1]
-  bench_total += counts[2]
-}
-/^Total:/ {
-  split($2, counts, "/")
-  covered = counts[1] - bench_covered
-  total = counts[2] - bench_total
-}
-END {
-  if (total == 0) {
-    print "coverage summary contains no library source rows" > "/dev/stderr"
+if [[ $# -eq 0 ]]; then
+  printf 'package summaries are required (buffer, io, async_io, native)\n' >&2
+  exit 1
+fi
+
+seen_packages=":"
+package_files=()
+for package_summary in "$@"; do
+  package=${package_summary%%=*}
+  package_file=${package_summary#*=}
+  case "$package" in
+    buffer|io|async_io|native) ;;
+    *)
+      printf 'unknown coverage package: %s\n' "$package" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$seen_packages" == *":$package:"* ]]; then
+    printf 'duplicate coverage package: %s\n' "$package" >&2
+    exit 1
+  fi
+  [[ -f "$package_file" ]] || {
+    printf 'coverage summary not found: %s\n' "$package_file" >&2
     exit 1
   }
+  seen_packages="${seen_packages}${package}:"
+  package_files+=("$package_file")
+  awk -v package="$package" -v minimum="$package_minimum" '
+  /^Total:/ { split($2, counts, "/"); covered = counts[1]; total = counts[2] }
+  END {
+    if (total <= 0) {
+      printf "%s coverage summary contains no source rows\n", package > "/dev/stderr"
+      exit 1
+    }
+    percent = covered * 100.0 / total
+    printf "%s coverage: %d/%d (%.1f%%)\n", package, covered, total, percent
+    if (percent + 0.000001 < minimum) {
+      printf "%s coverage %.1f%% is below %.1f%%\n", package, percent, minimum > "/dev/stderr"
+      exit 1
+    }
+  }
+  ' "$package_file"
+done
+
+for required_package in buffer io async_io native; do
+  if [[ "$seen_packages" != *":$required_package:"* ]]; then
+    printf 'missing coverage package: %s\n' "$required_package" >&2
+    exit 1
+  fi
+done
+
+overall_counts=$(
+  awk '
+  /^Total:/ {
+    split($2, counts, "/")
+    covered += counts[1]
+    total += counts[2]
+  }
+  END {
+    if (total <= 0) exit 1
+    printf "%d %d", covered, total
+  }
+  ' "${package_files[@]}"
+) || {
+  printf 'package summaries contain no library source rows\n' >&2
+  exit 1
+}
+
+read -r overall_covered overall_total <<< "$overall_counts"
+awk -v covered="$overall_covered" -v total="$overall_total" \
+  -v minimum="$overall_minimum" '
+BEGIN {
   percent = covered * 100.0 / total
-  printf "library coverage: %d/%d (%.1f%%)\n", covered, total, percent
+  printf "library coverage: %d/%d (%.2f%%)\n", covered, total, percent
   if (percent + 0.000001 < minimum) {
-    printf "coverage %.1f%% is below %.1f%%\n", percent, minimum > "/dev/stderr"
+    printf "library coverage %.2f%% is below %.2f%%\n", percent, minimum > "/dev/stderr"
     exit 1
   }
-}
-' "$summary"
+}'
