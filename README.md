@@ -90,3 +90,7 @@ Further contracts and evidence are documented in
 [`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md),
 [`docs/BENCHMARK.md`](docs/BENCHMARK.md), and
 [`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md).
+
+Publishing is maintainer-only and is never performed by CI. See
+[`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the prepublish and clean
+consumer-install procedure.

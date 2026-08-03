@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.40.0-rc.1
+
+### Breaking
+- Made `SharedBytes::from_fixed_array` copy its selected range and introduced
+  the explicitly unsafe `unsafe_adopt_fixed_array` ownership boundary.
+- Replaced eager synchronous and asynchronous `lines`/`split` arrays with
+  fallible lazy cursors.
+- Expanded the buffer traits and generated interfaces without a 0.37
+  deprecation layer.
+
+### Added
+- Added portable typed `Buf`/`BufMut` and async read/write helpers,
+  `BufChain`/`BufTake`, buffer adapters, async chain/take/buffered stream,
+  bounded duplex, and bidirectional copy with independent buffer sizes.
+- Added visible-byte equality, ordering, hashing and debug contracts for
+  shared buffers, plus structured socket addresses and timeout getters.
+- Added deterministic state-model tests, cancellation/failure injection, and
+  concurrent native handle race tests under ASan/UBSan/TSan.
+- Added fixed Rust 1.97.1, bytes 1.12.1 and Tokio 1.53.1 comparison projects,
+  calibrated three-batch CSV evidence, real structural counters and per-case
+  ratio regression gates.
+- Added the 0.37-to-0.40 migration guide, formal parity matrix, security and
+  contribution policies, pinned toolchain identity, coverage budgets, docs
+  CI, and manual consumer-install verification workflow.
+
+### Release policy
+- This RC is not published by CI. A maintainer must review and publish it
+  manually, then explicitly dispatch consumer verification for the published
+  version on Linux, macOS and Windows.
+
 ## v0.37.0
 
 ### Breaking

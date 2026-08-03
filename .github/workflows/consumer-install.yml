@@ -1,0 +1,69 @@
+name: Published consumer install
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published BufferUtils version to install
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_MOON_VERSION: "0.1.20260803"
+  EXPECTED_MOONC_VERSION: "v0.10.6+af4590473-dev"
+
+jobs:
+  consumer:
+    name: consumer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned MoonBit (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x scripts/install_pinned_moonbit_linux
+          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
+          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+
+      - name: Install matching MoonBit nightly (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MOONBIT_INSTALL_DEV: "1"
+          MOONBIT_INSTALL_VERSION: nightly
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Install matching MoonBit nightly (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:MOONBIT_INSTALL_DEV = "1"
+          $env:MOONBIT_INSTALL_VERSION = "nightly"
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Verify fixed toolchain identity
+        shell: bash
+        run: |
+          moon version --all | tee .moon-version.txt
+          grep -F "moon $EXPECTED_MOON_VERSION" .moon-version.txt
+          grep -F "moonc $EXPECTED_MOONC_VERSION" .moon-version.txt
+
+      - name: Install and run clean consumer
+        shell: bash
+        run: |
+          chmod +x scripts/verify_consumer_install
+          scripts/verify_consumer_install "${{ inputs.version }}"

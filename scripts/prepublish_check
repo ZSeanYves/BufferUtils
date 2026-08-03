@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+version=${1:?usage: scripts/prepublish_check VERSION}
+project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$project_root"
+
+manifest_version=$(awk -F '"' '/^version = / { print $2; exit }' moon.mod)
+if [[ "$manifest_version" != "$version" ]]; then
+  echo "manifest version $manifest_version does not match requested $version" >&2
+  exit 1
+fi
+
+grep -F "current source version is \`$version\`" README.md >/dev/null
+grep -F "当前源码版本为 \`$version\`" README_zh_CN.md >/dev/null
+grep -F "## v$version" CHANGELOG.md >/dev/null
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "prepublish review requires a clean worktree" >&2
+  exit 1
+fi
+
+moon fmt --check
+moon info --target all
+scripts/normalize_interfaces
+git diff --exit-code
+moon check --target all --deny-warn
+moon test --target all --deny-warn
+moon doc --frozen
+moon check examples --target native --deny-warn
+moon test examples --target native --deny-warn
+scripts/check_api_surface
+scripts/check_critical_contracts
+
+echo "local prepublish checks passed for $version"
+echo "review matching cloud sanitizer, coverage, performance, and platform jobs"
