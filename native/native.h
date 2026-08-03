@@ -97,6 +97,10 @@ MOONBIT_FFI_EXPORT void *bufferutils_tcp_listen(
 MOONBIT_FFI_EXPORT void *bufferutils_tcp_accept(void *listener);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_local_port(void *listener);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_peer_port(void *socket);
+MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_tcp_local_host(void *socket);
+MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_tcp_peer_host(void *socket);
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_local_family(void *socket);
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_peer_family(void *socket);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
   void *socket,
   uint8_t *dst,
@@ -112,9 +116,14 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_close(void *socket);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_shutdown(void *socket, int32_t how);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_timeout(void *socket, int32_t read_ms, int32_t write_ms);
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_timeout(void *socket);
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_timeout(void *socket);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_is_closed(void *socket);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_error(void *socket);
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_os_error(void *socket);
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_file_close_race(void *file);
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_tcp_close_race(void *socket);
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_mapped_close_race(void *view);
 
 #ifdef __cplusplus
 }

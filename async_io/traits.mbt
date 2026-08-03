@@ -12,6 +12,125 @@ pub(open) trait AsyncRead {
   async fn read(Self, FixedArray[Byte], offset? : Int, max_len? : Int) -> Int
   async fn read_exact(Self, FixedArray[Byte], offset? : Int, len? : Int) -> Unit = _
   async fn read_to_end(Self) -> Bytes = _
+  async fn read_u8(Self) -> Byte = _
+  async fn read_i8(Self) -> Int = _
+  async fn read_u16_be(Self) -> UInt16 = _
+  async fn read_u16_le(Self) -> UInt16 = _
+  async fn read_i16_be(Self) -> Int16 = _
+  async fn read_i16_le(Self) -> Int16 = _
+  async fn read_u32_be(Self) -> UInt = _
+  async fn read_u32_le(Self) -> UInt = _
+  async fn read_i32_be(Self) -> Int = _
+  async fn read_i32_le(Self) -> Int = _
+  async fn read_f32_be(Self) -> Float = _
+  async fn read_f32_le(Self) -> Float = _
+  async fn read_u64_be(Self) -> UInt64 = _
+  async fn read_u64_le(Self) -> UInt64 = _
+  async fn read_i64_be(Self) -> Int64 = _
+  async fn read_i64_le(Self) -> Int64 = _
+  async fn read_f64_be(Self) -> Double = _
+  async fn read_f64_le(Self) -> Double = _
+}
+
+///|
+async fn[T, R : AsyncRead] read_typed(
+  reader : R,
+  width : Int,
+  decode : (@buffer.SharedBytes) -> T raise @buffer.BufferError,
+) -> T {
+  let data = FixedArray::make(width, (0).to_byte())
+  AsyncRead::read_exact(reader, data)
+  decode(@buffer.SharedBytes::unsafe_adopt_fixed_array(data, 0, width))
+}
+
+///|
+impl AsyncRead with fn read_u8(self) {
+  read_typed(self, 1, bytes => bytes.get_u8())
+}
+
+///|
+impl AsyncRead with fn read_i8(self) {
+  read_typed(self, 1, bytes => bytes.get_i8())
+}
+
+///|
+impl AsyncRead with fn read_u16_be(self) {
+  read_typed(self, 2, bytes => bytes.get_u16_be())
+}
+
+///|
+impl AsyncRead with fn read_u16_le(self) {
+  read_typed(self, 2, bytes => bytes.get_u16_le())
+}
+
+///|
+impl AsyncRead with fn read_i16_be(self) {
+  read_typed(self, 2, bytes => bytes.get_i16_be())
+}
+
+///|
+impl AsyncRead with fn read_i16_le(self) {
+  read_typed(self, 2, bytes => bytes.get_i16_le())
+}
+
+///|
+impl AsyncRead with fn read_u32_be(self) {
+  read_typed(self, 4, bytes => bytes.get_u32_be())
+}
+
+///|
+impl AsyncRead with fn read_u32_le(self) {
+  read_typed(self, 4, bytes => bytes.get_u32_le())
+}
+
+///|
+impl AsyncRead with fn read_i32_be(self) {
+  read_typed(self, 4, bytes => bytes.get_i32_be())
+}
+
+///|
+impl AsyncRead with fn read_i32_le(self) {
+  read_typed(self, 4, bytes => bytes.get_i32_le())
+}
+
+///|
+impl AsyncRead with fn read_f32_be(self) {
+  read_typed(self, 4, bytes => bytes.get_f32_be())
+}
+
+///|
+impl AsyncRead with fn read_f32_le(self) {
+  read_typed(self, 4, bytes => bytes.get_f32_le())
+}
+
+///|
+impl AsyncRead with fn read_u64_be(self) {
+  read_typed(self, 8, bytes => bytes.get_u64_be())
+}
+
+///|
+impl AsyncRead with fn read_u64_le(self) {
+  read_typed(self, 8, bytes => bytes.get_u64_le())
+}
+
+///|
+impl AsyncRead with fn read_i64_be(self) {
+  read_typed(self, 8, bytes => bytes.get_i64_be())
+}
+
+///|
+impl AsyncRead with fn read_i64_le(self) {
+  read_typed(self, 8, bytes => bytes.get_i64_le())
+}
+
+///|
+impl AsyncRead with fn read_f64_be(self) {
+  read_typed(self, 8, bytes => bytes.get_f64_be())
+}
+
+///|
+impl AsyncRead with fn read_f64_le(self) {
+  read_typed(self, 8, bytes => bytes.get_f64_le())
 }
 
 ///|
@@ -74,6 +193,124 @@ pub(open) trait AsyncWrite {
   async fn flush(Self) -> Unit
   async fn shutdown(Self) -> Unit = _
   async fn write_all(Self, Bytes, offset? : Int, len? : Int) -> Unit = _
+  async fn write_u8(Self, Byte) -> Unit = _
+  async fn write_i8(Self, Int) -> Unit = _
+  async fn write_u16_be(Self, UInt16) -> Unit = _
+  async fn write_u16_le(Self, UInt16) -> Unit = _
+  async fn write_i16_be(Self, Int16) -> Unit = _
+  async fn write_i16_le(Self, Int16) -> Unit = _
+  async fn write_u32_be(Self, UInt) -> Unit = _
+  async fn write_u32_le(Self, UInt) -> Unit = _
+  async fn write_i32_be(Self, Int) -> Unit = _
+  async fn write_i32_le(Self, Int) -> Unit = _
+  async fn write_f32_be(Self, Float) -> Unit = _
+  async fn write_f32_le(Self, Float) -> Unit = _
+  async fn write_u64_be(Self, UInt64) -> Unit = _
+  async fn write_u64_le(Self, UInt64) -> Unit = _
+  async fn write_i64_be(Self, Int64) -> Unit = _
+  async fn write_i64_le(Self, Int64) -> Unit = _
+  async fn write_f64_be(Self, Double) -> Unit = _
+  async fn write_f64_le(Self, Double) -> Unit = _
+}
+
+///|
+async fn[W : AsyncWrite] write_typed(
+  writer : W,
+  encode : (@buffer.BytesMut) -> Unit raise @buffer.BufferError,
+) -> Unit {
+  let buffer = @buffer.BytesMut::new(capacity=8, max_capacity=8)
+  encode(buffer)
+  AsyncWrite::write_all(writer, buffer.freeze().to_bytes())
+}
+
+///|
+impl AsyncWrite with fn write_u8(self, value) {
+  write_typed(self, buffer => buffer.put_byte(value))
+}
+
+///|
+impl AsyncWrite with fn write_i8(self, value) {
+  write_typed(self, buffer => buffer.put_i8(value))
+}
+
+///|
+impl AsyncWrite with fn write_u16_be(self, value) {
+  write_typed(self, buffer => buffer.put_u16_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_u16_le(self, value) {
+  write_typed(self, buffer => buffer.put_u16_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_i16_be(self, value) {
+  write_typed(self, buffer => buffer.put_i16_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_i16_le(self, value) {
+  write_typed(self, buffer => buffer.put_i16_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_u32_be(self, value) {
+  write_typed(self, buffer => buffer.put_u32_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_u32_le(self, value) {
+  write_typed(self, buffer => buffer.put_u32_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_i32_be(self, value) {
+  write_typed(self, buffer => buffer.put_i32_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_i32_le(self, value) {
+  write_typed(self, buffer => buffer.put_i32_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_f32_be(self, value) {
+  write_typed(self, buffer => buffer.put_f32_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_f32_le(self, value) {
+  write_typed(self, buffer => buffer.put_f32_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_u64_be(self, value) {
+  write_typed(self, buffer => buffer.put_u64_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_u64_le(self, value) {
+  write_typed(self, buffer => buffer.put_u64_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_i64_be(self, value) {
+  write_typed(self, buffer => buffer.put_i64_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_i64_le(self, value) {
+  write_typed(self, buffer => buffer.put_i64_le(value))
+}
+
+///|
+impl AsyncWrite with fn write_f64_be(self, value) {
+  write_typed(self, buffer => buffer.put_f64_be(value))
+}
+
+///|
+impl AsyncWrite with fn write_f64_le(self, value) {
+  write_typed(self, buffer => buffer.put_f64_le(value))
 }
 
 ///|
@@ -113,7 +350,13 @@ pub(open) trait AsyncBufRead: AsyncRead {
   /// invalidated by the next reader operation.
   async fn fill_buf(Self) -> ArrayView[Byte]
   fn consume(Self, Int) -> Unit raise @syncio.IoError
+  async fn has_data_left(Self) -> Bool = _
   async fn read_until(Self, Byte) -> Bytes = _
+}
+
+///|
+impl AsyncBufRead with fn has_data_left(self) {
+  !AsyncBufRead::fill_buf(self).is_empty()
 }
 
 ///|

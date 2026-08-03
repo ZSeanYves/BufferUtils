@@ -13,7 +13,14 @@ required=(
   "buffer/pkg.generated.mbti|pub struct SharedBytes"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::clone"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::as_bytes_view"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::from_fixed_array"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::unsafe_adopt_fixed_array"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::split_off"
   "buffer/pkg.generated.mbti|pub struct BytesMut"
+  "buffer/pkg.generated.mbti|pub fn BytesMut::zeroed"
+  "buffer/pkg.generated.mbti|pub fn BytesMut::put_bytes_view"
+  "buffer/pkg.generated.mbti|pub struct BufChain"
+  "buffer/pkg.generated.mbti|pub struct BufTake"
   "buffer/pkg.generated.mbti|pub(open) trait Buf"
   "buffer/pkg.generated.mbti|pub(open) trait BufMut"
   "io/pkg.generated.mbti|pub(open) trait Read"
@@ -26,6 +33,10 @@ required=(
   "io/pkg.generated.mbti|pub fn IoError::message"
   "io/pkg.generated.mbti|pub fn[R] BufReader::new"
   "io/pkg.generated.mbti|pub fn[W] BufWriter::new"
+  "io/pkg.generated.mbti|pub struct Lines"
+  "io/pkg.generated.mbti|pub struct Split"
+  "io/pkg.generated.mbti|pub struct BufReaderAdapter"
+  "io/pkg.generated.mbti|pub struct BufMutWriterAdapter"
   "io/pkg.generated.mbti|pub struct Cursor"
   "io/pkg.generated.mbti|pub struct Empty"
   "io/pkg.generated.mbti|pub struct Repeat"
@@ -40,6 +51,9 @@ required=(
   "native/pkg.generated.mbti|pub struct MappedBytes"
   "native/pkg.generated.mbti|pub fn NativeFile::sync_all"
   "native/pkg.generated.mbti|pub fn NativeTcpStream::shutdown_both"
+  "native/pkg.generated.mbti|pub(all) struct SocketAddress"
+  "native/pkg.generated.mbti|pub fn NativeTcpStream::local_addr"
+  "native/pkg.generated.mbti|pub fn NativeTcpStream::read_timeout_ms"
   "async_io/pkg.generated.mbti|pub(open) trait AsyncRead"
   "async_io/pkg.generated.mbti|pub(open) trait AsyncWrite"
   "async_io/pkg.generated.mbti|pub(open) trait AsyncBufRead"
@@ -47,10 +61,17 @@ required=(
   "async_io/pkg.generated.mbti|pub(open) trait AsyncClose"
   "async_io/pkg.generated.mbti|pub struct AsyncBufReader"
   "async_io/pkg.generated.mbti|pub struct AsyncBufWriter"
+  "async_io/pkg.generated.mbti|pub struct AsyncLines"
+  "async_io/pkg.generated.mbti|pub struct AsyncSplit"
+  "async_io/pkg.generated.mbti|pub struct AsyncChain"
+  "async_io/pkg.generated.mbti|pub struct AsyncTake"
+  "async_io/pkg.generated.mbti|pub struct AsyncBufStream"
+  "async_io/pkg.generated.mbti|pub struct AsyncDuplexStream"
   "async_io/pkg.generated.mbti|pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]"
   "async_io/pkg.generated.mbti|pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]"
   "async_io/pkg.generated.mbti|pub async fn[R : AsyncRead, W : AsyncWrite] copy"
   "async_io/pkg.generated.mbti|pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional"
+  "async_io/pkg.generated.mbti|pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional_with_sizes"
 )
 
 for requirement in "${required[@]}"; do
@@ -83,4 +104,4 @@ for file in "${legacy_sources[@]}"; do
   fi
 done
 
-printf 'public API surface checks passed for all five weighted areas\n'
+printf 'public API surface checks passed for all package contracts\n'

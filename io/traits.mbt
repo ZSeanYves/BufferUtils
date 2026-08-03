@@ -346,9 +346,15 @@ pub fn[W : Write] write_all_bytes(
 pub(open) trait BufRead: Read {
   fn fill_buf(Self) -> ArrayView[Byte] raise IoError
   fn consume(Self, Int) -> Unit raise IoError
+  fn has_data_left(Self) -> Bool raise IoError = _
   fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
   fn skip_until(Self, Byte) -> Int raise IoError = _
   fn read_line(Self, StringBuilder) -> Int raise IoError = _
+}
+
+///|
+impl BufRead with fn has_data_left(self) {
+  !BufRead::fill_buf(self).is_empty()
 }
 
 ///|

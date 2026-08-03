@@ -15,7 +15,7 @@ struct SharedStorage {
 pub struct SharedBytes {
   storage : SharedStorage
   mut start : Int
-  end : Int
+  mut end : Int
 }
 
 ///|
@@ -33,9 +33,31 @@ pub fn SharedBytes::from_array(data : ArrayView[Byte]) -> SharedBytes {
 }
 
 ///|
-/// Adopt a fixed-array range without copying. The caller must not mutate the
-/// fixed array after handing it to `SharedBytes`.
+/// Create immutable storage by copying a fixed-array range.
+///
+/// Subsequent mutations to `data` cannot affect the returned value.
 pub fn SharedBytes::from_fixed_array(
+  data : FixedArray[Byte],
+  start : Int,
+  end : Int,
+) -> SharedBytes raise BufferError {
+  if start < 0 || end < start || end > data.length() {
+    raise BufferError::InvalidRange(
+      "fixed-array range is outside the backing storage",
+    )
+  }
+  SharedBytes::from_array(data.view(start~, end~))
+}
+
+///|
+/// Adopt a fixed-array range without copying.
+///
+/// # Safety
+///
+/// The caller must ensure that `data` is never mutated while the returned value
+/// or any slice derived from it is reachable. Use `from_fixed_array` unless the
+/// backing allocation is exclusively owned by the library.
+pub fn SharedBytes::unsafe_adopt_fixed_array(
   data : FixedArray[Byte],
   start : Int,
   end : Int,
@@ -69,6 +91,38 @@ pub fn SharedBytes::len(self : SharedBytes) -> Int {
 ///|
 pub fn SharedBytes::is_empty(self : SharedBytes) -> Bool {
   self.remaining() == 0
+}
+
+///|
+/// Remove all visible bytes while retaining the shared allocation.
+pub fn SharedBytes::clear(self : SharedBytes) -> Unit {
+  self.start = self.end
+}
+
+///|
+/// Shorten the visible range to `length` bytes.
+pub fn SharedBytes::truncate(
+  self : SharedBytes,
+  length : Int,
+) -> Unit raise BufferError {
+  if length < 0 || length > self.remaining() {
+    raise BufferError::InvalidRange("truncate length is outside the bytes")
+  }
+  self.end = self.start + length
+}
+
+///|
+/// Split at an index relative to the current cursor, returning the suffix.
+pub fn SharedBytes::split_off(
+  self : SharedBytes,
+  at : Int,
+) -> SharedBytes raise BufferError {
+  if at < 0 || at > self.remaining() {
+    raise BufferError::InvalidRange("split index is outside the bytes")
+  }
+  let suffix = { storage: self.storage, start: self.start + at, end: self.end }
+  self.end = self.start + at
+  suffix
 }
 
 ///|
@@ -315,4 +369,46 @@ pub fn SharedBytes::get_utf8(
 /// Number of bytes copied by copy-on-write for this storage.
 pub fn SharedBytes::copied_bytes(self : SharedBytes) -> Int {
   self.storage.copied_bytes
+}
+
+///|
+pub impl Eq for SharedBytes with fn equal(self, other) {
+  let left = self.view()
+  let right = other.view()
+  if left.length() != right.length() {
+    return false
+  }
+  for i in 0..<left.length() {
+    if left[i] != right[i] {
+      return false
+    }
+  }
+  true
+}
+
+///|
+pub impl Compare for SharedBytes with fn compare(self, other) {
+  let left = self.view()
+  let right = other.view()
+  let common = Int::min(left.length(), right.length())
+  for i in 0..<common {
+    let order = left[i].compare(right[i])
+    if order != 0 {
+      return order
+    }
+  }
+  left.length().compare(right.length())
+}
+
+///|
+pub impl Hash for SharedBytes with fn hash_combine(self, hasher) {
+  hasher.combine(self.as_bytes_view().to_owned())
+}
+
+///|
+pub impl @debug.Debug for SharedBytes with fn to_repr(self) {
+  @debug.Repr::opaque_(
+    "SharedBytes",
+    @debug.Repr::array(self.view().map(byte => Repr(byte))),
+  )
 }

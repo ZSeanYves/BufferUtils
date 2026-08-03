@@ -87,41 +87,15 @@ pub fn[R : Seek] BufReader::seek_relative(
 }
 
 ///|
-/// Read and decode all UTF-8 lines until EOF.
-pub fn[R : Read] BufReader::lines(
-  self : BufReader[R],
-) -> Array[String] raise IoError {
-  let result : Array[String] = []
-  while true {
-    let line = StringBuilder()
-    let count = BufRead::read_line(self, line)
-    if count == 0 {
-      break
-    }
-    result.push(line.to_string())
-  }
-  result
+/// Create a lazy UTF-8 line cursor.
+pub fn[R] BufReader::lines(self : BufReader[R]) -> Lines[R] {
+  Lines::new(self)
 }
 
 ///|
-/// Split the remaining input at a delimiter, retaining byte segments.
-pub fn[R : Read] BufReader::split(
-  self : BufReader[R],
-  delimiter : Byte,
-) -> Array[Array[Byte]] raise IoError {
-  let result : Array[Array[Byte]] = []
-  while true {
-    let segment : Array[Byte] = []
-    let count = BufRead::read_until(self, delimiter, segment)
-    if count == 0 {
-      break
-    }
-    if segment[segment.length() - 1] == delimiter {
-      segment.truncate(segment.length() - 1)
-    }
-    result.push(segment)
-  }
-  result
+/// Create a lazy delimiter-splitting cursor.
+pub fn[R] BufReader::split(self : BufReader[R], delimiter : Byte) -> Split[R] {
+  Split::new(self, delimiter)
 }
 
 ///|

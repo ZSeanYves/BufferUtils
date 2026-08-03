@@ -7,6 +7,62 @@ fn native_host(host : String) -> Bytes raise @io.IoError {
 }
 
 ///|
+/// Portable IP address family returned by native sockets.
+pub(all) enum SocketAddressFamily {
+  Ipv4
+  Ipv6
+} derive(Eq, @debug.Debug)
+
+///|
+/// Numeric native socket address.
+pub(all) struct SocketAddress {
+  family : SocketAddressFamily
+  host : String
+  port : Int
+} derive(Eq, @debug.Debug)
+
+///|
+fn socket_address(
+  handle : NativeSocketHandle,
+  peer : Bool,
+  context : String,
+) -> SocketAddress raise @io.IoError {
+  let family_code = if peer {
+    native_tcp_peer_family_ffi(handle)
+  } else {
+    native_tcp_local_family_ffi(handle)
+  }
+  if family_code < 0 {
+    raise native_error(context, "", -family_code)
+  }
+  let family = match family_code {
+    4 => SocketAddressFamily::Ipv4
+    6 => SocketAddressFamily::Ipv6
+    _ => raise @io.io_error(@io.Unsupported, context)
+  }
+  let port = if peer {
+    native_tcp_peer_port_ffi(handle)
+  } else {
+    native_tcp_local_port_ffi(handle)
+  }
+  if port < 0 {
+    raise native_error(context, "", -port)
+  }
+  let encoded = if peer {
+    native_tcp_peer_host_ffi(handle)
+  } else {
+    native_tcp_local_host_ffi(handle)
+  }
+  if encoded.is_empty() {
+    raise native_error(context, "", 1)
+  }
+  let host = @utf8.decode(encoded[:]) catch {
+    _ => raise @io.io_error(@io.InvalidData, context)
+  }
+  { family, host, port }
+}
+
+///|
 /// A blocking native TCP byte stream.
 pub struct NativeTcpStream {
   host : String
@@ -242,6 +298,50 @@ pub fn NativeTcpStream::set_timeouts(
 }
 
 ///|
+pub fn NativeTcpStream::read_timeout_ms(
+  self : NativeTcpStream,
+) -> Int? raise @io.IoError {
+  let timeout = native_tcp_read_timeout_ffi(self.handle)
+  if timeout < 0 {
+    raise native_error("tcp read_timeout", self.host, -timeout)
+  }
+  if timeout == 0 {
+    None
+  } else {
+    Some(timeout)
+  }
+}
+
+///|
+pub fn NativeTcpStream::write_timeout_ms(
+  self : NativeTcpStream,
+) -> Int? raise @io.IoError {
+  let timeout = native_tcp_write_timeout_ffi(self.handle)
+  if timeout < 0 {
+    raise native_error("tcp write_timeout", self.host, -timeout)
+  }
+  if timeout == 0 {
+    None
+  } else {
+    Some(timeout)
+  }
+}
+
+///|
+pub fn NativeTcpStream::local_addr(
+  self : NativeTcpStream,
+) -> SocketAddress raise @io.IoError {
+  socket_address(self.handle, false, "tcp local_addr")
+}
+
+///|
+pub fn NativeTcpStream::peer_addr(
+  self : NativeTcpStream,
+) -> SocketAddress raise @io.IoError {
+  socket_address(self.handle, true, "tcp peer_addr")
+}
+
+///|
 pub fn NativeTcpStream::local_port(
   self : NativeTcpStream,
 ) -> Int raise @io.IoError {
@@ -320,6 +420,13 @@ pub fn NativeTcpListener::local_port(
     )
   }
   port
+}
+
+///|
+pub fn NativeTcpListener::local_addr(
+  self : NativeTcpListener,
+) -> SocketAddress raise @io.IoError {
+  socket_address(self.handle, false, "tcp local_addr")
 }
 
 ///|

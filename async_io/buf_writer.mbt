@@ -45,7 +45,11 @@ pub fn[W] AsyncBufWriter::into_parts(
 ) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {
   (
     self.inner,
-    @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),
+    @buffer.SharedBytes::unsafe_adopt_fixed_array(
+      self.buffer,
+      self.start,
+      self.end,
+    ),
   )
 }
 

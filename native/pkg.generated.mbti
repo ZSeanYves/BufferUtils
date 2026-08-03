@@ -3,6 +3,7 @@ package "ZSeanYves/bufferutils/native"
 
 import {
   "ZSeanYves/bufferutils/io",
+  "moonbitlang/core/debug",
 }
 
 // Values
@@ -74,6 +75,7 @@ pub struct NativeTcpListener {
 }
 pub fn NativeTcpListener::accept(Self) -> NativeTcpStream raise @io.IoError
 pub fn NativeTcpListener::bind(String, Int) -> Self raise @io.IoError
+pub fn NativeTcpListener::local_addr(Self) -> SocketAddress raise @io.IoError
 pub fn NativeTcpListener::local_port(Self) -> Int raise @io.IoError
 pub impl @io.Close for NativeTcpListener
 
@@ -83,17 +85,32 @@ pub struct NativeTcpStream {
   handle : NativeSocketHandle
 }
 pub fn NativeTcpStream::connect(String, Int) -> Self raise @io.IoError
+pub fn NativeTcpStream::local_addr(Self) -> SocketAddress raise @io.IoError
 pub fn NativeTcpStream::local_port(Self) -> Int raise @io.IoError
+pub fn NativeTcpStream::peer_addr(Self) -> SocketAddress raise @io.IoError
 pub fn NativeTcpStream::peer_port(Self) -> Int raise @io.IoError
 pub fn NativeTcpStream::read_syscalls(Self) -> Int
+pub fn NativeTcpStream::read_timeout_ms(Self) -> Int? raise @io.IoError
 pub fn NativeTcpStream::set_timeouts(Self, Int, Int) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_both(Self) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_read(Self) -> Unit raise @io.IoError
 pub fn NativeTcpStream::shutdown_write(Self) -> Unit raise @io.IoError
 pub fn NativeTcpStream::write_syscalls(Self) -> Int
+pub fn NativeTcpStream::write_timeout_ms(Self) -> Int? raise @io.IoError
 pub impl @io.Close for NativeTcpStream
 pub impl @io.Read for NativeTcpStream
 pub impl @io.Write for NativeTcpStream
+
+pub(all) struct SocketAddress {
+  family : SocketAddressFamily
+  host : String
+  port : Int
+} derive(Eq, @debug.Debug)
+
+pub(all) enum SocketAddressFamily {
+  Ipv4
+  Ipv6
+} derive(Eq, @debug.Debug)
 
 // Type aliases
 
