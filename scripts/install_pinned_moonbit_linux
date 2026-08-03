@@ -41,6 +41,6 @@ chmod +x "$destination/bin/"*
 "$destination/bin/moon" -C "$destination/lib/core" bundle --warn-list -a --target wasm-gc --quiet
 
 version_output=$("$destination/bin/moon" version --all)
+printf '%s\n' "$version_output"
 grep -Fq "moon $MOONBIT_VERSION ($MOONBIT_COMMIT" <<< "$version_output"
 grep -Fq "moonc $MOONC_VERSION" <<< "$version_output"
-printf '%s\n' "$version_output"

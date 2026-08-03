@@ -10,7 +10,7 @@ permissions:
 
 env:
   EXPECTED_MOON_VERSION: "0.1.20260803"
-  EXPECTED_MOONC_VERSION: "v0.10.6+62c2592d1-dev"
+  EXPECTED_MOONC_VERSION: "v0.10.6+af4590473-dev"
 
 jobs:
   validate:
