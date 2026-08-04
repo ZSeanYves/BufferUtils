@@ -1,6 +1,6 @@
 # Native Package
 
-`native` is the platform extension for BufferUtils 0.36. The portable `buffer`
+`native` is the platform extension for BufferUtils 0.40. The portable `buffer`
 and `io` packages do not depend on C or a host operating system.
 
 `NativeFile` provides validated open options, borrowed read/write, flush, seek,
@@ -14,6 +14,12 @@ its resource, state, raw OS error, close state, and platform mutex. There is no
 global handle registry or global last-error slot. Finalizers are fallback
 cleanup; callers should close resources explicitly on success, error, and
 cancellation.
+
+The native package is an opt-in backend, not a replacement for the portable
+traits. Use `NativeFile` for blocking file handles, `NativeTcpStream` and
+`NativeTcpListener` for TCP, and `MappedBytes` only when a read-only mmap is
+appropriate. See [`docs/API_SURFACE.md`](../docs/API_SURFACE.md) for naming and
+ownership rules.
 
 POSIX builds use `open/read/write/lseek/mmap` and pthread mutexes. Windows
 builds use UTF-8 to UTF-16 path conversion, Win32 file and mapping APIs,

@@ -27,6 +27,10 @@ pub(all) enum IoErrorKind {
 
 ///|
 /// Structured context retained for retry and diagnosis.
+///
+/// `kind` is portable; `raw_code` is backend-specific. `progress` reports
+/// bytes committed before the failure and the remaining fields describe the
+/// failed operation.
 pub(all) struct IoFailure {
   kind : IoErrorKind
   operation : String

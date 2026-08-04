@@ -9,6 +9,11 @@
   fallible lazy cursors.
 - Expanded the buffer traits and generated interfaces without a 0.37
   deprecation layer.
+- Unified async naming: `pending_len` became `buffered_len`, memory-writer
+  materialization became `to_bytes`, and copy progress now uses
+  `bytes_copied`.
+- Removed internal memory-pipe state from the generated public interface and
+  classified the `examples` package outside the core compatibility promise.
 
 ### Added
 - Added portable typed `Buf`/`BufMut` and async read/write helpers,
@@ -24,6 +29,8 @@
 - Added the 0.37-to-0.40 migration guide, formal parity matrix, security and
   contribution policies, pinned toolchain identity, coverage budgets, docs
   CI, and manual consumer-install verification workflow.
+- Rewrote the README files and added an explicit API surface and naming policy;
+  removed the superseded 0.36-to-0.37 migration document.
 
 ### Release policy
 - This RC is not published by CI. A maintainer must review and publish it
@@ -43,7 +50,8 @@
   reporting, and per-resource syscall counters.
 - Small/short/vectored/native benchmark workloads, three-batch baseline gates,
   and executable example tests.
-- `docs/MIGRATION_0.36_TO_0.37.md` for the source migration.
+- The 0.36-to-0.37 source differences are superseded by the current
+  `docs/MIGRATION_0.37_TO_0.40.md` guide.
 
 ## v0.36.0
 

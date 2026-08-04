@@ -15,6 +15,9 @@ pub(all) enum SocketAddressFamily {
 
 ///|
 /// Numeric native socket address.
+///
+/// `family` identifies IPv4 or IPv6, `host` is the numeric address text, and
+/// `port` is the local or peer TCP port.
 pub(all) struct SocketAddress {
   family : SocketAddressFamily
   host : String
@@ -223,11 +226,17 @@ pub impl @io.Write for NativeTcpStream with fn is_write_vectored(self) {
 }
 
 ///|
+/// Return the number of native read syscalls observed by this stream.
+///
+/// This is diagnostic evidence only; it is not synchronization state.
 pub fn NativeTcpStream::read_syscalls(self : NativeTcpStream) -> Int {
   native_tcp_read_syscalls_ffi(self.handle)
 }
 
 ///|
+/// Return the number of native write syscalls observed by this stream.
+///
+/// This is diagnostic evidence only; it is not synchronization state.
 pub fn NativeTcpStream::write_syscalls(self : NativeTcpStream) -> Int {
   native_tcp_write_syscalls_ffi(self.handle)
 }

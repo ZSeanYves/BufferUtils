@@ -1,6 +1,7 @@
 target/
 .mooncakes/
 .DS_Store
+.vscode/
 _build/
 .tmp/
 *.moon_db

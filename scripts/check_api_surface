@@ -61,12 +61,14 @@ required=(
   "async_io/pkg.generated.mbti|pub(open) trait AsyncClose"
   "async_io/pkg.generated.mbti|pub struct AsyncBufReader"
   "async_io/pkg.generated.mbti|pub struct AsyncBufWriter"
+  "async_io/pkg.generated.mbti|pub fn[W] AsyncBufWriter::buffered_len"
   "async_io/pkg.generated.mbti|pub struct AsyncLines"
   "async_io/pkg.generated.mbti|pub struct AsyncSplit"
   "async_io/pkg.generated.mbti|pub struct AsyncChain"
   "async_io/pkg.generated.mbti|pub struct AsyncTake"
   "async_io/pkg.generated.mbti|pub struct AsyncBufStream"
   "async_io/pkg.generated.mbti|pub struct AsyncDuplexStream"
+  "async_io/pkg.generated.mbti|pub fn AsyncMemoryWriter::to_bytes"
   "async_io/pkg.generated.mbti|pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]"
   "async_io/pkg.generated.mbti|pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]"
   "async_io/pkg.generated.mbti|pub async fn[R : AsyncRead, W : AsyncWrite] copy"
@@ -79,6 +81,25 @@ for requirement in "${required[@]}"; do
   symbol=${requirement#*|}
   if ! grep -Fq "$symbol" "$file"; then
     printf 'missing public symbol: %s\n' "$symbol" >&2
+    exit 1
+  fi
+done
+
+forbidden=(
+  "io/pkg.generated.mbti|MemoryPipeState"
+  "io/pkg.generated.mbti|pub struct MemoryPipe"
+  "io/pkg.generated.mbti|pub struct MemoryPipeReader"
+  "io/pkg.generated.mbti|pub struct MemoryPipeWriter"
+  "async_io/pkg.generated.mbti|AsyncBufWriter::pending_len"
+  "async_io/pkg.generated.mbti|AsyncMemoryWriter::bytes"
+  "async_io/pkg.generated.mbti|bytes : Int"
+)
+
+for entry in "${forbidden[@]}"; do
+  file=${entry%%|*}
+  symbol=${entry#*|}
+  if grep -Fq "$symbol" "$file"; then
+    printf 'obsolete public symbol remains: %s\n' "$symbol" >&2
     exit 1
   fi
 done

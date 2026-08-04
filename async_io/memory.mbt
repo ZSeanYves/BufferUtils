@@ -69,7 +69,8 @@ pub fn AsyncMemoryWriter::new() -> AsyncMemoryWriter {
 }
 
 ///|
-pub fn AsyncMemoryWriter::bytes(self : AsyncMemoryWriter) -> Bytes {
+/// Return the bytes accepted by this writer as an owned value.
+pub fn AsyncMemoryWriter::to_bytes(self : AsyncMemoryWriter) -> Bytes {
   Bytes::from_array(self.data)
 }
 

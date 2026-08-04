@@ -11,7 +11,7 @@ async test "async traits preserve exact memory and seek semantics" {
 
   let writer = AsyncMemoryWriter::new()
   write_all(writer, b"hello")
-  assert_eq(writer.bytes(), b"hello")
+  assert_eq(writer.to_bytes(), b"hello")
 }
 
 ///|
@@ -35,7 +35,7 @@ async test "typed async helpers cover signed unsigned and floating endianness" {
   AsyncWrite::write_i64_le(writer, -987654321L)
   AsyncWrite::write_f64_be(writer, -2.25)
   AsyncWrite::write_f64_le(writer, 3.5)
-  let reader = AsyncMemoryReader::new(writer.bytes()[:])
+  let reader = AsyncMemoryReader::new(writer.to_bytes()[:])
   assert_eq(AsyncRead::read_u8(reader), b'\xFE')
   assert_eq(AsyncRead::read_i8(reader), -1)
   assert_eq(AsyncRead::read_u16_be(reader), 0x1234U.to_uint16())
@@ -115,7 +115,7 @@ async test "async cursors chain take and buffered stream remain lazy" {
     AsyncWrite::flush(stream)
     AsyncWrite::shutdown(stream)
     let (_, writer) = stream.into_parts()
-    assert_eq(writer.get_ref().bytes(), b"out")
+    assert_eq(writer.get_ref().to_bytes(), b"out")
   } catch {
     @syncio.IoError::Io(failure) =>
       fail("\{failure.operation}: \{failure.message}")
@@ -580,7 +580,7 @@ async test "copy and copy_bidirectional report committed bytes" {
   let source = AsyncMemoryReader::new(b"copy"[:])
   let destination = AsyncMemoryWriter::new()
   assert_eq(copy(source, destination, buffer_size=2), 4)
-  assert_eq(destination.bytes(), b"copy")
+  assert_eq(destination.to_bytes(), b"copy")
 
   let left : TestDuplex = { incoming: b"left", position: 0, outgoing: [] }
   let right : TestDuplex = { incoming: b"right", position: 0, outgoing: [] }
@@ -1041,14 +1041,14 @@ async test "async buffered paths flush full buffers and copy files" {
   ignore(AsyncWrite::write(writer, b"b", offset=0, len=1))
   ignore(AsyncWrite::write(writer, b"c", offset=0, len=1))
   AsyncWrite::flush(writer)
-  assert_eq(AsyncBufWriter::get_ref(writer).bytes(), b"abc")
+  assert_eq(AsyncBufWriter::get_ref(writer).to_bytes(), b"abc")
 
   ensure_async_test_dir()
   let source_path = async_test_dir + "/copy-source.bin"
   let destination_path = async_test_dir + "/copy-destination.bin"
   write_file(source_path, b"copy-file"[:])
   let progress = copy_file(source_path, destination_path, buffer_size=3)
-  assert_eq(progress.bytes, 9)
+  assert_eq(progress.bytes_copied, 9)
   assert_eq(
     try {
       ignore(

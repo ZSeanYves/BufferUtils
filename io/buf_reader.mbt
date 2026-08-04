@@ -45,11 +45,17 @@ pub fn[R] BufReader::buffered_len(self : BufReader[R]) -> Int {
 }
 
 ///|
+/// Return the number of reads issued to the wrapped reader.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[R] BufReader::underlying_read_calls(self : BufReader[R]) -> Int {
   self.underlying_reads
 }
 
 ///|
+/// Return the number of reads that bypassed the internal buffer.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[R] BufReader::bypass_read_calls(self : BufReader[R]) -> Int {
   self.bypass_reads
 }

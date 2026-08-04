@@ -1,7 +1,8 @@
 ///|
-/// Observable progress from an asynchronous streaming copy.
+/// Completed bytes and underlying read/write call counts for one asynchronous
+/// streaming copy.
 pub(all) struct CopyProgress {
-  bytes : Int
+  bytes_copied : Int
   read_calls : Int
   write_calls : Int
 } derive(Eq, @debug.Debug)
@@ -36,7 +37,11 @@ pub async fn copy_file(
   )
   defer destination.close()
   let buffer = FixedArray::make(buffer_size, (0).to_byte())
-  let mut progress : CopyProgress = { bytes: 0, read_calls: 0, write_calls: 0 }
+  let mut progress : CopyProgress = {
+    bytes_copied: 0,
+    read_calls: 0,
+    write_calls: 0,
+  }
   while true {
     let count = @runtime_io.Reader::read(source, buffer) catch {
       err => raise map_async_error("copy_file read", err)
@@ -51,7 +56,7 @@ pub async fn copy_file(
         err => raise map_async_error("copy_file write", err)
       }
       progress = {
-        bytes: progress.bytes + count,
+        bytes_copied: progress.bytes_copied + count,
         read_calls: progress.read_calls,
         write_calls: progress.write_calls + 1,
       }

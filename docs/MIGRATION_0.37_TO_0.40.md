@@ -87,7 +87,28 @@ let local = stream.local_addr()
 let peer = stream.peer_addr()
 ```
 
+## Naming cleanup
+
+The 0.40 RC uses the same names for equivalent synchronous and asynchronous
+operations. Replace the old async-only spellings:
+
+```moonbit
+// before
+let pending = writer.pending_len()
+let output = memory_writer.bytes()
+let completed = progress.bytes
+
+// after
+let pending = writer.buffered_len()
+let output = memory_writer.to_bytes()
+let completed = progress.bytes_copied
+```
+
+The `examples` package remains executable documentation and is outside the
+compatibility promise of the four core packages.
+
 ## Verification
 
 Run `moon info --target all` and compile all targets after migrating. Replace
-all eager `lines`/`split` uses before updating the dependency constraint.
+all eager `lines`/`split` uses and the renamed async methods before updating the
+dependency constraint.

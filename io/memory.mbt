@@ -24,11 +24,16 @@ pub fn MemoryReader::new(
 }
 
 ///|
+/// Return the number of bytes still available to the reader.
 pub fn MemoryReader::remaining(self : MemoryReader) -> Int {
   self.data.length() - self.position
 }
 
 ///|
+/// Return the number of calls made to the underlying memory reader.
+///
+/// This is a diagnostic counter for tests and benchmarks, not correctness
+/// state.
 pub fn MemoryReader::read_calls(self : MemoryReader) -> Int {
   self.read_calls
 }
@@ -76,16 +81,19 @@ pub fn MemoryWriter::new(
 }
 
 ///|
+/// Return the bytes accepted by the writer as an owned value.
 pub fn MemoryWriter::to_bytes(self : MemoryWriter) -> Bytes {
   Bytes::from_array(self.data[:])
 }
 
 ///|
+/// Return the number of write calls observed by the memory writer.
 pub fn MemoryWriter::write_calls(self : MemoryWriter) -> Int {
   self.write_calls
 }
 
 ///|
+/// Return the number of flush calls observed by the memory writer.
 pub fn MemoryWriter::flush_calls(self : MemoryWriter) -> Int {
   self.flush_calls
 }
@@ -113,8 +121,8 @@ pub impl Write for MemoryWriter with fn flush(self) {
 }
 
 ///|
-/// Shared state backing an in-memory byte pipe.
-pub struct MemoryPipeState {
+/// Internal state backing an in-memory byte pipe.
+priv struct MemoryPipeState {
   data : Array[Byte]
   mut position : Int
   mut writer_closed : Bool
@@ -122,17 +130,20 @@ pub struct MemoryPipeState {
 }
 
 ///|
-pub struct MemoryPipeReader {
+/// Opaque readable endpoint of an in-memory byte pipe.
+struct MemoryPipeReader {
   state : MemoryPipeState
 }
 
 ///|
-pub struct MemoryPipeWriter {
+/// Opaque writable endpoint of an in-memory byte pipe.
+struct MemoryPipeWriter {
   state : MemoryPipeState
 }
 
 ///|
-pub struct MemoryPipe {}
+/// Namespace used to construct connected in-memory pipe endpoints.
+struct MemoryPipe {}
 
 ///|
 /// Create connected in-memory reader and writer endpoints.

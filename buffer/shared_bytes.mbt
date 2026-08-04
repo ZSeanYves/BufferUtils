@@ -89,6 +89,7 @@ pub fn SharedBytes::len(self : SharedBytes) -> Int {
 }
 
 ///|
+/// Test whether the visible range is empty.
 pub fn SharedBytes::is_empty(self : SharedBytes) -> Bool {
   self.remaining() == 0
 }
@@ -233,6 +234,7 @@ pub fn SharedBytes::get_u8(self : SharedBytes) -> Byte raise BufferError {
 }
 
 ///|
+/// Read a signed 8-bit integer and advance the cursor.
 pub fn SharedBytes::get_i8(self : SharedBytes) -> Int raise BufferError {
   let value = self.get_u8().to_int()
   if value < 128 {

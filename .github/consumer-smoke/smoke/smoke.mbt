@@ -24,7 +24,7 @@ pub async fn async_smoke() -> Unit {
   let source = @asyncio.AsyncMemoryReader::new(b"async-smoke"[:])
   let destination = @asyncio.AsyncMemoryWriter::new()
   let progress = @asyncio.copy(source, destination, buffer_size=4)
-  guard progress == 11 && destination.bytes() == b"async-smoke" else {
+  guard progress == 11 && destination.to_bytes() == b"async-smoke" else {
     abort("asynchronous copy smoke test failed")
   }
 }

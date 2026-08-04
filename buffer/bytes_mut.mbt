@@ -40,6 +40,7 @@ pub fn BytesMut::zeroed(
 }
 
 ///|
+/// Create a mutable buffer from an initialized byte view by copying it.
 pub fn BytesMut::from_array(
   data : ArrayView[Byte],
   max_capacity? : Int = 2147483647,
@@ -50,11 +51,13 @@ pub fn BytesMut::from_array(
 }
 
 ///|
+/// Return the number of initialized bytes.
 pub fn BytesMut::len(self : BytesMut) -> Int {
   self.end - self.start
 }
 
 ///|
+/// Test whether no initialized bytes remain.
 pub fn BytesMut::is_empty(self : BytesMut) -> Bool {
   self.len() == 0
 }

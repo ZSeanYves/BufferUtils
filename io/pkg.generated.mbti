@@ -203,27 +203,15 @@ pub struct Lines[R] {
 pub fn[R] Lines::into_inner(Self[R]) -> BufReader[R]
 pub fn[R : Read] Lines::next(Self[R]) -> String? raise IoError
 
-pub struct MemoryPipe {
-}
+type MemoryPipe
 pub fn MemoryPipe::new() -> (MemoryPipeReader, MemoryPipeWriter)
 
-pub struct MemoryPipeReader {
-  state : MemoryPipeState
-}
+type MemoryPipeReader
 pub impl BufRead for MemoryPipeReader
 pub impl Close for MemoryPipeReader
 pub impl Read for MemoryPipeReader
 
-pub struct MemoryPipeState {
-  data : Array[Byte]
-  mut position : Int
-  mut writer_closed : Bool
-  mut reader_closed : Bool
-}
-
-pub struct MemoryPipeWriter {
-  state : MemoryPipeState
-}
+type MemoryPipeWriter
 pub impl Close for MemoryPipeWriter
 pub impl Write for MemoryPipeWriter
 

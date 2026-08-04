@@ -1,4 +1,5 @@
 ///|
+/// A cancellation-aware buffered reader over an `AsyncRead` implementation.
 pub struct AsyncBufReader[R] {
   inner : R
   buffer : FixedArray[Byte]
@@ -18,6 +19,7 @@ pub fn[R] AsyncBufReader::new(
 }
 
 ///|
+/// Return the number of unread bytes held in the internal buffer.
 pub fn[R] AsyncBufReader::buffered_len(self : AsyncBufReader[R]) -> Int {
   self.end - self.start
 }

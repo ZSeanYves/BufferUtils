@@ -1,44 +1,41 @@
 # BufferUtils
 
-BufferUtils 0.40 is a shared byte-buffer and synchronous, asynchronous, and
-native I/O toolkit for MoonBit. Version 0.40 is pre-1.0 and intentionally
-breaks the 0.37 API without a deprecation layer.
+BufferUtils is a pre-1.0 MoonBit library for shared byte storage and
+synchronous, asynchronous, and native I/O. The 0.40 release intentionally
+breaks the 0.37 source API and does not provide a deprecation layer.
 
-The current source version is `0.40.0-rc.1`. Do not treat the RC as published
-until the release workflow and clean consumer-install jobs have completed.
+The current source version is `0.40.0-rc.1`. This repository does not publish
+packages or create releases automatically.
 
-| Package | Responsibility | Targets |
+## Packages
+
+| Package | Public role | Target |
 | --- | --- | --- |
-| `buffer` | `SharedBytes`, `BytesMut`, typed `Buf`/`BufMut`, chain/take | all |
-| `io` | synchronous traits, buffering, seek, lazy cursors, adapters | all |
-| `async_io` | async traits, buffering, lazy cursors, duplex and copy | native |
-| `native` | files, TCP, mmap, structured addresses and OS errors | native |
+| `buffer` | `SharedBytes`, `BytesMut`, `Buf`/`BufMut`, and zero-copy range operations | all |
+| `io` | fallible synchronous I/O traits, buffering, seeking, and adapters | all |
+| `async_io` | cancellation-aware async traits, buffering, duplex, and copy | native |
+| `native` | blocking files, TCP, mmap, and structured socket addresses | native |
 
-See [`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) before
-upgrading.
+Use the portable packages by default. The `native` package is an explicit
+operating-system boundary and requires the native target.
 
-## Shared buffers
-
-`SharedBytes::from_fixed_array` safely copies its selected range.
-`unsafe_adopt_fixed_array` is reserved for backing storage that will never be
-mutated again while a shared value is reachable. Clone, slice, split, and
-freeze share storage; aliased mutable storage detaches through copy-on-write.
+## Quick start
 
 ```moonbit
 let mutable = @buffer.BytesMut::new(capacity=32)
 mutable.put_u16_be(0x1234U.to_uint16())
 mutable.put_utf8("MoonBit")
-let immutable = mutable.freeze()
-let prefix = immutable.slice(0, 2)
+let bytes = mutable.freeze()
+let prefix = bytes.slice(0, 2)
 ```
 
-Typed helpers cover MoonBit's 8/16/32/64-bit signed and unsigned integers,
-floats, and both byte orders. Bounds failures leave cursors unchanged.
+`SharedBytes::from_fixed_array` copies the selected range. The unsafe
+`unsafe_adopt_fixed_array` constructor is only for an allocation exclusively
+owned by the caller; the source array must not be mutated while any derived
+value is reachable. `clone`, `slice`, `split`, and `freeze` share storage, and
+mutable aliases detach with copy-on-write.
 
-## Synchronous I/O
-
-`Read` and `Write` preserve short progress, Interrupted, EOF, and WriteZero
-contracts. `BufReader::lines` and `split` are lazy cursors:
+Synchronous `BufReader::lines` and `split` are lazy cursors:
 
 ```moonbit
 let reader = @io.BufReader::new(@io.MemoryReader::new(b"one\ntwo\n"))
@@ -48,25 +45,26 @@ while lines.next() is Some(line) {
 }
 ```
 
-`BufWriter::into_parts` retains pending bytes without I/O. Buffer adapters,
-seek, vectored fallback, `BufStream`, memory pipes, chain/take, and line
-buffering are included.
+## API policy
 
-## Async and native I/O
+The generated `pkg.generated.mbti` files are the authoritative public surface.
+Naming follows lower snake case for methods and fields, PascalCase for types,
+`Async` for asynchronous counterparts, and `Native` for operating-system
+resources. `get_ref`/`get_mut` borrow the wrapped value; `into_inner` consumes
+the wrapper. Views are borrowed until the next operation on their owner.
 
-The async package provides lazy lines/split, chain/take, buffered streams,
-bounded in-memory duplex pipes, typed helpers, and bidirectional copy with
-independent buffer sizes. Cancellation leaves only committed progress visible
-and preserves pending duplex data.
+The memory and I/O counter accessors are diagnostic hooks used by tests and
+benchmarks. They are observable counters, not synchronization or correctness
+state. The `examples` package is executable documentation and is outside the
+compatibility promise of the four core packages.
 
-Native files, sockets, and mmap views use synchronized external state and
-idempotent close. TCP exposes structured local/peer addresses and timeout
-getters. File/socket/mmap read/write/close races run under ASan/UBSan/TSan.
+The stable scope includes typed 8/16/32/64-bit integer and floating-point
+helpers, short-progress and error contracts, lazy cursors, vectored fallback,
+buffer recovery, bounded in-memory duplex, and native close safety. TLS,
+compression, UDP, codec frameworks, io_uring, Rust ownership equivalence,
+u128/i128, and uninitialized-memory APIs are outside 0.40.
 
-TLS, compression, UDP, codec frameworks, io_uring, Rust ownership equivalence,
-u128 helpers, and uninitialized-memory APIs are outside 0.40 scope.
-
-## Verification
+## Verification and evidence
 
 ```bash
 moon fmt --check
@@ -80,17 +78,18 @@ scripts/check_api_surface
 scripts/check_critical_contracts
 ```
 
-CI additionally enforces at least 95% overall library coverage and 90% for
-each of `buffer`, `io`, `async_io`, and `native`; validates structural
-benchmark counters; compares per-case MoonBit/Rust ratios; and records peak
-RSS separately. No absolute claim of matching Rust throughput is made.
+CI additionally enforces overall coverage of at least 95%, at least 90% for
+each core package, sanitizer race checks, structural benchmark counters, and
+per-case MoonBit/Rust ratio regression gates. These gates do not claim that
+MoonBit throughput must equal Rust throughput.
 
-Further contracts and evidence are documented in
+Read [`docs/API_SURFACE.md`](docs/API_SURFACE.md) for the public API boundary,
+[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) when
+upgrading, and [`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the manual
+review and consumer-install procedure.
+
+Detailed semantics and evidence are in
 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md),
 [`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md),
-[`docs/BENCHMARK.md`](docs/BENCHMARK.md), and
-[`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md).
-
-Publishing is maintainer-only and is never performed by CI. See
-[`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the prepublish and clean
-consumer-install procedure.
+[`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md), and
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md).

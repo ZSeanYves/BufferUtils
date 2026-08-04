@@ -72,11 +72,17 @@ pub fn[W] BufWriter::buffer(self : BufWriter[W]) -> ArrayView[Byte] {
 }
 
 ///|
+/// Return the number of writes issued to the wrapped writer.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[W] BufWriter::underlying_write_calls(self : BufWriter[W]) -> Int {
   self.underlying_writes
 }
 
 ///|
+/// Return the number of writes that bypassed the internal buffer.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[W] BufWriter::bypass_write_calls(self : BufWriter[W]) -> Int {
   self.bypass_writes
 }
