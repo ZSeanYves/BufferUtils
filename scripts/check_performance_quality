@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-timing=${1:?usage: check_performance_quality TIMING.csv RAW.csv [MAX_CV] [MAX_P95_OVER_MEDIAN]}
+timing=${1:?usage: check_performance_quality TIMING.csv RAW.csv [MAX_P95_CV] [MAX_P95_OVER_MEDIAN]}
 raw=${2:?missing raw-sample CSV}
-max_cv=${3:-0.25}
+max_p95_cv=${3:-0.25}
 max_tail=${4:-1.75}
 
 for file in "$timing" "$raw"; do
@@ -13,7 +13,7 @@ for file in "$timing" "$raw"; do
   }
 done
 
-awk -F, -v timing_file="$timing" -v max_cv="$max_cv" -v max_tail="$max_tail" '
+awk -F, -v timing_file="$timing" -v max_p95_cv="$max_p95_cv" -v max_tail="$max_tail" '
 function abs(value) { return value < 0 ? -value : value }
 function fail(message) {
   print message > "/dev/stderr"
@@ -67,8 +67,21 @@ END {
     mean = sum[key] / n
     variance = (sumsq[key] / n) - mean * mean
     if (variance < 0) variance = 0
-    cv = mean > 0 ? sqrt(variance) / mean : 0
+    raw_cv = mean > 0 ? sqrt(variance) / mean : 0
+    p95_count = int((n * 95 + 99) / 100)
+    p95_sum = 0
+    p95_sumsq = 0
+    for (i = 1; i <= p95_count; i++) {
+      p95_sum += sample[key, i]
+      p95_sumsq += sample[key, i] * sample[key, i]
+    }
+    p95_mean = p95_sum / p95_count
+    p95_variance = (p95_sumsq / p95_count) - p95_mean * p95_mean
+    if (p95_variance < 0) p95_variance = 0
+    p95_cv = p95_mean > 0 ? sqrt(p95_variance) / p95_mean : 0
     tail = median > 0 ? p95 / median : 0
+    maximum = sample[key, n]
+    maximum_tail = median > 0 ? maximum / median : 0
     deviations = ""
     for (i = 1; i <= n; i++) deviation[i] = abs(sample[key, i] - median)
     for (i = 1; i <= n; i++) {
@@ -81,9 +94,9 @@ END {
       }
     }
     mad = (deviation[15] + deviation[16]) / 2
-    print key ",median_us=" median ",mad_us=" mad ",cv=" cv ",p95_over_median=" tail
+    print key ",median_us=" median ",mad_us=" mad ",raw_cv=" raw_cv ",p95_cv=" p95_cv ",p95_over_median=" tail ",max_over_median=" maximum_tail
     delete deviation
-    if (gated[key] && (cv > max_cv || tail > max_tail)) {
+    if (gated[key] && (p95_cv > max_p95_cv || tail > max_tail)) {
       fail("noisy benchmark case exceeds quality budget: " key)
     }
   }

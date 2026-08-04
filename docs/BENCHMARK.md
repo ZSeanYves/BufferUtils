@@ -61,7 +61,10 @@ the runner never multiplies payload size to claim an unobserved internal copy.
 
 ArrayView fallback and `IoSlice` bulk vectored writes are separate cases. Both
 record the sink fixture's actual copied bytes. The `*-raw.csv` sidecars retain
-all 30 sorted samples; the gate reports MAD, CV, and p95/median. A noisy gated
+all 30 sorted samples. The quality report records MAD, raw CV, CV through p95,
+p95/median, and max/median. The gate uses the p95 CV and p95/median so one
+retained scheduler outlier cannot invalidate an otherwise stable median and
+p95; a second upper-tail outlier enters p95 and fails the batch. A noisy gated
 batch is rerun up to three times and then fails rather than widening a baseline.
 
 The 16-byte short-write contract uses a 1KiB payload. Repeating the same
