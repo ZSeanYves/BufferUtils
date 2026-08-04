@@ -10,9 +10,21 @@ type AsyncBenchCounters
 
 type AsyncBenchStats
 
+type AsyncControlCounters
+
+type AsyncControlStats
+
 type CountingAsyncWriter
 
+type PendingReadProbe
+
+type ReadyReadProbe
+
 type RepeatingAsyncReader
+
+type ShortProgressWriter
+
+type ShutdownFailureWriter
 
 // Type aliases
 

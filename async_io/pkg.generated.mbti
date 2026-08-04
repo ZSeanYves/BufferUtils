@@ -127,7 +127,7 @@ pub impl AsyncRead for AsyncMemoryReader
 pub impl AsyncSeek for AsyncMemoryReader
 
 pub struct AsyncMemoryWriter {
-  data : Array[Byte]
+  data : @buffer.BytesMut
   mut closed : Bool
 }
 pub fn AsyncMemoryWriter::new() -> Self

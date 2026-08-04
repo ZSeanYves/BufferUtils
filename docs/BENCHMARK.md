@@ -34,6 +34,7 @@ scripts/check_performance_quality \
 scripts/check_performance_quality \
   .tmp/bufferutils-bench/rust.csv \
   .tmp/bufferutils-bench/rust-raw.csv
+scripts/check_async_control_evidence .tmp/bufferutils-bench
 ```
 
 The exact CSV schema is:
@@ -66,6 +67,20 @@ p95/median, and max/median. The gate uses the p95 CV and p95/median so one
 retained scheduler outlier cannot invalidate an otherwise stable median and
 p95; a second upper-tail outlier enters p95 and fails the batch. A noisy gated
 batch is rerun up to three times and then fails rather than widening a baseline.
+
+Async control and cursor diagnostics use a separate schema because cancellation
+and shutdown failure are operations, not byte-throughput workloads:
+
+```text
+implementation,name,size,batch,iterations,median_us,p95_us,operations,bytes,copied_bytes,await_points,failures
+```
+
+`scripts/check_async_control_evidence` reconstructs median and p95 from all 30
+raw samples and verifies ready, pending, typed u64 read/write, 16-byte short
+progress, cancellation, shutdown failure, 64 KiB line, and 64 KiB
+no-delimiter-plus-EOF structure. Its
+`copied_bytes` field is limited to source bytes actually observed crossing the
+fixture boundary. It does not claim to count uninstrumented runtime copies.
 
 The 16-byte short-write contract uses a 1KiB payload. Repeating the same
 contract with a 1MiB payload creates 65,536 dynamic calls per iteration and
@@ -100,5 +115,13 @@ ArrayView byte loops, build-process RSS, and inferred copy multipliers with the
 library measurements. It is not valid evidence for the corrected workloads.
 
 Peak RSS is collected by a separate process wrapper and is not placed in the
-CSV. Setup cost, filesystem timing, and RSS remain visible diagnostic evidence
-rather than being mixed into the gated operation timing.
+CSV. The combined implementation process and each major synthetic case are
+recorded separately; per-case runs use an isolated working directory so their
+sidecars cannot overwrite the three gated batches. Setup cost, filesystem
+timing, and RSS remain visible diagnostic evidence rather than being mixed into
+the gated operation timing.
+
+The Linux job attempts `perf` and always runs unprivileged Callgrind. It uploads
+annotated call data for shared slice, raw and buffered reads, raw, buffered, and
+short writes, bulk vectored write, and async copy. Profiler files are evidence,
+not benchmark timing inputs.

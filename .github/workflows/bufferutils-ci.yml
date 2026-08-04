@@ -170,6 +170,11 @@ jobs:
         run: |
           rustup toolchain install 1.97.1 --profile minimal
           rustup override set 1.97.1
+      - name: Install unprivileged profiler fallback
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y valgrind
       - name: Run three calibrated batches per implementation
         shell: bash
         run: |
@@ -234,6 +239,7 @@ jobs:
           scripts/check_performance_quality \
             .tmp/bufferutils-bench/rust.csv \
             .tmp/bufferutils-bench/rust-raw.csv
+          scripts/check_async_control_evidence .tmp/bufferutils-bench
           if [[ -f bench/baselines/ubuntu-x86_64-ratios.csv ]]; then
             scripts/check_performance_batches \
               bench/baselines/ubuntu-x86_64-ratios.csv \
@@ -245,6 +251,35 @@ jobs:
               .tmp/bufferutils-bench/moonbit.csv \
               .tmp/bufferutils-bench/rust.csv
           fi
+          rss_dir="$RUNNER_TEMP/bufferutils-rss"
+          rss_evidence_dir="$PWD/.tmp/bufferutils-bench/rss-by-case"
+          mkdir -p "$rss_dir/.tmp/bufferutils-bench" \
+            "$rss_evidence_dir"
+          for entry in \
+            "shared-clone:$moon_binary:buffer_shared_clone" \
+            "shared-slice:$moon_binary:buffer_shared_slice" \
+            "shared-split:$moon_binary:buffer_shared_split" \
+            "cow:$moon_binary:buffer_cow_mutation" \
+            "growth:$moon_binary:buffer_growth" \
+            "raw-read:$moon_binary:sync_raw_read" \
+            "bufreader-small:$moon_binary:sync_bufreader_small" \
+            "bufreader-bypass:$moon_binary:sync_bufreader_bypass" \
+            "raw-small-write:$moon_binary:sync_raw_small_write" \
+            "bufwriter-small:$moon_binary:sync_bufwriter_small" \
+            "bufwriter-bypass:$moon_binary:sync_bufwriter_bypass" \
+            "short-write:$moon_binary:sync_short_write_16" \
+            "vectored-fallback:$moon_binary:sync_vectored_fallback" \
+            "vectored-bulk:$moon_binary:sync_vectored_bulk" \
+            "async-copy:$moon_async_binary:async_copy"; do
+            IFS=: read -r label binary case_name <<< "$entry"
+            (
+              cd "$rss_dir"
+              /usr/bin/time -v \
+                -o "$rss_evidence_dir/$label.txt" \
+                "$binary" 1 "$case_name" \
+                > "$rss_evidence_dir/$label.csv"
+            )
+          done
           profile_dir="$RUNNER_TEMP/bufferutils-profile"
           mkdir -p "$profile_dir/.tmp/bufferutils-bench"
           if command -v perf >/dev/null 2>&1; then
@@ -252,15 +287,33 @@ jobs:
               cd "$profile_dir"
               perf record -F 99 -g -o moonbit-bufwriter.perf.data -- \
                 "$moon_binary" 1 sync_bufwriter_small \
-                > moonbit-bufwriter-profile.csv
+                > moonbit-bufwriter-profile.csv \
+                2> moonbit-bufwriter-perf.stderr
               perf report --stdio -i moonbit-bufwriter.perf.data \
                 > moonbit-bufwriter-perf.txt
             ) || printf 'perf profiling unavailable on this runner\n' \
               > "$profile_dir/perf-unavailable.txt"
-          else
-            printf 'perf is not installed on this runner\n' \
-              > "$profile_dir/perf-unavailable.txt"
           fi
+          for entry in \
+            "shared-slice:$moon_binary:buffer_shared_slice" \
+            "raw-read:$moon_binary:sync_raw_read" \
+            "bufreader-small:$moon_binary:sync_bufreader_small" \
+            "raw-small-write:$moon_binary:sync_raw_small_write" \
+            "bufwriter-small:$moon_binary:sync_bufwriter_small" \
+            "short-write:$moon_binary:sync_short_write_16" \
+            "vectored-bulk:$moon_binary:sync_vectored_bulk" \
+            "async-copy:$moon_async_binary:async_copy"; do
+            IFS=: read -r label binary case_name <<< "$entry"
+            (
+              cd "$profile_dir"
+              valgrind --tool=callgrind --collect-jumps=yes \
+                --callgrind-out-file="$label.callgrind" \
+                "$binary" 1 "$case_name" > "$label-profile.csv" \
+                2> "$label-callgrind.stderr"
+              callgrind_annotate --inclusive=yes --threshold=0.5 \
+                "$label.callgrind" > "$label-callgrind.txt"
+            )
+          done
           cp -R "$profile_dir" .tmp/bufferutils-bench/profile
       - name: Upload benchmark evidence
         if: always()

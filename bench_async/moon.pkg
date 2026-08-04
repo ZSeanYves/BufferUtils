@@ -1,5 +1,6 @@
 import {
   "ZSeanYves/bufferutils/async_io",
+  "ZSeanYves/bufferutils/io",
   "moonbitlang/async",
   "moonbitlang/core/bench" @mbench,
   "moonbitlang/core/env",

@@ -104,6 +104,21 @@ let output = memory_writer.to_bytes()
 let completed = progress.bytes_copied
 ```
 
+`AsyncMemoryWriter` now uses `BytesMut` backing so writes use the same bulk and
+COW paths as the core buffer package. Code that read its `data` field as an
+`Array[Byte]` must use the snapshot accessor:
+
+```moonbit
+// before
+let output = writer.data
+
+// after
+let output = writer.to_bytes()
+```
+
+Construct the writer with `AsyncMemoryWriter::new`; do not rely on a backing
+container type when creating fixtures.
+
 The `examples` package remains executable documentation and is outside the
 compatibility promise of the four core packages.
 

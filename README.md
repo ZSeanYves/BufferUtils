@@ -92,4 +92,7 @@ Detailed semantics and evidence are in
 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md),
 [`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md),
 [`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md), and
-[`docs/BENCHMARK.md`](docs/BENCHMARK.md).
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md). The measured performance gaps,
+confirmed root causes, and remaining compiler/runtime constraints are recorded
+without a parity claim in
+[`docs/PERFORMANCE_0.40.md`](docs/PERFORMANCE_0.40.md).

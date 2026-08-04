@@ -335,6 +335,7 @@ async fn main {
       print_case("tcp_loopback", size, batch, raw, evidence)
     }
   }
+  write_control_benchmarks(batch, selected)
   @fs.write_string_to_file(
     bench_output_dir + "/moonbit-async-raw-batch-\{batch}.csv",
     raw.to_string(),

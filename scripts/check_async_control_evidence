@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output_dir=${1:?usage: check_async_control_evidence OUTPUT_DIR}
+
+summaries=()
+raw_samples=()
+for batch in 1 2 3; do
+  summary="$output_dir/moonbit-async-control-batch-$batch.csv"
+  raw="$output_dir/moonbit-async-control-raw-batch-$batch.csv"
+  for file in "$summary" "$raw"; do
+    [[ -f "$file" ]] || {
+      printf 'async control evidence not found: %s\n' "$file" >&2
+      exit 1
+    }
+  done
+  summaries+=("$summary")
+  raw_samples+=("$raw")
+done
+
+awk -F, '
+function abs(value) { return value < 0 ? -value : value }
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
+}
+function expected_refills(size) { return int((size + 8191) / 8192) }
+FILENAME !~ /-raw-batch-/ {
+  if (FNR == 1) {
+    expected = "implementation,name,size,batch,iterations,median_us,p95_us,operations,bytes,copied_bytes,await_points,failures"
+    if ($0 != expected) fail("async control summary header mismatch")
+    next
+  }
+  if (NF != 12) fail("async control summary row does not contain 12 columns: " $0)
+  implementation = $1
+  name = $2
+  size = $3 + 0
+  batch = $4 + 0
+  iterations = $5 + 0
+  median = $6 + 0
+  p95 = $7 + 0
+  operations = $8 + 0
+  bytes = $9 + 0
+  copied = $10 + 0
+  awaits = $11 + 0
+  failures = $12 + 0
+  key = implementation SUBSEP name SUBSEP size SUBSEP batch
+  case_key = implementation SUBSEP name SUBSEP size
+  if (seen_summary[key]++) fail("duplicate async control summary: " key)
+  if (implementation != "moonbit" || name == "" || size < 0 ||
+      batch < 1 || batch > 3 || iterations <= 0) {
+    fail("invalid async control identity: " key)
+  }
+  if (median < 10000 || p95 < median) fail("invalid async control timing: " key)
+  summary_iterations[key] = iterations
+  summary_median[key] = median
+  summary_p95[key] = p95
+  case_batches[case_key]++
+  found[name] = 1
+
+  if (name == "async_ready_read" || name == "async_pending_read") {
+    if (size != 1 || operations != iterations || bytes != iterations ||
+        copied != iterations || awaits != iterations || failures != 0) {
+      fail("ready/pending async structure mismatch: " key)
+    }
+  } else if (name == "async_short_progress") {
+    if (size != 1024 || operations != iterations ||
+        bytes != 1024 * iterations || copied != bytes ||
+        awaits != 64 * iterations || failures != 0) {
+      fail("short-progress async structure mismatch: " key)
+    }
+  } else if (name == "async_typed_u64_read" || name == "async_typed_u64_write") {
+    if (size != 8 || operations != iterations || bytes != 8 * iterations ||
+        copied != bytes || awaits != iterations || failures != 0) {
+      fail("typed-u64 async structure mismatch: " key)
+    }
+  } else if (name == "async_cancel") {
+    if (size != 0 || operations != iterations || bytes != 0 || copied != 0 ||
+        awaits != 2 * iterations || failures != iterations) {
+      fail("cancellation async structure mismatch: " key)
+    }
+  } else if (name == "async_shutdown_failure") {
+    if (size != 0 || operations != iterations || bytes != 0 || copied != 0 ||
+        awaits != iterations || failures != iterations) {
+      fail("shutdown-failure async structure mismatch: " key)
+    }
+  } else if (name == "async_lines_large") {
+    if (size != 65536 || operations != iterations + 1 ||
+        bytes != size * iterations || copied != bytes ||
+        awaits != expected_refills(size) * iterations + 1 || failures != 0) {
+      fail("large-line async structure mismatch: " key)
+    }
+  } else if (name == "async_split_no_delimiter_eof") {
+    if (size != 65536 || operations != 2 * iterations ||
+        bytes != size * iterations || copied != bytes ||
+        awaits != (expected_refills(size) + 1) * iterations || failures != 0) {
+      fail("no-delimiter split async structure mismatch: " key)
+    }
+  } else {
+    fail("unknown async control case: " key)
+  }
+  next
+}
+FILENAME ~ /-raw-batch-/ {
+  if (FNR == 1) {
+    expected = "implementation,name,size,batch,sample,iterations,elapsed_us"
+    if ($0 != expected) fail("async control raw header mismatch")
+    next
+  }
+  if (NF != 7) fail("async control raw row does not contain 7 columns: " $0)
+  key = $1 SUBSEP $2 SUBSEP ($3 + 0) SUBSEP ($4 + 0)
+  sample_index = $5 + 0
+  if (!(key in summary_iterations)) fail("async control raw sample has no summary: " key)
+  if (($6 + 0) != summary_iterations[key]) fail("async control iteration mismatch: " key)
+  if (sample_index != ++sample_count[key]) fail("async control sample index is not contiguous: " key)
+  sample[key, sample_index] = $7 + 0
+}
+END {
+  required["async_ready_read"] = 1
+  required["async_pending_read"] = 1
+  required["async_short_progress"] = 1
+  required["async_typed_u64_read"] = 1
+  required["async_typed_u64_write"] = 1
+  required["async_cancel"] = 1
+  required["async_shutdown_failure"] = 1
+  required["async_lines_large"] = 1
+  required["async_split_no_delimiter_eof"] = 1
+  for (name in required) {
+    if (!(name in found)) fail("missing async control case: " name)
+  }
+  for (case_key in case_batches) {
+    if (case_batches[case_key] != 3) fail("async control case does not have three batches: " case_key)
+  }
+  for (key in summary_iterations) {
+    if (sample_count[key] != 30) {
+      fail("async control case does not contain 30 raw samples: " key)
+      continue
+    }
+    for (i = 2; i <= 30; i++) {
+      if (sample[key, i] < sample[key, i - 1]) {
+        fail("async control raw samples are not sorted: " key)
+        break
+      }
+    }
+    median = (sample[key, 15] + sample[key, 16]) / 2
+    p95 = sample[key, 29]
+    tolerance = 0.000001 * (median > 1 ? median : 1)
+    if (abs(median - summary_median[key]) > tolerance ||
+        abs(p95 - summary_p95[key]) > tolerance) {
+      fail("async control raw samples do not reproduce summary: " key)
+    }
+  }
+  if (!failed) print "async control evidence and structural counters are valid"
+  exit failed
+}
+' "${summaries[@]}" "${raw_samples[@]}"
