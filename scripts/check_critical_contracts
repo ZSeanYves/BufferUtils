@@ -5,7 +5,11 @@ run_contract() {
   local label="$1"
   shift
   local output
-  output=$("$@" 2>&1)
+  if ! output=$("$@" 2>&1); then
+    printf '%s\n' "$output"
+    printf 'critical contract command failed: %s\n' "$label" >&2
+    return 1
+  fi
   printf '%s\n' "$output"
   if ! printf '%s\n' "$output" | grep -Eq 'Total tests: [1-9][0-9]*,'; then
     printf 'critical contract filter matched no tests: %s\n' "$label" >&2

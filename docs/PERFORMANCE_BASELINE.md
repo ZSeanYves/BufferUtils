@@ -13,9 +13,16 @@ scripts/build_performance_baseline \
 ```
 
 The baseline contains `name,size,moonbit_over_rust`. It is never generated
-from macOS or a developer workstation and is not updated merely because a gate
-failed. The CI artifact must include both source CSVs, peak-RSS reports, exact
-toolchain identities, and a passing structural check.
+from macOS or a developer workstation. When the pinned MoonBit toolchain
+changes, a structurally valid Ubuntu run establishes a new baseline before
+ratio regressions are evaluated. The CI artifact must include both source
+CSVs, peak-RSS reports, exact toolchain identities, and a passing structural
+check, including when the ratio gate itself fails.
+
+The current baseline was recalibrated from GitHub Actions run `30900917785`
+after the nightly toolchain advanced to `42edc5e` / `091af3700-dev`. The raw
+rows passed both structural CSV checks across all three batches; the next
+passing run must also provide the downloadable artifact for audit retention.
 
 For each later run, the current ratio is calculated independently in all three
 batches. A case fails only when its ratio exceeds the committed ratio by more
