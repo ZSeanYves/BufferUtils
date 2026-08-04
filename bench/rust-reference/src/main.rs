@@ -1,6 +1,7 @@
 use bytes::Bytes;
+use std::fs::{OpenOptions, create_dir_all};
 use std::hint::black_box;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufReader, BufWriter, IoSlice, Read, Write};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
@@ -23,6 +24,7 @@ struct Stats {
     median_us: f64,
     p95_us: f64,
     counters: Counters,
+    samples: Vec<f64>,
 }
 
 fn pattern_bytes(len: usize) -> Vec<u8> {
@@ -90,6 +92,7 @@ where
                 median_us,
                 p95_us: percentile_95(&samples),
                 counters,
+                samples,
             };
         }
         iterations = (iterations * 2).min(MAX_ITERATIONS);
@@ -120,12 +123,48 @@ fn print_case<S, Setup, Run, Observe>(
         stats.counters.underlying_calls,
         stats.counters.syscalls,
     );
+    append_auxiliary(name, size, batch, &stats);
+}
+
+fn copy_scope(name: &str) -> &'static str {
+    if name.starts_with("buffer_") {
+        "library-cow"
+    } else {
+        "fixture-observed"
+    }
+}
+
+fn append_auxiliary(name: &str, size: usize, batch: usize, stats: &Stats) {
+    let raw_path = format!(".tmp/bufferutils-bench/rust-raw-batch-{batch}.csv");
+    let evidence_path = format!(".tmp/bufferutils-bench/rust-copy-evidence-batch-{batch}.csv");
+    let mut raw = OpenOptions::new().append(true).open(raw_path).unwrap();
+    for (index, elapsed) in stats.samples.iter().enumerate() {
+        writeln!(
+            raw,
+            "rust,{name},{size},{batch},{},{},{elapsed}",
+            index + 1,
+            stats.iterations,
+        )
+        .unwrap();
+    }
+    let mut evidence = OpenOptions::new().append(true).open(evidence_path).unwrap();
+    writeln!(
+        evidence,
+        "rust,{name},{size},{batch},{},{},{},{},{}",
+        stats.iterations,
+        stats.counters.copied_bytes,
+        stats.counters.underlying_calls,
+        stats.counters.syscalls,
+        copy_scope(name),
+    )
+    .unwrap();
 }
 
 struct CyclingReader {
     data: Vec<u8>,
     position: usize,
     calls: u64,
+    bytes: u64,
 }
 
 impl CyclingReader {
@@ -134,6 +173,7 @@ impl CyclingReader {
             data,
             position: 0,
             calls: 0,
+            bytes: 0,
         }
     }
 }
@@ -151,6 +191,7 @@ impl Read for CyclingReader {
         destination[..count].copy_from_slice(&self.data[self.position..self.position + count]);
         self.position += count;
         self.calls += 1;
+        self.bytes += count as u64;
         Ok(count)
     }
 }
@@ -168,6 +209,7 @@ struct AsyncRepeatingReader {
     position: usize,
     remaining: usize,
     calls: u64,
+    bytes: u64,
 }
 
 impl AsyncRead for AsyncRepeatingReader {
@@ -190,6 +232,7 @@ impl AsyncRead for AsyncRepeatingReader {
         self.position += count;
         self.remaining -= count;
         self.calls += 1;
+        self.bytes += count as u64;
         Poll::Ready(Ok(()))
     }
 }
@@ -268,6 +311,29 @@ impl Write for CountingWriter {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+
+    fn write_vectored(&mut self, sources: &[IoSlice<'_>]) -> io::Result<usize> {
+        let limit = self.max_chunk.min(self.scratch.len());
+        let mut accepted = 0;
+        for source in sources {
+            let count = source.len().min(limit - accepted);
+            self.scratch[accepted..accepted + count].copy_from_slice(&source[..count]);
+            accepted += count;
+            if accepted == limit {
+                break;
+            }
+        }
+        if accepted > 0 {
+            self.checksum = (self.checksum
+                + self.scratch[0] as u64
+                + self.scratch[accepted - 1] as u64
+                + accepted as u64)
+                % 65_521;
+        }
+        self.calls += 1;
+        self.bytes += accepted as u64;
+        Ok(accepted)
+    }
 }
 
 fn buffer_cases(size: usize, batch: usize) {
@@ -279,7 +345,7 @@ fn buffer_cases(size: usize, batch: usize) {
         |_| Bytes::copy_from_slice(&payload),
         |source, iterations| {
             for _ in 0..iterations {
-                black_box(source.clone());
+                black_box(source.clone().len());
             }
         },
         |_, _| Counters::default(),
@@ -293,7 +359,7 @@ fn buffer_cases(size: usize, batch: usize) {
         |_| Bytes::copy_from_slice(&payload),
         |source, iterations| {
             for _ in 0..iterations {
-                black_box(source.slice(..));
+                black_box(source.slice(0..source.len()).len());
             }
         },
         |_, _| Counters::default(),
@@ -308,7 +374,7 @@ fn buffer_cases(size: usize, batch: usize) {
         |source, iterations| {
             for _ in 0..iterations {
                 let mut cursor = source.clone();
-                black_box(cursor.split_to(size / 2));
+                black_box(cursor.split_to(size / 2).len());
             }
         },
         |_, _| Counters::default(),
@@ -327,8 +393,8 @@ fn read_cases(size: usize, batch: usize) {
                 state.0.read_exact(&mut state.1).unwrap();
             }
         },
-        |state, iterations| Counters {
-            copied_bytes: size as u64 * iterations as u64,
+        |state, _| Counters {
+            copied_bytes: state.0.bytes,
             underlying_calls: state.0.calls,
             syscalls: 0,
         },
@@ -352,8 +418,8 @@ fn read_cases(size: usize, batch: usize) {
                 }
             }
         },
-        |state, iterations| Counters {
-            copied_bytes: size as u64 * iterations as u64 * 2,
+        |state, _| Counters {
+            copied_bytes: state.0.get_ref().bytes,
             underlying_calls: state.0.get_ref().calls,
             syscalls: 0,
         },
@@ -376,8 +442,8 @@ fn read_cases(size: usize, batch: usize) {
                     state.0.read_exact(&mut state.1).unwrap();
                 }
             },
-            |state, iterations| Counters {
-                copied_bytes: size as u64 * iterations as u64,
+            |state, _| Counters {
+                copied_bytes: state.0.get_ref().bytes,
                 underlying_calls: state.0.get_ref().calls,
                 syscalls: 0,
             },
@@ -395,7 +461,7 @@ fn write_cases(size: usize, batch: usize) {
         |writer, iterations| {
             for _ in 0..iterations {
                 for chunk in payload.chunks(32) {
-                    writer.write_all(chunk).unwrap();
+                    assert_eq!(writer.write(chunk).unwrap(), chunk.len());
                 }
             }
         },
@@ -418,15 +484,15 @@ fn write_cases(size: usize, batch: usize) {
         |writer, iterations| {
             for _ in 0..iterations {
                 for chunk in payload.chunks(32) {
-                    writer.write_all(chunk).unwrap();
+                    assert_eq!(writer.write(chunk).unwrap(), chunk.len());
                 }
                 writer.flush().unwrap();
             }
         },
-        |writer, iterations| {
+        |writer, _| {
             black_box(writer.get_ref().checksum);
             Counters {
-                copied_bytes: size as u64 * iterations as u64 * 2,
+                copied_bytes: writer.get_ref().bytes,
                 underlying_calls: writer.get_ref().calls,
                 syscalls: 0,
             }
@@ -446,10 +512,10 @@ fn write_cases(size: usize, batch: usize) {
                     writer.flush().unwrap();
                 }
             },
-            |writer, iterations| {
+            |writer, _| {
                 black_box(writer.get_ref().checksum);
                 Counters {
-                    copied_bytes: size as u64 * iterations as u64,
+                    copied_bytes: writer.get_ref().bytes,
                     underlying_calls: writer.get_ref().calls,
                     syscalls: 0,
                 }
@@ -491,8 +557,32 @@ fn vectored_case(batch: usize) {
         |writer, iterations| {
             for _ in 0..iterations {
                 for source in sources {
-                    writer.write_all(source).unwrap();
+                    let adapted = source.to_vec();
+                    writer.write_all(&adapted).unwrap();
                 }
+            }
+        },
+        |writer, _| {
+            black_box(writer.checksum);
+            Counters {
+                copied_bytes: writer.bytes,
+                underlying_calls: writer.calls,
+                syscalls: 0,
+            }
+        },
+    );
+
+    let first = b"vec";
+    let second = b"tored";
+    let sources = [IoSlice::new(first), IoSlice::new(second)];
+    print_case(
+        "sync_vectored_bulk",
+        8,
+        batch,
+        |_| CountingWriter::new(usize::MAX, 8),
+        |writer, iterations| {
+            for _ in 0..iterations {
+                assert_eq!(writer.write_vectored(&sources).unwrap(), 8);
             }
         },
         |writer, _| {
@@ -524,6 +614,7 @@ fn async_copy_case(size: usize, batch: usize) {
                     position: 0,
                     remaining: total,
                     calls: 0,
+                    bytes: 0,
                 },
                 writer: AsyncCountingWriter {
                     scratch: vec![0; payload.len()],
@@ -543,7 +634,7 @@ fn async_copy_case(size: usize, batch: usize) {
         |state, _| {
             black_box(state.writer.checksum);
             Counters {
-                copied_bytes: state.writer.bytes * 2,
+                copied_bytes: state.reader.bytes + state.writer.bytes,
                 underlying_calls: state.reader.calls + state.writer.calls,
                 syscalls: 0,
             }
@@ -552,19 +643,54 @@ fn async_copy_case(size: usize, batch: usize) {
 }
 
 fn main() {
-    let batch = std::env::args()
-        .nth(1)
+    let arguments = std::env::args().collect::<Vec<_>>();
+    let batch = arguments
+        .get(1)
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| (1..=3).contains(value))
-        .expect("usage: bufferutils-rust-reference BATCH (1, 2, or 3)");
+        .expect("usage: bufferutils-rust-reference BATCH [CASE]");
+    if arguments.len() > 3 {
+        panic!("usage: bufferutils-rust-reference BATCH [CASE]");
+    }
+    let selected = arguments.get(2).map(String::as_str);
+    create_dir_all(".tmp/bufferutils-bench").unwrap();
+    std::fs::write(
+        format!(".tmp/bufferutils-bench/rust-raw-batch-{batch}.csv"),
+        "implementation,name,size,batch,sample,iterations,elapsed_us\n",
+    )
+    .unwrap();
+    std::fs::write(
+        format!(".tmp/bufferutils-bench/rust-copy-evidence-batch-{batch}.csv"),
+        "implementation,name,size,batch,iterations,observed_copied_bytes,underlying_calls,syscalls,copy_scope\n",
+    )
+    .unwrap();
     println!(
         "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s"
     );
-    vectored_case(batch);
+    if selected.is_none()
+        || selected == Some("sync_vectored_fallback")
+        || selected == Some("sync_vectored_bulk")
+    {
+        vectored_case(batch);
+    }
     for size in [1024, 1024 * 1024] {
-        buffer_cases(size, batch);
-        read_cases(size, batch);
-        write_cases(size, batch);
-        async_copy_case(size, batch);
+        if selected.is_none() || selected.is_some_and(|name| name.starts_with("buffer_")) {
+            buffer_cases(size, batch);
+        }
+        if selected.is_none()
+            || selected.is_some_and(|name| name.starts_with("sync_") && name.contains("read"))
+        {
+            read_cases(size, batch);
+        }
+        if selected.is_none()
+            || selected.is_some_and(|name| {
+                name.starts_with("sync_") && (name.contains("write") || name.contains("vectored"))
+            })
+        {
+            write_cases(size, batch);
+        }
+        if selected.is_none() || selected == Some("async_copy") {
+            async_copy_case(size, batch);
+        }
     }
 }

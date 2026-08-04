@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+timing=${1:?usage: check_copy_evidence TIMING.csv COPY_EVIDENCE.csv}
+evidence=${2:?missing copy-evidence CSV}
+
+for file in "$timing" "$evidence"; do
+  [[ -f "$file" ]] || {
+    printf 'benchmark evidence not found: %s\n' "$file" >&2
+    exit 1
+  }
+done
+
+awk -F, -v timing_file="$timing" '
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
+}
+FILENAME == timing_file {
+  if (FNR == 1) { next }
+  key = $1 SUBSEP $2 SUBSEP $3 SUBSEP $4
+  timing_iterations[key] = $5 + 0
+  timing_copied[key] = $9 + 0
+  timing_calls[key] = $10 + 0
+  timing_syscalls[key] = $11 + 0
+  next
+}
+FILENAME != timing_file {
+  if (FNR == 1) {
+    expected = "implementation,name,size,batch,iterations,observed_copied_bytes,underlying_calls,syscalls,copy_scope"
+    if ($0 != expected) fail("copy-evidence CSV header mismatch")
+    next
+  }
+  if (NF != 9) fail("copy-evidence row does not contain 9 columns: " $0)
+  key = $1 SUBSEP $2 SUBSEP $3 SUBSEP $4
+  if (seen[key]++) fail("duplicate copy-evidence row: " key)
+  if (!(key in timing_iterations)) fail("copy evidence has no timing row: " key)
+  if (($5 + 0) != timing_iterations[key] ||
+      ($6 + 0) != timing_copied[key] ||
+      ($7 + 0) != timing_calls[key] ||
+      ($8 + 0) != timing_syscalls[key]) {
+    fail("copy evidence disagrees with observed timing counters: " key)
+  }
+  scope = $9
+  if (scope != "fixture-observed" && scope != "library-cow" &&
+      scope != "unavailable") {
+    fail("unknown copy evidence scope: " key "/" scope)
+  }
+  if (scope == "unavailable" && ($6 + 0) != 0) {
+    fail("unavailable copy evidence must not invent bytes: " key)
+  }
+}
+END {
+  for (key in timing_iterations) {
+    if (!(key in seen)) fail("timing row has no copy evidence: " key)
+  }
+  if (!failed) print "copy evidence matches benchmark observations"
+  exit failed
+}
+' "$timing" "$evidence"

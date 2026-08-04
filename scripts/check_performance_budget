@@ -70,8 +70,10 @@ NR == 1 { next }
   if (name == "buffer_growth" && copied != bytes / 2) {
     fail("growth copy counter does not equal retained prefix: " row)
   }
-  if (name == "sync_bufreader_small" || name == "sync_bufwriter_small") {
-    if (copied != bytes * 2) fail("buffered small-I/O copy counter mismatch: " row)
+  if (name == "sync_raw_read" || name == "sync_bufreader_small" ||
+      name == "sync_raw_small_write" || name == "sync_bufwriter_small" ||
+      name == "sync_short_write_16" || name ~ /^sync_vectored_/) {
+    if (copied != bytes) fail("fixture copy counter mismatch: " row)
   }
   if (name == "sync_bufreader_bypass" || name == "sync_bufwriter_bypass") {
     if (copied != bytes || calls != iterations) {
@@ -79,10 +81,12 @@ NR == 1 { next }
     }
   }
   if (name == "sync_vectored_fallback") {
-    expected_copied = implementation == "moonbit" ? bytes * 2 : bytes
-    if (copied != expected_copied || calls != iterations * 2) {
+    if (calls != iterations * 2) {
       fail("vectored fallback structure mismatch: " row)
     }
+  }
+  if (name == "sync_vectored_bulk" && calls != iterations) {
+    fail("bulk vectored structure mismatch: " row)
   }
   if (name == "sync_raw_read" && calls != iterations) {
     fail("raw read underlying-call counter mismatch: " row)
@@ -96,7 +100,7 @@ NR == 1 { next }
     fail("short-write counter mismatch: " row)
   }
   if (name ~ /^native_file_/) {
-    if (copied != bytes || calls != iterations || syscalls != iterations) {
+    if (copied != 0 || calls != iterations || syscalls != iterations) {
       fail("native syscall structure mismatch: " row)
     }
   }
@@ -106,7 +110,7 @@ NR == 1 { next }
     }
   }
   if (name == "tcp_loopback") {
-    if (copied != bytes * 2 || calls != 0 || syscalls != 0) {
+    if (copied != 0 || calls != 0 || syscalls != 0) {
       fail("TCP diagnostic counters must remain explicit unknowns: " row)
     }
   }
@@ -117,6 +121,7 @@ END {
     if (case_batches[key] != 3) fail("benchmark case does not have three batches: " key)
   }
   required["sync_vectored_fallback"] = 1
+  required["sync_vectored_bulk"] = 1
   required["buffer_shared_clone"] = 1
   required["buffer_shared_slice"] = 1
   required["buffer_shared_split"] = 1

@@ -8,7 +8,13 @@ let measured_samples = 30
 let minimum_sample_us = 10000.0
 
 ///|
-let maximum_iterations = 4194304
+let maximum_iterations = 16777216
+
+///|
+let bench_output_root = ".tmp"
+
+///|
+let bench_output_dir = ".tmp/bufferutils-bench"
 
 ///|
 let benchmark_keeper : @mbench.Bench = @mbench.Bench()
@@ -26,14 +32,16 @@ struct AsyncBenchStats {
   median_us : Double
   p95_us : Double
   counters : AsyncBenchCounters
+  samples : Array[Double]
 }
 
 ///|
 struct RepeatingAsyncReader {
-  data : Array[Byte]
+  data : FixedArray[Byte]
   mut position : Int
   mut remaining_bytes : Int64
   mut calls : Int64
+  mut bytes : Int64
 }
 
 ///|
@@ -53,12 +61,16 @@ impl @async_io.AsyncRead for RepeatingAsyncReader with fn read(
     max_len,
     Int::min(self.data.length() - self.position, self.remaining_bytes.to_int()),
   )
-  for i in 0..<count {
-    destination[offset + i] = self.data[self.position + i]
-  }
+  self.data.blit_to(
+    destination,
+    src_offset=self.position,
+    dst_offset=offset,
+    len=count,
+  )
   self.position += count
   self.remaining_bytes -= count.to_int64()
   self.calls += 1L
+  self.bytes += count.to_int64()
   count
 }
 
@@ -78,9 +90,7 @@ impl @async_io.AsyncWrite for CountingAsyncWriter with fn write(
   len~,
 ) {
   let count = Int::min(len, self.scratch.length())
-  for i in 0..<count {
-    self.scratch[i] = source[offset + i]
-  }
+  self.scratch.blit_from_bytes(0, source, offset, count)
   let mut checksum = self.checksum
   if count > 0 {
     checksum = (
@@ -130,10 +140,11 @@ async fn run_async_copy_once(
 ) -> (Double, AsyncBenchCounters) {
   let total = payload.length().to_int64() * iterations.to_int64()
   let reader : RepeatingAsyncReader = {
-    data: payload,
+    data: FixedArray::from_array(payload[:]),
     position: 0,
     remaining_bytes: total,
     calls: 0L,
+    bytes: 0L,
   }
   let writer : CountingAsyncWriter = {
     scratch: FixedArray::make(payload.length(), (0).to_byte()),
@@ -151,7 +162,7 @@ async fn run_async_copy_once(
   (
     elapsed,
     {
-      copied_bytes: total * 2L,
+      copied_bytes: reader.bytes + writer.bytes,
       underlying_calls: reader.calls + writer.calls,
       syscalls: 0L,
     },
@@ -194,11 +205,7 @@ async fn run_tcp_loopback_once(
   @async_io.AsyncClose::close(client)
   @async_io.AsyncClose::close(server)
   @async_io.AsyncClose::close(listener)
-  let total = payload.length().to_int64() * iterations.to_int64()
-  (
-    elapsed.val,
-    { copied_bytes: total * 2L, underlying_calls: 0L, syscalls: 0L },
-  )
+  (elapsed.val, { copied_bytes: 0L, underlying_calls: 0L, syscalls: 0L })
 }
 
 ///|
@@ -243,7 +250,7 @@ async fn measure_case(name : String, payload : Array[Byte]) -> AsyncBenchStats {
     samples.sort()
     let median_us = median(samples)
     if median_us >= minimum_sample_us || iterations >= maximum_iterations {
-      return { iterations, median_us, p95_us: p95(samples), counters }
+      return { iterations, median_us, p95_us: p95(samples), counters, samples }
     }
     iterations = Int::min(maximum_iterations, iterations * 2)
   }
@@ -256,20 +263,39 @@ fn throughput(bytes : Int64, micros : Double) -> Double {
 }
 
 ///|
-async fn print_case(name : String, size : Int, batch : Int) -> Unit {
+async fn print_case(
+  name : String,
+  size : Int,
+  batch : Int,
+  raw : StringBuilder,
+  evidence : StringBuilder,
+) -> Unit {
   let payload = pattern_bytes(size)
   let stats = measure_case(name, payload)
   let bytes = size.to_int64() * stats.iterations.to_int64()
   println(
     "moonbit,\{name},\{size},\{batch},\{stats.iterations},\{stats.median_us},\{stats.p95_us},\{bytes},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{throughput(bytes, stats.median_us)}",
   )
+  for index, elapsed in stats.samples {
+    raw.write_string(
+      "moonbit,\{name},\{size},\{batch},\{index + 1},\{stats.iterations},\{elapsed}\n",
+    )
+  }
+  let scope = if name == "tcp_loopback" {
+    "unavailable"
+  } else {
+    "fixture-observed"
+  }
+  evidence.write_string(
+    "moonbit,\{name},\{size},\{batch},\{stats.iterations},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{scope}\n",
+  )
 }
 
 ///|
 fn selected_batch() -> Int {
   let args = @env.args()
-  if args.length() != 2 {
-    abort("usage: bench_async BATCH")
+  if args.length() < 2 || args.length() > 3 {
+    abort("usage: bench_async BATCH [CASE]")
   }
   match args[1] {
     "1" => 1
@@ -282,11 +308,39 @@ fn selected_batch() -> Int {
 ///|
 async fn main {
   let batch = selected_batch()
+  let args = @env.args()
+  let selected = if args.length() == 3 { Some(args[2]) } else { None }
+  if !@fs.path_exists(bench_output_root) {
+    @fs.create_dir(bench_output_root)
+  }
+  if !@fs.path_exists(bench_output_dir) {
+    @fs.create_dir(bench_output_dir)
+  }
+  let raw = StringBuilder()
+  raw.write_string(
+    "implementation,name,size,batch,sample,iterations,elapsed_us\n",
+  )
+  let evidence = StringBuilder()
+  evidence.write_string(
+    "implementation,name,size,batch,iterations,observed_copied_bytes,underlying_calls,syscalls,copy_scope\n",
+  )
   println(
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
   for size in [1024, 1024 * 1024] {
-    print_case("async_copy", size, batch)
-    print_case("tcp_loopback", size, batch)
+    if selected is None || selected == Some("async_copy") {
+      print_case("async_copy", size, batch, raw, evidence)
+    }
+    if selected is None || selected == Some("tcp_loopback") {
+      print_case("tcp_loopback", size, batch, raw, evidence)
+    }
   }
+  @fs.write_string_to_file(
+    bench_output_dir + "/moonbit-async-raw-batch-\{batch}.csv",
+    raw.to_string(),
+  )
+  @fs.write_string_to_file(
+    bench_output_dir + "/moonbit-async-copy-evidence-batch-\{batch}.csv",
+    evidence.to_string(),
+  )
 }

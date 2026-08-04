@@ -62,6 +62,7 @@ jobs:
       - name: Format, interfaces, checks, docs, and tests
         shell: bash
         run: |
+          set -o pipefail
           moon update
           moon fmt --check
           moon info --target all
@@ -173,25 +174,66 @@ jobs:
         shell: bash
         run: |
           moon update
+          moon run bench --target native --release --build-only
+          moon run bench_async --target native --release --build-only
+          cargo build --release --locked --manifest-path bench/rust-reference/Cargo.toml
+          moon_binary="$PWD/_build/native/release/build/bench/bench.exe"
+          moon_async_binary="$PWD/_build/native/release/build/bench_async/bench_async.exe"
+          rust_binary="$PWD/bench/rust-reference/target/release/bufferutils-rust-reference"
+          [[ -x "$moon_binary" && -x "$moon_async_binary" && -x "$rust_binary" ]]
           mkdir -p .tmp/bufferutils-bench
+          {
+            uname -a
+            lscpu
+            moon version --all
+            rustc --version --verbose
+            printf '\n/proc/self/cgroup\n'
+            cat /proc/self/cgroup
+            printf '\nCPU governor\n'
+            cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
+          } > .tmp/bufferutils-bench/environment.txt
+          run_checked_batch() {
+            local label="$1"
+            local binary="$2"
+            local timing="$3"
+            local raw="$4"
+            local batch="$5"
+            local attempt
+            for attempt in 1 2 3; do
+              /usr/bin/time -v -o ".tmp/bufferutils-bench/${label}-rss-batch-$batch.txt" \
+                "$binary" "$batch" \
+                | tee ".tmp/bufferutils-bench/${timing}-batch-$batch.csv"
+              if scripts/check_performance_quality \
+                ".tmp/bufferutils-bench/${timing}-batch-$batch.csv" \
+                ".tmp/bufferutils-bench/${raw}-batch-$batch.csv" \
+                0.25 1.75 > ".tmp/bufferutils-bench/${label}-quality-batch-$batch.txt"; then
+                return 0
+              fi
+              echo "noisy $label batch $batch, rerunning attempt $((attempt + 1))" >&2
+            done
+            echo "benchmark batch remained noisy after three attempts: $label/$batch" >&2
+            return 1
+          }
           for batch in 1 2 3; do
-            /usr/bin/time -v \
-              -o ".tmp/bufferutils-bench/moonbit-rss-batch-$batch.txt" \
-              stdbuf -oL moon run bench --target native --release -- "$batch" \
-              | tee ".tmp/bufferutils-bench/moonbit-batch-$batch.csv"
-            /usr/bin/time -v \
-              -o ".tmp/bufferutils-bench/moonbit-async-rss-batch-$batch.txt" \
-              stdbuf -oL moon run bench_async --target native --release -- "$batch" \
-              | tee ".tmp/bufferutils-bench/moonbit-async-batch-$batch.csv"
-            /usr/bin/time -v \
-              -o ".tmp/bufferutils-bench/rust-rss-batch-$batch.txt" \
-              stdbuf -oL cargo run --release --locked \
-                --manifest-path bench/rust-reference/Cargo.toml -- "$batch" \
-              | tee ".tmp/bufferutils-bench/rust-batch-$batch.csv"
+            run_checked_batch moonbit "$moon_binary" moonbit moonbit-raw "$batch"
+            run_checked_batch moonbit-async "$moon_async_binary" moonbit-async moonbit-async-raw "$batch"
+            run_checked_batch rust "$rust_binary" rust rust-raw "$batch"
           done
           scripts/merge_performance_batches .tmp/bufferutils-bench
           scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
           scripts/check_performance_budget .tmp/bufferutils-bench/rust.csv
+          scripts/check_copy_evidence \
+            .tmp/bufferutils-bench/moonbit.csv \
+            .tmp/bufferutils-bench/moonbit-copy-evidence.csv
+          scripts/check_copy_evidence \
+            .tmp/bufferutils-bench/rust.csv \
+            .tmp/bufferutils-bench/rust-copy-evidence.csv
+          scripts/check_performance_quality \
+            .tmp/bufferutils-bench/moonbit.csv \
+            .tmp/bufferutils-bench/moonbit-raw.csv
+          scripts/check_performance_quality \
+            .tmp/bufferutils-bench/rust.csv \
+            .tmp/bufferutils-bench/rust-raw.csv
           if [[ -f bench/baselines/ubuntu-x86_64-ratios.csv ]]; then
             scripts/check_performance_batches \
               bench/baselines/ubuntu-x86_64-ratios.csv \
@@ -203,6 +245,23 @@ jobs:
               .tmp/bufferutils-bench/moonbit.csv \
               .tmp/bufferutils-bench/rust.csv
           fi
+          profile_dir="$RUNNER_TEMP/bufferutils-profile"
+          mkdir -p "$profile_dir/.tmp/bufferutils-bench"
+          if command -v perf >/dev/null 2>&1; then
+            (
+              cd "$profile_dir"
+              perf record -F 99 -g -o moonbit-bufwriter.perf.data -- \
+                "$moon_binary" 1 sync_bufwriter_small \
+                > moonbit-bufwriter-profile.csv
+              perf report --stdio -i moonbit-bufwriter.perf.data \
+                > moonbit-bufwriter-perf.txt
+            ) || printf 'perf profiling unavailable on this runner\n' \
+              > "$profile_dir/perf-unavailable.txt"
+          else
+            printf 'perf is not installed on this runner\n' \
+              > "$profile_dir/perf-unavailable.txt"
+          fi
+          cp -R "$profile_dir" .tmp/bufferutils-bench/profile
       - name: Upload benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4

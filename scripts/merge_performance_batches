@@ -10,6 +10,13 @@ for prefix in moonbit moonbit-async rust; do
       echo "missing benchmark batch: $file" >&2
       exit 1
     }
+    for kind in raw copy-evidence; do
+      auxiliary="$output_dir/$prefix-$kind-batch-$batch.csv"
+      [[ -f "$auxiliary" ]] || {
+        echo "missing benchmark evidence: $auxiliary" >&2
+        exit 1
+      }
+    done
   done
 done
 
@@ -32,4 +39,22 @@ done
 head -n 1 "$output_dir/rust-batch-1.csv" > "$output_dir/rust.csv"
 for batch in 1 2 3; do
   tail -n +2 "$output_dir/rust-batch-$batch.csv" >> "$output_dir/rust.csv"
+done
+
+for kind in raw copy-evidence; do
+  head -n 1 "$output_dir/moonbit-$kind-batch-1.csv" \
+    > "$output_dir/moonbit-$kind.csv"
+  for batch in 1 2 3; do
+    tail -n +2 "$output_dir/moonbit-$kind-batch-$batch.csv" \
+      >> "$output_dir/moonbit-$kind.csv"
+    tail -n +2 "$output_dir/moonbit-async-$kind-batch-$batch.csv" \
+      >> "$output_dir/moonbit-$kind.csv"
+  done
+
+  head -n 1 "$output_dir/rust-$kind-batch-1.csv" \
+    > "$output_dir/rust-$kind.csv"
+  for batch in 1 2 3; do
+    tail -n +2 "$output_dir/rust-$kind-batch-$batch.csv" \
+      >> "$output_dir/rust-$kind.csv"
+  done
 done

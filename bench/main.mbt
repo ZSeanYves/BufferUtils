@@ -14,7 +14,7 @@ let measured_samples = 30
 let minimum_sample_us = 10000.0
 
 ///|
-let maximum_iterations = 4194304
+let maximum_iterations = 16777216
 
 ///|
 let benchmark_keeper : @mbench.Bench = @mbench.Bench()
@@ -50,23 +50,30 @@ struct BenchStats {
   median_us : Double
   p95_us : Double
   counters : BenchCounters
+  samples : Array[Double]
 }
 
 ///|
 struct CyclingReader {
-  data : Array[Byte]
+  data : FixedArray[Byte]
   mut position : Int
   mut calls : Int
+  mut bytes : Int64
 }
 
 ///|
-fn CyclingReader::new(data : Array[Byte]) -> CyclingReader {
-  { data, position: 0, calls: 0 }
+fn CyclingReader::new(data : FixedArray[Byte]) -> CyclingReader {
+  { data, position: 0, calls: 0, bytes: 0L }
 }
 
 ///|
 fn CyclingReader::calls(self : CyclingReader) -> Int {
   self.calls
+}
+
+///|
+fn CyclingReader::observed_bytes(self : CyclingReader) -> Int64 {
+  self.bytes
 }
 
 ///|
@@ -78,11 +85,10 @@ impl @io.Read for CyclingReader with fn read(self, dst, offset, length) {
     self.position = 0
   }
   let count = Int::min(length, self.data.length() - self.position)
-  for i in 0..<count {
-    dst[offset + i] = self.data[self.position + i]
-  }
+  self.data.blit_to(dst, src_offset=self.position, dst_offset=offset, len=count)
   self.position += count
   self.calls += 1
+  self.bytes += count.to_int64()
   count
 }
 
@@ -112,9 +118,7 @@ fn CountingWriter::new(
 ///|
 impl @io.Write for CountingWriter with fn write(self, src, offset, length) {
   let count = Int::min(length, Int::min(self.max_chunk, self.scratch.length()))
-  for i in 0..<count {
-    self.scratch[i] = src[offset + i]
-  }
+  self.scratch.blit_from_bytes(0, src, offset, count)
   let mut checksum = self.checksum
   if count > 0 {
     checksum = (
@@ -134,6 +138,44 @@ impl @io.Write for CountingWriter with fn write(self, src, offset, length) {
 ///|
 impl @io.Write for CountingWriter with fn flush(_self) {
   ()
+}
+
+///|
+impl @io.Write for CountingWriter with fn write_vectored(self, sources) {
+  let limit = Int::min(self.max_chunk, self.scratch.length())
+  let mut accepted = 0
+  for source in sources {
+    let count = Int::min(source.len(), limit - accepted)
+    if count > 0 {
+      self.scratch.blit_from_bytes(
+        accepted,
+        source.data(),
+        source.offset(),
+        count,
+      )
+      accepted += count
+    }
+    if accepted == limit {
+      break
+    }
+  }
+  if accepted > 0 {
+    self.checksum = (
+        self.checksum +
+        self.scratch[0].to_int() +
+        self.scratch[accepted - 1].to_int() +
+        accepted
+      ) %
+      65521
+  }
+  self.calls += 1
+  self.bytes += accepted.to_int64()
+  accepted
+}
+
+///|
+impl @io.Write for CountingWriter with fn is_write_vectored(_self) {
+  true
 }
 
 ///|
@@ -223,7 +265,13 @@ fn measure_at(case : BenchmarkCase, iterations : Int) -> BenchStats raise {
     (prepared.cleanup)()
   }
   samples.sort()
-  { iterations, median_us: median(samples), p95_us: p95(samples), counters }
+  {
+    iterations,
+    median_us: median(samples),
+    p95_us: p95(samples),
+    counters,
+    samples,
+  }
 }
 
 ///|
@@ -258,6 +306,35 @@ fn print_result(case : BenchmarkCase, batch : Int, stats : BenchStats) -> Unit {
   let bytes = case.bytes_per_iteration * stats.iterations.to_int64()
   println(
     "moonbit,\{case.name},\{case.size},\{batch},\{stats.iterations},\{stats.median_us},\{stats.p95_us},\{bytes},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{throughput(bytes, stats.median_us)}",
+  )
+}
+
+///|
+fn copy_scope(name : String) -> String {
+  if name.has_prefix("buffer_") {
+    "library-cow"
+  } else if name.has_prefix("native_") || name == "tcp_loopback" {
+    "unavailable"
+  } else {
+    "fixture-observed"
+  }
+}
+
+///|
+fn append_auxiliary_rows(
+  raw : StringBuilder,
+  evidence : StringBuilder,
+  case : BenchmarkCase,
+  batch : Int,
+  stats : BenchStats,
+) -> Unit {
+  for index, elapsed in stats.samples {
+    raw.write_string(
+      "moonbit,\{case.name},\{case.size},\{batch},\{index + 1},\{stats.iterations},\{elapsed}\n",
+    )
+  }
+  evidence.write_string(
+    "moonbit,\{case.name},\{case.size},\{batch},\{stats.iterations},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{copy_scope(case.name)}\n",
   )
 }
 
@@ -363,7 +440,7 @@ fn freeze_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           ignore(sink.val)
-          { ..empty_counters(), copied_bytes: buffer.copied_bytes().to_int64() }
+          { ..empty_counters(), copied_bytes: 0L }
         },
         cleanup: () => (),
       }
@@ -437,12 +514,13 @@ fn growth_case(size : Int) -> BenchmarkCase {
 ///|
 fn raw_read_case(size : Int) -> BenchmarkCase {
   let payload = pattern_bytes(size)
+  let payload_fixed = FixedArray::from_array(payload[:])
   {
     name: "sync_raw_read",
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let reader = CyclingReader::new(payload)
+      let reader = CyclingReader::new(payload_fixed)
       let output = FixedArray::make(size, (0).to_byte())
       {
         run: () => {
@@ -451,7 +529,7 @@ fn raw_read_case(size : Int) -> BenchmarkCase {
           }
         },
         observe: () => {
-          copied_bytes: size.to_int64() * iterations.to_int64(),
+          copied_bytes: reader.observed_bytes(),
           underlying_calls: reader.calls().to_int64(),
           syscalls: 0,
         },
@@ -468,13 +546,14 @@ fn buffered_read_case(
   name : String,
 ) -> BenchmarkCase {
   let payload = pattern_bytes(size)
+  let payload_fixed = FixedArray::from_array(payload[:])
   {
     name,
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
       let reader = @io.BufReader::new(
-        CyclingReader::new(payload),
+        CyclingReader::new(payload_fixed),
         capacity=8192,
       )
       let output = FixedArray::make(size, (0).to_byte())
@@ -497,12 +576,9 @@ fn buffered_read_case(
           }
         },
         observe: () => {
-          let copies = if request_size >= 8192 { 1L } else { 2L }
-          {
-            copied_bytes: size.to_int64() * iterations.to_int64() * copies,
-            underlying_calls: reader.underlying_read_calls().to_int64(),
-            syscalls: 0,
-          }
+          copied_bytes: reader.get_ref().observed_bytes(),
+          underlying_calls: reader.underlying_read_calls().to_int64(),
+          syscalls: 0,
         },
         cleanup: () => (),
       }
@@ -526,15 +602,20 @@ fn raw_write_case(size : Int, chunk_size : Int, name : String) -> BenchmarkCase 
             let mut offset = 0
             while offset < size {
               let count = Int::min(chunk_size, size - offset)
-              @io.write_all_bytes(writer, payload_bytes, offset~, len=count)
+              let accepted = @io.Write::write(
+                writer, payload_bytes, offset, count,
+              )
+              if accepted != count {
+                fail("raw small-write benchmark lost progress")
+              }
               offset += count
             }
           }
         },
         observe: () => {
-          ignore(writer.observed_bytes())
+          let copied = writer.observed_bytes()
           {
-            copied_bytes: size.to_int64() * iterations.to_int64(),
+            copied_bytes: copied,
             underlying_calls: writer.calls().to_int64(),
             syscalls: 0,
           }
@@ -569,16 +650,21 @@ fn buffered_write_case(
             let mut offset = 0
             while offset < size {
               let count = Int::min(chunk_size, size - offset)
-              @io.write_all_bytes(writer, payload_bytes, offset~, len=count)
+              let accepted = @io.Write::write(
+                writer, payload_bytes, offset, count,
+              )
+              if accepted != count {
+                fail("buffered small-write benchmark lost progress")
+              }
               offset += count
             }
             @io.Write::flush(writer)
           }
         },
         observe: () => {
-          let copies = if chunk_size >= 8192 { 1L } else { 2L }
+          let copied = writer.get_ref().observed_bytes()
           {
-            copied_bytes: size.to_int64() * iterations.to_int64() * copies,
+            copied_bytes: copied,
             underlying_calls: writer.underlying_write_calls().to_int64(),
             syscalls: 0,
           }
@@ -606,9 +692,9 @@ fn short_write_case(size : Int, max_chunk : Int) -> BenchmarkCase {
           }
         },
         observe: () => {
-          ignore(writer.observed_bytes())
+          let copied = writer.observed_bytes()
           {
-            copied_bytes: size.to_int64() * iterations.to_int64(),
+            copied_bytes: copied,
             underlying_calls: writer.calls().to_int64(),
             syscalls: 0,
           }
@@ -637,9 +723,46 @@ fn vectored_write_case() -> BenchmarkCase {
           }
         },
         observe: () => {
-          ignore(writer.observed_bytes())
+          let copied = writer.observed_bytes()
           {
-            copied_bytes: 16L * iterations.to_int64(),
+            copied_bytes: copied,
+            underlying_calls: writer.calls().to_int64(),
+            syscalls: 0,
+          }
+        },
+        cleanup: () => (),
+      }
+    },
+  }
+}
+
+///|
+fn vectored_bulk_case() -> BenchmarkCase raise @io.IoError {
+  let first = b"vec"
+  let second = b"tored"
+  let sources = [
+    @io.IoSlice::new(first, 0, first.length()),
+    @io.IoSlice::new(second, 0, second.length()),
+  ]
+  {
+    name: "sync_vectored_bulk",
+    size: 8,
+    bytes_per_iteration: 8L,
+    prepare: iterations => {
+      let writer = CountingWriter::new(scratch_capacity=8)
+      {
+        run: () => {
+          for _ in 0..<iterations {
+            let count = @io.Write::write_vectored(writer, sources[:])
+            if count != 8 {
+              fail("bulk vectored benchmark lost progress")
+            }
+          }
+        },
+        observe: () => {
+          let copied = writer.observed_bytes()
+          {
+            copied_bytes: copied,
             underlying_calls: writer.calls().to_int64(),
             syscalls: 0,
           }
@@ -679,11 +802,7 @@ fn native_write_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           let syscalls = file.write_syscalls().to_int64()
-          {
-            copied_bytes: size.to_int64() * iterations.to_int64(),
-            underlying_calls: syscalls,
-            syscalls,
-          }
+          { copied_bytes: 0L, underlying_calls: syscalls, syscalls }
         },
         cleanup: () => {
           @io.Close::close(file)
@@ -718,11 +837,7 @@ fn native_read_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           let syscalls = file.read_syscalls().to_int64()
-          {
-            copied_bytes: size.to_int64() * iterations.to_int64(),
-            underlying_calls: syscalls,
-            syscalls,
-          }
+          { copied_bytes: 0L, underlying_calls: syscalls, syscalls }
         },
         cleanup: () => {
           @io.Close::close(file)
@@ -769,8 +884,11 @@ fn mmap_case(size : Int) -> BenchmarkCase {
 }
 
 ///|
-fn benchmark_cases() -> Array[BenchmarkCase] {
-  let cases : Array[BenchmarkCase] = [vectored_write_case()]
+fn benchmark_cases() -> Array[BenchmarkCase] raise @io.IoError {
+  let cases : Array[BenchmarkCase] = [
+    vectored_write_case(),
+    vectored_bulk_case(),
+  ]
   for size in bench_sizes {
     cases.push(shared_clone_case(size))
     cases.push(shared_slice_case(size))
@@ -801,8 +919,8 @@ fn benchmark_cases() -> Array[BenchmarkCase] {
 ///|
 fn selected_batch() -> Int {
   let args = @env.args()
-  if args.length() != 2 {
-    abort("usage: bench BATCH")
+  if args.length() < 2 || args.length() > 3 {
+    abort("usage: bench BATCH [CASE]")
   }
   match args[1] {
     "1" => 1
@@ -813,19 +931,51 @@ fn selected_batch() -> Int {
 }
 
 ///|
-fn run_benchmarks(batch : Int) -> Unit raise {
+fn selected_case() -> String? {
+  let args = @env.args()
+  if args.length() == 3 {
+    Some(args[2])
+  } else {
+    None
+  }
+}
+
+///|
+fn run_benchmarks(batch : Int, selected : String?) -> Unit raise {
+  ensure_bench_output_dir()
+  let raw = StringBuilder()
+  raw.write_string(
+    "implementation,name,size,batch,sample,iterations,elapsed_us\n",
+  )
+  let evidence = StringBuilder()
+  evidence.write_string(
+    "implementation,name,size,batch,iterations,observed_copied_bytes,underlying_calls,syscalls,copy_scope\n",
+  )
   println(
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
   let cases = benchmark_cases()
   for case in cases {
-    print_result(case, batch, measure(case))
+    if selected is Some(name) && case.name != name {
+      continue
+    }
+    let stats = measure(case)
+    print_result(case, batch, stats)
+    append_auxiliary_rows(raw, evidence, case, batch, stats)
   }
+  @fs.write_string_to_file(
+    bench_output_dir + "/moonbit-raw-batch-\{batch}.csv",
+    raw.to_string(),
+  )
+  @fs.write_string_to_file(
+    bench_output_dir + "/moonbit-copy-evidence-batch-\{batch}.csv",
+    evidence.to_string(),
+  )
 }
 
 ///|
 fn main {
-  run_benchmarks(selected_batch()) catch {
+  run_benchmarks(selected_batch(), selected_case()) catch {
     error => {
       println("benchmark failed")
       println(error)

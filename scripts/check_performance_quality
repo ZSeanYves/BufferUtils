@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+timing=${1:?usage: check_performance_quality TIMING.csv RAW.csv [MAX_CV] [MAX_P95_OVER_MEDIAN]}
+raw=${2:?missing raw-sample CSV}
+max_cv=${3:-0.25}
+max_tail=${4:-1.75}
+
+for file in "$timing" "$raw"; do
+  [[ -f "$file" ]] || {
+    printf 'benchmark evidence not found: %s\n' "$file" >&2
+    exit 1
+  }
+done
+
+awk -F, -v timing_file="$timing" -v max_cv="$max_cv" -v max_tail="$max_tail" '
+function abs(value) { return value < 0 ? -value : value }
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
+}
+FILENAME == timing_file {
+  if (FNR == 1) { next }
+  key = $1 SUBSEP $2 SUBSEP $3 SUBSEP $4
+  iterations[key] = $5 + 0
+  expected_median[key] = $6 + 0
+  expected_p95[key] = $7 + 0
+  gated[key] = ($2 !~ /^native_/ && $2 != "tcp_loopback")
+  next
+}
+FILENAME != timing_file {
+  if (FNR == 1) {
+    expected = "implementation,name,size,batch,sample,iterations,elapsed_us"
+    if ($0 != expected) fail("raw-sample CSV header mismatch")
+    next
+  }
+  if (NF != 7) fail("raw-sample row does not contain 7 columns: " $0)
+  key = $1 SUBSEP $2 SUBSEP $3 SUBSEP $4
+  sample_index = $5 + 0
+  if (!(key in iterations)) fail("raw sample has no timing row: " key)
+  if (($6 + 0) != iterations[key]) fail("raw sample iteration mismatch: " key)
+  if (sample_index != ++count[key]) fail("raw sample index is not contiguous: " key)
+  sample[key, sample_index] = $7 + 0
+  sum[key] += $7 + 0
+  sumsq[key] += ($7 + 0) * ($7 + 0)
+}
+END {
+  for (key in iterations) {
+    n = count[key]
+    if (n != 30) {
+      fail("benchmark case does not contain 30 raw samples: " key)
+      continue
+    }
+    for (i = 2; i <= n; i++) {
+      if (sample[key, i] < sample[key, i - 1]) {
+        fail("raw samples are not sorted: " key)
+        break
+      }
+    }
+    median = (sample[key, 15] + sample[key, 16]) / 2
+    p95 = sample[key, 29]
+    tolerance = 0.000001 * (median > 1 ? median : 1)
+    if (abs(median - expected_median[key]) > tolerance ||
+        abs(p95 - expected_p95[key]) > tolerance) {
+      fail("raw samples do not reproduce timing summary: " key)
+    }
+    mean = sum[key] / n
+    variance = (sumsq[key] / n) - mean * mean
+    if (variance < 0) variance = 0
+    cv = mean > 0 ? sqrt(variance) / mean : 0
+    tail = median > 0 ? p95 / median : 0
+    deviations = ""
+    for (i = 1; i <= n; i++) deviation[i] = abs(sample[key, i] - median)
+    for (i = 1; i <= n; i++) {
+      for (j = i + 1; j <= n; j++) {
+        if (deviation[j] < deviation[i]) {
+          temporary = deviation[i]
+          deviation[i] = deviation[j]
+          deviation[j] = temporary
+        }
+      }
+    }
+    mad = (deviation[15] + deviation[16]) / 2
+    print key ",median_us=" median ",mad_us=" mad ",cv=" cv ",p95_over_median=" tail
+    delete deviation
+    if (gated[key] && (cv > max_cv || tail > max_tail)) {
+      fail("noisy benchmark case exceeds quality budget: " key)
+    }
+  }
+  exit failed
+}
+' "$timing" "$raw"
