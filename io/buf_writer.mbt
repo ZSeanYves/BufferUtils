@@ -98,22 +98,6 @@ pub fn[W] BufWriter::get_mut(self : BufWriter[W]) -> W {
 }
 
 ///|
-fn[W] BufWriter::compact(self : BufWriter[W]) -> Unit {
-  if self.start == 0 {
-    return
-  }
-  let remaining = self.end - self.start
-  self.buffer.blit_to(
-    self.buffer,
-    src_offset=self.start,
-    dst_offset=0,
-    len=remaining,
-  )
-  self.start = 0
-  self.end = remaining
-}
-
-///|
 fn[W : Write] BufWriter::flush_pending(
   self : BufWriter[W],
 ) -> Unit raise IoError {
@@ -192,8 +176,6 @@ pub impl[W : Write] Write for BufWriter[W] with fn write(
       validate_progress("BufWriter::write", count, length)
       return count
     }
-  } else {
-    self.compact()
   }
   self.buffer.blit_from_bytes(self.end, src, offset, length)
   self.end += length
