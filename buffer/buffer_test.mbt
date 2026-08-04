@@ -321,6 +321,9 @@ test "SharedBytes unsafe adoption and visible content traits are explicit" {
   let same = SharedBytes::from_array([b'z', b'b', b'c'][:])
   assert_eq(adopted, same)
   assert_eq(adopted.compare(SharedBytes::from_array([b'z', b'c'][:])), -1)
+  assert_eq(adopted.compare(same), 0)
+  assert_eq(adopted.compare(SharedBytes::from_array([b'y'][:])), 1)
+  assert_eq(adopted.slice(0, adopted.remaining()), same)
   inspect(Repr(adopted), content="<SharedBytes: [0x7a, 0x62, 0x63]>")
   let suffix = adopted.split_off(1)
   assert_eq(adopted.to_bytes(), b"z")
@@ -432,6 +435,10 @@ test "split unsplit reclaim and zero-copy bytes view" {
   reclaim.put_slice([b'a', b'b', b'c'][:])
   ignore(reclaim.split_to(2))
   assert_true(reclaim.try_reclaim(3))
+  let shared = BytesMut::new(capacity=4)
+  shared.put_slice([b'a', b'b', b'c'][:])
+  ignore(shared.freeze())
+  assert_false(shared.try_reclaim(2))
 }
 
 ///|

@@ -504,12 +504,7 @@ pub fn BytesMut::unsplit(
 /// Freeze without copying. Future mutable writes detach through COW.
 pub fn BytesMut::freeze(self : BytesMut) -> SharedBytes {
   self.storage.immutable = true
-  {
-    data: self.storage.data,
-    start: self.start,
-    end: self.end,
-    copied_bytes: self.storage.copied_bytes,
-  }
+  { storage: self.storage, start: self.start, end: self.end }
 }
 
 ///|

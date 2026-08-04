@@ -13,20 +13,22 @@ struct SharedStorage {
 ///|
 /// Immutable shared byte storage with an independent cursor.
 pub struct SharedBytes {
-  data : FixedArray[Byte]
+  storage : SharedStorage
   mut start : Int
   mut end : Int
-  copied_bytes : Int
 }
 
 ///|
 /// Create immutable storage by copying an array view.
 pub fn SharedBytes::from_array(data : ArrayView[Byte]) -> SharedBytes {
   {
-    data: FixedArray::from_array(data),
+    storage: {
+      data: FixedArray::from_array(data),
+      immutable: true,
+      copied_bytes: 0,
+    },
     start: 0,
     end: data.length(),
-    copied_bytes: 0,
   }
 }
 
@@ -65,7 +67,7 @@ pub fn SharedBytes::unsafe_adopt_fixed_array(
       "fixed-array range is outside the backing storage",
     )
   }
-  { data, start, end, copied_bytes: 0 }
+  { storage: { data, immutable: true, copied_bytes: 0 }, start, end }
 }
 
 ///|
@@ -120,12 +122,7 @@ pub fn SharedBytes::split_off(
   if at < 0 || at > self.remaining() {
     raise BufferError::InvalidRange("split index is outside the bytes")
   }
-  let suffix = {
-    data: self.data,
-    start: self.start + at,
-    end: self.end,
-    copied_bytes: self.copied_bytes,
-  }
+  let suffix = { storage: self.storage, start: self.start + at, end: self.end }
   self.end = self.start + at
   suffix
 }
@@ -133,7 +130,7 @@ pub fn SharedBytes::split_off(
 ///|
 /// Return a read-only view over the current range without copying.
 pub fn SharedBytes::view(self : SharedBytes) -> ArrayView[Byte] {
-  self.data.view(start=self.start, end=self.end)
+  self.storage.data.view(start=self.start, end=self.end)
 }
 
 ///|
@@ -142,19 +139,14 @@ pub fn SharedBytes::view(self : SharedBytes) -> ArrayView[Byte] {
 /// The backing storage is immutable for as long as this handle is reachable;
 /// mutable siblings detach through copy-on-write before modifying it.
 pub fn SharedBytes::as_bytes_view(self : SharedBytes) -> BytesView {
-  self.data.unsafe_reinterpret_as_bytes()[self.start:self.end]
+  self.storage.data.unsafe_reinterpret_as_bytes()[self.start:self.end]
 }
 
 ///|
 /// Return a shared cursor over the current range.
 #inline
 pub fn SharedBytes::chunk(self : SharedBytes) -> SharedBytes {
-  {
-    data: self.data,
-    start: self.start,
-    end: self.end,
-    copied_bytes: self.copied_bytes,
-  }
+  { storage: self.storage, start: self.start, end: self.end }
 }
 
 ///|
@@ -175,15 +167,7 @@ pub fn SharedBytes::slice(
   if start < 0 || end < start || end > self.remaining() {
     raise BufferError::InvalidRange("bytes slice is outside the current range")
   }
-  if start == 0 && end == self.remaining() {
-    return self.chunk()
-  }
-  {
-    data: self.data,
-    start: self.start + start,
-    end: self.start + end,
-    copied_bytes: self.copied_bytes,
-  }
+  { storage: self.storage, start: self.start + start, end: self.start + end }
 }
 
 ///|
@@ -196,10 +180,9 @@ pub fn SharedBytes::split_to(
     raise BufferError::Underflow(count, self.remaining())
   }
   let result = {
-    data: self.data,
+    storage: self.storage,
     start: self.start,
     end: self.start + count,
-    copied_bytes: self.copied_bytes,
   }
   self.start += count
   result
@@ -249,7 +232,7 @@ pub fn SharedBytes::get_u8(self : SharedBytes) -> Byte raise BufferError {
   if self.is_empty() {
     raise BufferError::Underflow(1, 0)
   }
-  let result = self.data[self.start]
+  let result = self.storage.data[self.start]
   self.start += 1
   result
 }
@@ -390,7 +373,7 @@ pub fn SharedBytes::get_utf8(
 ///|
 /// Number of bytes copied by copy-on-write for this storage.
 pub fn SharedBytes::copied_bytes(self : SharedBytes) -> Int {
-  self.copied_bytes
+  self.storage.copied_bytes
 }
 
 ///|

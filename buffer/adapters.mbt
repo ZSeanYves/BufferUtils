@@ -90,10 +90,9 @@ pub impl[B : Buf] Buf for BufTake[B] with fn remaining(self) {
 pub impl[B : Buf] Buf for BufTake[B] with fn chunk(self) {
   let chunk = Buf::chunk(self.inner)
   {
-    data: chunk.data,
+    storage: chunk.storage,
     start: chunk.start,
     end: chunk.start + Int::min(chunk.remaining(), self.limit()),
-    copied_bytes: chunk.copied_bytes,
   }
 }
 
