@@ -17,6 +17,15 @@ async test "async traits preserve exact memory and seek semantics" {
 ///|
 async test "typed async helpers cover signed unsigned and floating endianness" {
   let writer = AsyncMemoryWriter::new()
+  assert_eq(
+    try {
+      AsyncWrite::write_i8(writer, 128)
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.InvalidInput)
+    },
+    true,
+  )
   AsyncWrite::write_u8(writer, b'\xFE')
   AsyncWrite::write_i8(writer, -1)
   AsyncWrite::write_u16_be(writer, 0x1234U.to_uint16())
@@ -116,6 +125,13 @@ async test "async cursors chain take and buffered stream remain lazy" {
     AsyncWrite::shutdown(stream)
     let (_, writer) = stream.into_parts()
     assert_eq(writer.get_ref().to_bytes(), b"out")
+
+    let delimited = AsyncBufStream::new(
+      AsyncMemoryReader::new(b"x,y"[:]),
+      AsyncMemoryWriter::new(),
+      capacity=2,
+    )
+    assert_eq(AsyncBufRead::read_until(delimited, b','), b"x,")
   } catch {
     @syncio.IoError::Io(failure) =>
       fail("\{failure.operation}: \{failure.message}")
@@ -1064,4 +1080,35 @@ async test "async buffered paths flush full buffers and copy files" {
     },
     true,
   )
+}
+
+///|
+async test "async cursors bulk-copy large lines and delimiter-free segments" {
+  let line_payload = Bytes::makei(65537, index => {
+    if index == 65536 {
+      b'\n'
+    } else {
+      b'a'
+    }
+  })
+  let lines = AsyncBufReader::new(
+    AsyncMemoryReader::new(line_payload[:]),
+    capacity=257,
+  ).lines()
+  let line = lines.next().unwrap()
+  assert_eq(line.length(), 65536)
+  assert_eq(line[0], 'a')
+  assert_eq(line[65535], 'a')
+  assert_eq(lines.next(), None)
+
+  let segment_payload = Bytes::makei(65536, _ => b'z')
+  let segments = AsyncBufReader::new(
+    AsyncMemoryReader::new(segment_payload[:]),
+    capacity=257,
+  ).split(b',')
+  let segment = segments.next().unwrap()
+  assert_eq(segment.length(), 65536)
+  assert_eq(segment[0], b'z')
+  assert_eq(segment[65535], b'z')
+  assert_eq(segments.next(), None)
 }

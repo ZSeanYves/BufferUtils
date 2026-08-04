@@ -49,9 +49,7 @@ pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
   }
   self.read_calls += 1
   let count = Int::min(Int::min(length, self.remaining()), self.max_chunk)
-  for i in 0..<count {
-    dst[offset + i] = self.data[self.position + i]
-  }
+  dst.blit_from_bytes(offset, self.data, self.position, count)
   self.position += count
   count
 }
@@ -59,7 +57,7 @@ pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
 ///|
 /// An in-memory `Write` implementation with optional short-write behavior.
 struct MemoryWriter {
-  data : Array[Byte]
+  data : @buffer.BytesMut
   max_chunk : Int
   mut write_calls : Int
   mut flush_calls : Int
@@ -77,13 +75,16 @@ pub fn MemoryWriter::new(
       message="max_chunk must be positive",
     )
   }
-  { data: [], max_chunk, write_calls: 0, flush_calls: 0 }
+  let data = @buffer.BytesMut::new() catch {
+    _ => abort("zero-capacity MemoryWriter construction failed")
+  }
+  { data, max_chunk, write_calls: 0, flush_calls: 0 }
 }
 
 ///|
 /// Return the bytes accepted by the writer as an owned value.
 pub fn MemoryWriter::to_bytes(self : MemoryWriter) -> Bytes {
-  Bytes::from_array(self.data[:])
+  self.data.freeze().to_bytes()
 }
 
 ///|
@@ -109,8 +110,13 @@ pub impl Write for MemoryWriter with fn write(self, src, offset, length) {
   }
   self.write_calls += 1
   let count = Int::min(length, self.max_chunk)
-  for i in 0..<count {
-    self.data.push(src[offset + i])
+  self.data.put_bytes_view(src[offset:offset + count]) catch {
+    error =>
+      raise io_error(
+        Backend,
+        "MemoryWriter::write",
+        message=@debug.render(Repr(error)),
+      )
   }
   count
 }

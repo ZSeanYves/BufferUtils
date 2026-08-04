@@ -101,6 +101,7 @@ pub fn SharedBytes::clear(Self) -> Unit
 pub fn SharedBytes::clone(Self) -> Self
 pub fn SharedBytes::copied_bytes(Self) -> Int
 pub fn SharedBytes::copy_to(Self, MutArrayView[Byte]) -> Int
+pub fn SharedBytes::copy_to_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise BufferError
 pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
 pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
 pub fn SharedBytes::get_f32_be(Self) -> Float raise BufferError

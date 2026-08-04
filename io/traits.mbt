@@ -1,5 +1,6 @@
 ///|
 /// A validated immutable byte range used by vectored writes.
+#valtype
 pub struct IoSlice {
   data : Bytes
   offset : Int
@@ -48,6 +49,7 @@ pub fn IoSlice::is_empty(self : IoSlice) -> Bool {
 
 ///|
 /// A validated mutable fixed-array range used by vectored reads.
+#valtype
 pub struct IoSliceMut {
   data : FixedArray[Byte]
   offset : Int

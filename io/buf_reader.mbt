@@ -127,8 +127,9 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
   if length == 0 {
     return 0
   }
-  if self.buffered_len() > 0 {
-    let count = Int::min(length, self.buffered_len())
+  let resident = self.end - self.position
+  if resident > 0 {
+    let count = Int::min(length, resident)
     self.buffer.blit_to(
       dst,
       src_offset=self.position,
@@ -138,7 +139,7 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
     self.position += count
     return count
   }
-  if length >= self.capacity() {
+  if length >= self.buffer.length() {
     self.underlying_reads += 1
     self.bypass_reads += 1
     let count = Read::read(self.inner, dst, offset, length)

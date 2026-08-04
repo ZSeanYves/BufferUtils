@@ -20,16 +20,15 @@ pub async fn[R : AsyncRead] AsyncLines::next(self : AsyncLines[R]) -> String? {
   if raw.is_empty() {
     return None
   }
-  let bytes = raw.to_array()
-  if bytes.last() == Some(b'\n') {
-    bytes.truncate(bytes.length() - 1)
-    if bytes.last() == Some(b'\r') {
-      bytes.truncate(bytes.length() - 1)
+  let mut end = raw.length()
+  if raw[end - 1] == b'\n' {
+    end -= 1
+    if end > 0 && raw[end - 1] == b'\r' {
+      end -= 1
     }
   }
-  let fixed = FixedArray::from_array(bytes[:])
   Some(
-    @utf8.decode(fixed.unsafe_reinterpret_as_bytes()[:]) catch {
+    @utf8.decode(raw[0:end]) catch {
       _ => raise @syncio.io_error(@syncio.InvalidData, "AsyncLines::next")
     },
   )
@@ -196,6 +195,14 @@ pub impl[R : AsyncRead, W] AsyncBufRead for AsyncBufStream[R, W] with fn consume
   amount,
 ) {
   AsyncBufRead::consume(self.reader, amount)
+}
+
+///|
+pub impl[R : AsyncRead, W] AsyncBufRead for AsyncBufStream[R, W] with fn read_until(
+  self,
+  delimiter,
+) {
+  AsyncBufRead::read_until(self.reader, delimiter)
 }
 
 ///|

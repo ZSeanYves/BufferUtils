@@ -38,7 +38,7 @@ pub fn[R] AsyncBufReader::get_mut(self : AsyncBufReader[R]) -> R {
 pub fn[R] AsyncBufReader::into_parts(self : AsyncBufReader[R]) -> (R, Bytes) {
   (
     self.inner,
-    Bytes::makei(self.buffered_len(), i => self.buffer[self.start + i]),
+    self.buffer.unsafe_reinterpret_as_bytes()[self.start:self.end].to_owned(),
   )
 }
 

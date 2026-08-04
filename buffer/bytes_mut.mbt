@@ -116,13 +116,17 @@ pub fn BytesMut::reserve(
     self.end + additional <= self.storage.data.length() {
     return
   }
-  let current = self.storage.data.length()
+  let current = self.capacity()
   let doubled = if current > 1073741823 {
     2147483647
   } else {
     Int::max(1, current * 2)
   }
-  let target = Int::min(self.max_capacity, Int::max(required_len, doubled))
+  let target = if self.storage.immutable && required_len <= current {
+    current
+  } else {
+    Int::min(self.max_capacity, Int::max(required_len, doubled))
+  }
   let data = FixedArray::make(target, (0).to_byte())
   let length = self.len()
   self.storage.data.blit_to(
@@ -173,9 +177,7 @@ pub fn BytesMut::resize(
   }
   let additional = length - self.len()
   self.reserve(additional)
-  for i in self.end..<(self.end + additional) {
-    self.storage.data[i] = value
-  }
+  self.storage.data.fill(value, start=self.end, end=self.end + additional)
   self.end += additional
 }
 
@@ -249,8 +251,10 @@ pub fn BytesMut::put_u16_be(
   value : UInt16,
 ) -> Unit raise BufferError {
   self.reserve(2)
-  self.put_byte((value.to_int() >> 8).to_byte())
-  self.put_byte(value.to_byte())
+  let position = self.end
+  self.storage.data[position] = (value.to_int() >> 8).to_byte()
+  self.storage.data[position + 1] = value.to_byte()
+  self.end = position + 2
 }
 
 ///|
@@ -258,7 +262,9 @@ pub fn BytesMut::put_i8(self : BytesMut, value : Int) -> Unit raise BufferError 
   if value < -128 || value > 127 {
     raise BufferError::InvalidRange("i8 value is outside [-128, 127]")
   }
-  self.put_byte((value & 0xFF).to_byte())
+  self.reserve(1)
+  self.storage.data[self.end] = (value & 0xFF).to_byte()
+  self.end += 1
 }
 
 ///|
@@ -267,8 +273,10 @@ pub fn BytesMut::put_u16_le(
   value : UInt16,
 ) -> Unit raise BufferError {
   self.reserve(2)
-  self.put_byte(value.to_byte())
-  self.put_byte((value.to_int() >> 8).to_byte())
+  let position = self.end
+  self.storage.data[position] = value.to_byte()
+  self.storage.data[position + 1] = (value.to_int() >> 8).to_byte()
+  self.end = position + 2
 }
 
 ///|
@@ -277,9 +285,12 @@ pub fn BytesMut::put_u32_be(
   value : UInt,
 ) -> Unit raise BufferError {
   self.reserve(4)
-  for shift in [24, 16, 8, 0] {
-    self.put_byte((value >> shift).to_byte())
-  }
+  let position = self.end
+  self.storage.data[position] = (value >> 24).to_byte()
+  self.storage.data[position + 1] = (value >> 16).to_byte()
+  self.storage.data[position + 2] = (value >> 8).to_byte()
+  self.storage.data[position + 3] = value.to_byte()
+  self.end = position + 4
 }
 
 ///|
@@ -288,9 +299,12 @@ pub fn BytesMut::put_u32_le(
   value : UInt,
 ) -> Unit raise BufferError {
   self.reserve(4)
-  for shift in [0, 8, 16, 24] {
-    self.put_byte((value >> shift).to_byte())
-  }
+  let position = self.end
+  self.storage.data[position] = value.to_byte()
+  self.storage.data[position + 1] = (value >> 8).to_byte()
+  self.storage.data[position + 2] = (value >> 16).to_byte()
+  self.storage.data[position + 3] = (value >> 24).to_byte()
+  self.end = position + 4
 }
 
 ///|
@@ -299,9 +313,16 @@ pub fn BytesMut::put_u64_be(
   value : UInt64,
 ) -> Unit raise BufferError {
   self.reserve(8)
-  for shift in [56, 48, 40, 32, 24, 16, 8, 0] {
-    self.put_byte((value >> shift).to_byte())
-  }
+  let position = self.end
+  self.storage.data[position] = (value >> 56).to_byte()
+  self.storage.data[position + 1] = (value >> 48).to_byte()
+  self.storage.data[position + 2] = (value >> 40).to_byte()
+  self.storage.data[position + 3] = (value >> 32).to_byte()
+  self.storage.data[position + 4] = (value >> 24).to_byte()
+  self.storage.data[position + 5] = (value >> 16).to_byte()
+  self.storage.data[position + 6] = (value >> 8).to_byte()
+  self.storage.data[position + 7] = value.to_byte()
+  self.end = position + 8
 }
 
 ///|
@@ -310,9 +331,16 @@ pub fn BytesMut::put_u64_le(
   value : UInt64,
 ) -> Unit raise BufferError {
   self.reserve(8)
-  for shift in [0, 8, 16, 24, 32, 40, 48, 56] {
-    self.put_byte((value >> shift).to_byte())
-  }
+  let position = self.end
+  self.storage.data[position] = value.to_byte()
+  self.storage.data[position + 1] = (value >> 8).to_byte()
+  self.storage.data[position + 2] = (value >> 16).to_byte()
+  self.storage.data[position + 3] = (value >> 24).to_byte()
+  self.storage.data[position + 4] = (value >> 32).to_byte()
+  self.storage.data[position + 5] = (value >> 40).to_byte()
+  self.storage.data[position + 6] = (value >> 48).to_byte()
+  self.storage.data[position + 7] = (value >> 56).to_byte()
+  self.end = position + 8
 }
 
 ///|

@@ -31,6 +31,26 @@ test "bytes copy_to writes into a caller-owned subview" {
 }
 
 ///|
+test "bytes copy_to_fixed uses a bounded bulk destination" {
+  let bytes = SharedBytes::from_array([b'a', b'b', b'c'][:])
+  let destination = FixedArray::make(5, b'-')
+  assert_eq(bytes.copy_to_fixed(destination, 1, 2), 2)
+  assert_eq(destination.unsafe_reinterpret_as_bytes(), b"-ab--")
+  assert_eq(bytes.view(), [b'c'])
+  assert_eq(
+    capture_buffer_result(() => bytes.copy_to_fixed(destination, 5, 1))
+    is Err(BufferError::InvalidRange(_)),
+    true,
+  )
+  assert_eq(bytes.view(), [b'c'])
+  assert_eq(
+    capture_buffer_result(() => bytes.get_u16_be())
+    is Err(BufferError::Underflow(_, _)),
+    true,
+  )
+}
+
+///|
 test "typed integer helpers round trip both endian orders" {
   let mutable = BytesMut::new()
   mutable.put_u16_be(0x1234U.to_uint16())
@@ -439,6 +459,20 @@ test "split unsplit reclaim and zero-copy bytes view" {
   shared.put_slice([b'a', b'b', b'c'][:])
   ignore(shared.freeze())
   assert_false(shared.try_reclaim(2))
+}
+
+///|
+test "COW detach preserves spare capacity without exponential growth" {
+  let mutable = BytesMut::new(capacity=8)
+  mutable.put_byte(b'a')
+  let first = mutable.freeze()
+  for byte in [b'b', b'c', b'd'] {
+    mutable.put_byte(byte)
+    ignore(mutable.freeze())
+    assert_eq(mutable.capacity(), 8)
+  }
+  assert_eq(first.view(), [b'a'])
+  assert_eq(mutable.view(), [b'a', b'b', b'c', b'd'])
 }
 
 ///|

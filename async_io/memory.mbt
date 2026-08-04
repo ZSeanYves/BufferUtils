@@ -25,9 +25,7 @@ pub impl AsyncRead for AsyncMemoryReader with fn read(
     raise @syncio.io_error(@syncio.InvalidInput, "async memory read")
   }
   let count = Int::min(max_len, self.data.length() - self.position)
-  for i in 0..<count {
-    destination[offset + i] = self.data[self.position + i]
-  }
+  destination.blit_from_bytes(offset, self.data, self.position, count)
   self.position += count
   count
 }
@@ -59,19 +57,22 @@ pub impl AsyncClose for AsyncMemoryReader with fn is_closed(self) {
 ///|
 /// An in-memory asynchronous sink useful for tests and adapters.
 pub struct AsyncMemoryWriter {
-  data : Array[Byte]
+  data : @buffer.BytesMut
   mut closed : Bool
 }
 
 ///|
 pub fn AsyncMemoryWriter::new() -> AsyncMemoryWriter {
-  { data: [], closed: false }
+  let data = @buffer.BytesMut::new() catch {
+    _ => abort("zero-capacity AsyncMemoryWriter construction failed")
+  }
+  { data, closed: false }
 }
 
 ///|
 /// Return the bytes accepted by this writer as an owned value.
 pub fn AsyncMemoryWriter::to_bytes(self : AsyncMemoryWriter) -> Bytes {
-  Bytes::from_array(self.data)
+  self.data.freeze().to_bytes()
 }
 
 ///|
@@ -87,8 +88,13 @@ pub impl AsyncWrite for AsyncMemoryWriter with fn write(
   if offset < 0 || len < 0 || offset > source.length() - len {
     raise @syncio.io_error(@syncio.InvalidInput, "async memory write")
   }
-  for i in 0..<len {
-    self.data.push(source[offset + i])
+  self.data.put_bytes_view(source[offset:offset + len]) catch {
+    error =>
+      raise @syncio.io_error(
+        @syncio.Backend,
+        "async memory write",
+        message=@debug.render(Repr(error)),
+      )
   }
   len
 }
@@ -188,9 +194,7 @@ pub impl AsyncRead for AsyncDuplexStream with fn read(
     self.pending_offset = 0
   }
   let count = Int::min(max_len, self.pending.length() - self.pending_offset)
-  for i in 0..<count {
-    destination[offset + i] = self.pending[self.pending_offset + i]
-  }
+  destination.blit_from_bytes(offset, self.pending, self.pending_offset, count)
   self.pending_offset += count
   count
 }

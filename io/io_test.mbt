@@ -728,6 +728,26 @@ test "adapter primary ranges reject invalid input" {
   let cursor = Cursor::new([b'x'][:])
   let destination = FixedArray::make(1, (0).to_byte())
   assert_eq(
+    capture_io_result(() => {
+      ignore(Read::read(MemoryReader::new(b"x"), destination, 2, 1))
+    })
+    is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => {
+      ignore(Write::write(MemoryWriter::new(), b"x", 2, 1))
+    })
+    is Err(_),
+    true,
+  )
+  let invalid_buffered = BufWriter::new(MemoryWriter::new())
+  assert_eq(
+    capture_io_result(() => ignore(Write::write(invalid_buffered, b"x", 2, 1)))
+    is Err(_),
+    true,
+  )
+  assert_eq(
     capture_io_result(() => Read::read(cursor, destination, 2, 1)) is Err(_),
     true,
   )
@@ -752,6 +772,10 @@ test "adapter primary ranges reject invalid input" {
   let line_writer = LineWriter::new(MemoryWriter::new())
   assert_eq(
     capture_io_result(() => Write::write(line_writer, b"x", 2, 1)) is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => Sink::send(invalid_buffered, b"x", 2, 1)) is Err(_),
     true,
   )
 }

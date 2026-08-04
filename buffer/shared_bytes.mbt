@@ -153,7 +153,7 @@ pub fn SharedBytes::chunk(self : SharedBytes) -> SharedBytes {
 /// Clone the current range in O(1) with an independent cursor.
 #inline
 pub fn SharedBytes::clone(self : SharedBytes) -> SharedBytes {
-  self.chunk()
+  { storage: self.storage, start: self.start, end: self.end }
 }
 
 ///|
@@ -164,7 +164,11 @@ pub fn SharedBytes::slice(
   start : Int,
   end : Int,
 ) -> SharedBytes raise BufferError {
-  if start < 0 || end < start || end > self.remaining() {
+  let remaining = self.remaining()
+  if start == 0 && end == remaining {
+    return { storage: self.storage, start: self.start, end: self.end }
+  }
+  if start < 0 || end < start || end > remaining {
     raise BufferError::InvalidRange("bytes slice is outside the current range")
   }
   { storage: self.storage, start: self.start + start, end: self.start + end }
@@ -215,6 +219,31 @@ pub fn SharedBytes::copy_to(
 }
 
 ///|
+/// Copy unread bytes into a fixed-array range with one bulk operation.
+///
+/// This is the zero-allocation destination path. `copy_to` remains the safe
+/// adapter for ordinary mutable arrays.
+pub fn SharedBytes::copy_to_fixed(
+  self : SharedBytes,
+  destination : FixedArray[Byte],
+  offset : Int,
+  length : Int,
+) -> Int raise BufferError {
+  if offset < 0 || length < 0 || offset > destination.length() - length {
+    raise BufferError::InvalidRange("fixed-array destination range is invalid")
+  }
+  let count = Int::min(self.remaining(), length)
+  self.storage.data.blit_to(
+    destination,
+    src_offset=self.start,
+    dst_offset=offset,
+    len=count,
+  )
+  self.start += count
+  count
+}
+
+///|
 /// Explicit copy boundary to a mutable MoonBit array.
 pub fn SharedBytes::to_array(self : SharedBytes) -> Array[Byte] {
   self.view().to_owned()
@@ -249,59 +278,47 @@ pub fn SharedBytes::get_i8(self : SharedBytes) -> Int raise BufferError {
 }
 
 ///|
+fn SharedBytes::take_bytes_view(
+  self : SharedBytes,
+  width : Int,
+) -> BytesView raise BufferError {
+  let remaining = self.remaining()
+  if width > remaining {
+    raise BufferError::Underflow(width, remaining)
+  }
+  let start = self.start
+  self.start += width
+  self.storage.data.unsafe_reinterpret_as_bytes()[start:start + width]
+}
+
+///|
 pub fn SharedBytes::get_u16_be(self : SharedBytes) -> UInt16 raise BufferError {
-  let view = self.split_to(2).view()
-  ((view[0].to_int() << 8) | view[1].to_int()).to_uint16()
+  self.take_bytes_view(2).unsafe_read_uint16_be(0)
 }
 
 ///|
 pub fn SharedBytes::get_u16_le(self : SharedBytes) -> UInt16 raise BufferError {
-  let view = self.split_to(2).view()
-  (view[0].to_int() | (view[1].to_int() << 8)).to_uint16()
+  self.take_bytes_view(2).unsafe_read_uint16_le(0)
 }
 
 ///|
 pub fn SharedBytes::get_u32_be(self : SharedBytes) -> UInt raise BufferError {
-  let view = self.split_to(4).view()
-  (view[0].to_uint() << 24) |
-  (view[1].to_uint() << 16) |
-  (view[2].to_uint() << 8) |
-  view[3].to_uint()
+  self.take_bytes_view(4).unsafe_read_uint32_be(0)
 }
 
 ///|
 pub fn SharedBytes::get_u32_le(self : SharedBytes) -> UInt raise BufferError {
-  let view = self.split_to(4).view()
-  view[0].to_uint() |
-  (view[1].to_uint() << 8) |
-  (view[2].to_uint() << 16) |
-  (view[3].to_uint() << 24)
+  self.take_bytes_view(4).unsafe_read_uint32_le(0)
 }
 
 ///|
 pub fn SharedBytes::get_u64_be(self : SharedBytes) -> UInt64 raise BufferError {
-  let view = self.split_to(8).view()
-  (view[0].to_uint64() << 56) |
-  (view[1].to_uint64() << 48) |
-  (view[2].to_uint64() << 40) |
-  (view[3].to_uint64() << 32) |
-  (view[4].to_uint64() << 24) |
-  (view[5].to_uint64() << 16) |
-  (view[6].to_uint64() << 8) |
-  view[7].to_uint64()
+  self.take_bytes_view(8).unsafe_read_uint64_be(0)
 }
 
 ///|
 pub fn SharedBytes::get_u64_le(self : SharedBytes) -> UInt64 raise BufferError {
-  let view = self.split_to(8).view()
-  view[0].to_uint64() |
-  (view[1].to_uint64() << 8) |
-  (view[2].to_uint64() << 16) |
-  (view[3].to_uint64() << 24) |
-  (view[4].to_uint64() << 32) |
-  (view[5].to_uint64() << 40) |
-  (view[6].to_uint64() << 48) |
-  (view[7].to_uint64() << 56)
+  self.take_bytes_view(8).unsafe_read_uint64_le(0)
 }
 
 ///|

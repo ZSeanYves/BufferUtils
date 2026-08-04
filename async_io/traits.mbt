@@ -33,104 +33,128 @@ pub(open) trait AsyncRead {
 }
 
 ///|
-async fn[T, R : AsyncRead] read_typed(
+async fn[R : AsyncRead] read_unsigned(
   reader : R,
   width : Int,
-  decode : (@buffer.SharedBytes) -> T raise @buffer.BufferError,
-) -> T {
+  little_endian : Bool,
+) -> UInt64 {
   let data = FixedArray::make(width, (0).to_byte())
   AsyncRead::read_exact(reader, data)
-  decode(@buffer.SharedBytes::unsafe_adopt_fixed_array(data, 0, width))
+  let bytes = data.unsafe_reinterpret_as_bytes()
+  if width == 1 {
+    bytes[0].to_uint64()
+  } else if width == 2 {
+    if little_endian {
+      bytes.unsafe_read_uint16_le(0).to_uint64()
+    } else {
+      bytes.unsafe_read_uint16_be(0).to_uint64()
+    }
+  } else if width == 4 {
+    if little_endian {
+      bytes.unsafe_read_uint32_le(0).to_uint64()
+    } else {
+      bytes.unsafe_read_uint32_be(0).to_uint64()
+    }
+  } else if little_endian {
+    bytes.unsafe_read_uint64_le(0)
+  } else {
+    bytes.unsafe_read_uint64_be(0)
+  }
 }
 
 ///|
 impl AsyncRead with fn read_u8(self) {
-  read_typed(self, 1, bytes => bytes.get_u8())
+  read_unsigned(self, 1, false).to_byte()
 }
 
 ///|
 impl AsyncRead with fn read_i8(self) {
-  read_typed(self, 1, bytes => bytes.get_i8())
+  let value = read_unsigned(self, 1, false).to_int()
+  if value < 128 {
+    value
+  } else {
+    value - 256
+  }
 }
 
 ///|
 impl AsyncRead with fn read_u16_be(self) {
-  read_typed(self, 2, bytes => bytes.get_u16_be())
+  read_unsigned(self, 2, false).to_uint16()
 }
 
 ///|
 impl AsyncRead with fn read_u16_le(self) {
-  read_typed(self, 2, bytes => bytes.get_u16_le())
+  read_unsigned(self, 2, true).to_uint16()
 }
 
 ///|
 impl AsyncRead with fn read_i16_be(self) {
-  read_typed(self, 2, bytes => bytes.get_i16_be())
+  Int16::reinterpret_from_uint16(read_unsigned(self, 2, false).to_uint16())
 }
 
 ///|
 impl AsyncRead with fn read_i16_le(self) {
-  read_typed(self, 2, bytes => bytes.get_i16_le())
+  Int16::reinterpret_from_uint16(read_unsigned(self, 2, true).to_uint16())
 }
 
 ///|
 impl AsyncRead with fn read_u32_be(self) {
-  read_typed(self, 4, bytes => bytes.get_u32_be())
+  read_unsigned(self, 4, false).to_uint()
 }
 
 ///|
 impl AsyncRead with fn read_u32_le(self) {
-  read_typed(self, 4, bytes => bytes.get_u32_le())
+  read_unsigned(self, 4, true).to_uint()
 }
 
 ///|
 impl AsyncRead with fn read_i32_be(self) {
-  read_typed(self, 4, bytes => bytes.get_i32_be())
+  read_unsigned(self, 4, false).to_uint().reinterpret_as_int()
 }
 
 ///|
 impl AsyncRead with fn read_i32_le(self) {
-  read_typed(self, 4, bytes => bytes.get_i32_le())
+  read_unsigned(self, 4, true).to_uint().reinterpret_as_int()
 }
 
 ///|
 impl AsyncRead with fn read_f32_be(self) {
-  read_typed(self, 4, bytes => bytes.get_f32_be())
+  Float::reinterpret_from_uint(read_unsigned(self, 4, false).to_uint())
 }
 
 ///|
 impl AsyncRead with fn read_f32_le(self) {
-  read_typed(self, 4, bytes => bytes.get_f32_le())
+  Float::reinterpret_from_uint(read_unsigned(self, 4, true).to_uint())
 }
 
 ///|
 impl AsyncRead with fn read_u64_be(self) {
-  read_typed(self, 8, bytes => bytes.get_u64_be())
+  read_unsigned(self, 8, false)
 }
 
 ///|
 impl AsyncRead with fn read_u64_le(self) {
-  read_typed(self, 8, bytes => bytes.get_u64_le())
+  read_unsigned(self, 8, true)
 }
 
 ///|
 impl AsyncRead with fn read_i64_be(self) {
-  read_typed(self, 8, bytes => bytes.get_i64_be())
+  read_unsigned(self, 8, false).reinterpret_as_int64()
 }
 
 ///|
 impl AsyncRead with fn read_i64_le(self) {
-  read_typed(self, 8, bytes => bytes.get_i64_le())
+  read_unsigned(self, 8, true).reinterpret_as_int64()
 }
 
 ///|
 impl AsyncRead with fn read_f64_be(self) {
-  read_typed(self, 8, bytes => bytes.get_f64_be())
+  read_unsigned(self, 8, false).reinterpret_as_double()
 }
 
 ///|
 impl AsyncRead with fn read_f64_le(self) {
-  read_typed(self, 8, bytes => bytes.get_f64_le())
+  read_unsigned(self, 8, true).reinterpret_as_double()
 }
 
 ///|
@@ -233,9 +257,14 @@ impl AsyncWrite with fn write_u8(self, value) {
 
 ///|
 impl AsyncWrite with fn write_i8(self, value) {
-  let encoded = @buffer.BytesMut::new(capacity=1, max_capacity=1)
-  encoded.put_i8(value)
-  AsyncWrite::write_all(self, encoded.freeze().to_bytes())
+  if value < -128 || value > 127 {
+    raise @syncio.io_error(
+      @syncio.InvalidInput,
+      "async write_i8",
+      message="i8 value is outside [-128, 127]",
+    )
+  }
+  write_integer(self, (value & 0xFF).to_uint64(), 1, false)
 }
 
 ///|
@@ -374,14 +403,34 @@ impl AsyncBufRead with fn read_until(self, delimiter) {
     }
     let mut consumed = chunk.length()
     for i in 0..<chunk.length() {
-      output.push(chunk[i])
       if chunk[i] == delimiter {
         consumed = i + 1
-        self.consume(consumed)
-        return Bytes::from_array(output)
+        break
       }
     }
+    let output_start = output.length()
+    if consumed > 2147483647 - output_start {
+      raise @syncio.io_error(
+        @syncio.InvalidInput,
+        "async read_until",
+        message="byte sequence exceeds the maximum array length",
+      )
+    }
+    let required = output_start + consumed
+    if required > output.capacity() {
+      let doubled = if output.capacity() > 1073741823 {
+        2147483647
+      } else {
+        Int::max(1, output.capacity() * 2)
+      }
+      output.reserve_capacity(Int::max(required, doubled))
+    }
+    output.resize(required, (0).to_byte())
+    chunk[0:consumed].blit_to(output, dst_offset=output_start)
     self.consume(consumed)
+    if output[output.length() - 1] == delimiter {
+      return Bytes::from_array(output)
+    }
   }
   Bytes::from_array(output)
 }

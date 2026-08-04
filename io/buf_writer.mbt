@@ -103,9 +103,12 @@ fn[W] BufWriter::compact(self : BufWriter[W]) -> Unit {
     return
   }
   let remaining = self.end - self.start
-  for i in 0..<remaining {
-    self.buffer[i] = self.buffer[self.start + i]
-  }
+  self.buffer.blit_to(
+    self.buffer,
+    src_offset=self.start,
+    dst_offset=0,
+    len=remaining,
+  )
   self.start = 0
   self.end = remaining
 }
@@ -167,23 +170,34 @@ pub impl[W : Write] Write for BufWriter[W] with fn write(
   if length == 0 {
     return 0
   }
-  if self.buffered_len() > 0 && length > self.capacity - self.end {
-    self.flush_pending()
-  }
-  if self.buffered_len() == 0 && length >= self.capacity {
+  if self.end == self.start && length >= self.capacity {
     self.underlying_writes += 1
     self.bypass_writes += 1
     let count = Write::write(self.inner, src, offset, length)
     validate_progress("BufWriter::write", count, length)
     return count
   }
-  if self.end + length > self.capacity {
+  let tail_capacity = self.capacity - self.end
+  if length <= tail_capacity {
+    self.buffer.blit_from_bytes(self.end, src, offset, length)
+    self.end += length
+    return length
+  }
+  if self.end > self.start {
+    self.flush_pending()
+    if length >= self.capacity {
+      self.underlying_writes += 1
+      self.bypass_writes += 1
+      let count = Write::write(self.inner, src, offset, length)
+      validate_progress("BufWriter::write", count, length)
+      return count
+    }
+  } else {
     self.compact()
   }
-  let count = Int::min(length, self.capacity - self.end)
-  self.buffer.blit_from_bytes(self.end, src, offset, count)
-  self.end += count
-  count
+  self.buffer.blit_from_bytes(self.end, src, offset, length)
+  self.end += length
+  length
 }
 
 ///|
