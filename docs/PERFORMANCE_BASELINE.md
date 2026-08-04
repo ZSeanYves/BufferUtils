@@ -20,6 +20,11 @@ evaluated. Its artifact must include timing CSVs, raw samples, copy evidence,
 peak-RSS reports, exact toolchain identities, and passing structural and noise
 checks.
 
+The current baseline was generated from GitHub Actions run
+[`30924479149`](https://github.com/ZSeanYves/BufferUtils/actions/runs/30924479149)
+at commit `6b2cdc5`. The run is the source of truth for all raw evidence. The
+committed ratios detect later regressions; they do not assert Rust parity.
+
 The superseded nightly runs `30900917785`, `30904761627`, and `30905145550`
 remain historical diagnostics only. Their non-overlapping regressions exposed
 shared-runner variance, but their ratios cannot seed the corrected baseline.

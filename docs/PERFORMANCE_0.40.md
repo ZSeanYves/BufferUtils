@@ -8,36 +8,36 @@ committed baseline. It does not mean that BufferUtils equals Rust.
 ## Evidence checkpoint
 
 GitHub Actions run
-[`30916090932`](https://github.com/ZSeanYves/BufferUtils/actions/runs/30916090932)
-is the last fully green corrected-fixture checkpoint before the additional hot
-path changes described below. It used the pinned MoonBit 2026-08-03 toolchain,
+[`30924479149`](https://github.com/ZSeanYves/BufferUtils/actions/runs/30924479149)
+is the authoritative corrected-fixture checkpoint for commit `6b2cdc5`. It
+passed all platform, sanitizer, coverage, contract, benchmark-structure, and
+noise gates. It used the pinned MoonBit 2026-08-03 toolchain,
 Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 on an Ubuntu 24.04 AMD EPYC 7763
 hosted runner.
 
 | Workload | MoonBit/Rust median ratio | Interpretation |
 | --- | ---: | --- |
-| `SharedBytes` clone/slice/split | 3.34-3.53 / 3.00-3.06 / 3.44-3.53 | O(1), but handle allocation is not at Rust cost |
-| raw read, 1 MiB | 0.90 | bulk fixture copy is competitive |
-| buffered read, 1 MiB | 0.70 | large resident bulk copy is faster in this sample |
-| buffered bypass read/write | 0.93 / 0.91 | bypass path is competitive |
-| buffered write | 2.40-2.67 | call and buffer-management overhead remains |
-| raw small write | 2.62-2.64 | call-dominated after fixture correction |
-| short write | 2.47 | progress contract and repeated calls dominate |
-| vectored bulk | 7.45 | boxed slice descriptors and dispatch dominated this checkpoint |
-| async copy | 2.28-10.10 | scheduler/await and small-call costs remain substantial |
+| `SharedBytes` clone/slice/split | 3.44 / 3.84-3.86 / 3.65-3.70 | O(1), but each returned handle still allocates |
+| raw read, 1 KiB / 1 MiB | 1.37 / 0.90 | bulk copy is competitive once call cost is amortized |
+| buffered read, 1 KiB / 1 MiB | 1.94 / 0.71 | resident bulk copy wins at scale; small calls do not |
+| buffered bypass read/write | 0.93 / 0.92 | bypass paths are competitive |
+| buffered write, 1 KiB / 1 MiB | 2.69 / 2.49 | checked blit and call boundaries remain |
+| raw small write | 2.55-2.57 | fixture and trait boundary are call-dominated |
+| short write | 2.43 | progress checks and repeated result boundaries dominate |
+| vectored fallback / bulk | 1.81 / 7.46 | equal counters, but descriptor iteration and dispatch remain expensive |
+| async copy, 1 KiB / 1 MiB | 10.60 / 2.25 | scheduler/continuation cost dominates small transfers |
 
-The current source additionally makes `IoSlice` and `IoSliceMut` value types,
-uses direct typed integer loads/stores, bulk-compacts buffered writes, removes
-remaining memory-reader byte loops, and bulk-accumulates async delimiters. A
-new authoritative ratio table must come from the final three-batch cloud run;
-local workstation ratios are diagnostics only.
+These values are medians of the three per-batch, per-iteration ratios. They are
+the committed regression baseline, not a parity claim. Any row whose median is
+already above 1.05 necessarily fails the parity target regardless of its
+confidence interval. The current evidence therefore proves that BufferUtils
+0.40 has not reached overall Rust performance parity.
 
-Peak RSS in the checkpoint was 372,808-372,880 KiB for the complete synchronous
-MoonBit benchmark process, 12,184-12,316 KiB for the async process, and
-7,628-7,672 KiB for Rust. The synchronous figure is a process peak after all
-COW, growth, and allocation-churn cases, not the steady-state footprint of a
-single buffer operation. It remains a real diagnostic and is not normalized
-away.
+Independent-process peak RSS was about 29,000 KiB for ordinary synchronous
+cases and 8,920 KiB for async copy. Growth reached 55,624 KiB and the COW stress
+case reached 368,200 KiB. The high COW figure is workload-specific retained
+state, not the steady-state footprint of a single buffer operation, and remains
+visible rather than being normalized away.
 
 ## Confirmed root causes
 
@@ -80,6 +80,15 @@ that the default boundary remains dominant after the bulk implementation. The
 preferred options are a fixed-array bulk primitive in the core contract or
 specialized concrete adapters, with ArrayView kept as an explicit copy
 boundary. Adding benchmark-only public APIs is not acceptable.
+
+Callgrind confirms the boundary counts on the final source. The selected
+`SharedBytes::slice` profile invoked the slice function and allocator 688,126
+times. The small buffered-write profile invoked `blit_from_bytes` 2,058,335
+times while issuing only 26,751 writes to the sink. The async-copy profile
+entered the copy continuation and `write_all` state machine 42,879 times. The
+bulk-vectored fixture entered its write implementation 344,063 times. These
+profiles also include benchmark-case construction, so instruction percentages
+for the complete process are not treated as hot-path percentages.
 
 ### COW capacity amplification
 
