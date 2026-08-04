@@ -169,7 +169,7 @@ impl AsyncRead with fn read_exact(
 
 ///|
 impl AsyncRead with fn read_to_end(self) {
-  let output : Array[Byte] = []
+  let output = @buffer.BytesMut::new(capacity=8192)
   let scratch = FixedArray::make(8192, (0).to_byte())
   while true {
     let count = self.read(scratch)
@@ -179,11 +179,9 @@ impl AsyncRead with fn read_to_end(self) {
     if count < 0 || count > scratch.length() {
       raise @syncio.io_error(@syncio.ContractViolation, "async read_to_end")
     }
-    for i in 0..<count {
-      output.push(scratch[i])
-    }
+    output.put_bytes_view(scratch.unsafe_reinterpret_as_bytes()[0:count])
   }
-  Bytes::from_array(output)
+  output.freeze().to_bytes()
 }
 
 ///|
@@ -214,103 +212,110 @@ pub(open) trait AsyncWrite {
 }
 
 ///|
-async fn[W : AsyncWrite] write_typed(
+async fn[W : AsyncWrite] write_integer(
   writer : W,
-  encode : (@buffer.BytesMut) -> Unit raise @buffer.BufferError,
+  value : UInt64,
+  width : Int,
+  little_endian : Bool,
 ) -> Unit {
-  let buffer = @buffer.BytesMut::new(capacity=8, max_capacity=8)
-  encode(buffer)
-  AsyncWrite::write_all(writer, buffer.freeze().to_bytes())
+  let buffer = FixedArray::make(width, (0).to_byte())
+  for index in 0..<width {
+    let shift = if little_endian { index * 8 } else { (width - index - 1) * 8 }
+    buffer[index] = (value >> shift).to_byte()
+  }
+  AsyncWrite::write_all(writer, buffer.unsafe_reinterpret_as_bytes())
 }
 
 ///|
 impl AsyncWrite with fn write_u8(self, value) {
-  write_typed(self, buffer => buffer.put_byte(value))
+  write_integer(self, value.to_uint64(), 1, false)
 }
 
 ///|
 impl AsyncWrite with fn write_i8(self, value) {
-  write_typed(self, buffer => buffer.put_i8(value))
+  let encoded = @buffer.BytesMut::new(capacity=1, max_capacity=1)
+  encoded.put_i8(value)
+  AsyncWrite::write_all(self, encoded.freeze().to_bytes())
 }
 
 ///|
 impl AsyncWrite with fn write_u16_be(self, value) {
-  write_typed(self, buffer => buffer.put_u16_be(value))
+  write_integer(self, value.to_uint64(), 2, false)
 }
 
 ///|
 impl AsyncWrite with fn write_u16_le(self, value) {
-  write_typed(self, buffer => buffer.put_u16_le(value))
+  write_integer(self, value.to_uint64(), 2, true)
 }
 
 ///|
 impl AsyncWrite with fn write_i16_be(self, value) {
-  write_typed(self, buffer => buffer.put_i16_be(value))
+  write_integer(self, value.reinterpret_as_uint16().to_uint64(), 2, false)
 }
 
 ///|
 impl AsyncWrite with fn write_i16_le(self, value) {
-  write_typed(self, buffer => buffer.put_i16_le(value))
+  write_integer(self, value.reinterpret_as_uint16().to_uint64(), 2, true)
 }
 
 ///|
 impl AsyncWrite with fn write_u32_be(self, value) {
-  write_typed(self, buffer => buffer.put_u32_be(value))
+  write_integer(self, value.to_uint64(), 4, false)
 }
 
 ///|
 impl AsyncWrite with fn write_u32_le(self, value) {
-  write_typed(self, buffer => buffer.put_u32_le(value))
+  write_integer(self, value.to_uint64(), 4, true)
 }
 
 ///|
 impl AsyncWrite with fn write_i32_be(self, value) {
-  write_typed(self, buffer => buffer.put_i32_be(value))
+  write_integer(self, value.reinterpret_as_uint().to_uint64(), 4, false)
 }
 
 ///|
 impl AsyncWrite with fn write_i32_le(self, value) {
-  write_typed(self, buffer => buffer.put_i32_le(value))
+  write_integer(self, value.reinterpret_as_uint().to_uint64(), 4, true)
 }
 
 ///|
 impl AsyncWrite with fn write_f32_be(self, value) {
-  write_typed(self, buffer => buffer.put_f32_be(value))
+  write_integer(self, value.reinterpret_as_uint().to_uint64(), 4, false)
 }
 
 ///|
 impl AsyncWrite with fn write_f32_le(self, value) {
-  write_typed(self, buffer => buffer.put_f32_le(value))
+  write_integer(self, value.reinterpret_as_uint().to_uint64(), 4, true)
 }
 
 ///|
 impl AsyncWrite with fn write_u64_be(self, value) {
-  write_typed(self, buffer => buffer.put_u64_be(value))
+  write_integer(self, value, 8, false)
 }
 
 ///|
 impl AsyncWrite with fn write_u64_le(self, value) {
-  write_typed(self, buffer => buffer.put_u64_le(value))
+  write_integer(self, value, 8, true)
 }
 
 ///|
 impl AsyncWrite with fn write_i64_be(self, value) {
-  write_typed(self, buffer => buffer.put_i64_be(value))
+  write_integer(self, value.reinterpret_as_uint64(), 8, false)
 }
 
 ///|
 impl AsyncWrite with fn write_i64_le(self, value) {
-  write_typed(self, buffer => buffer.put_i64_le(value))
+  write_integer(self, value.reinterpret_as_uint64(), 8, true)
 }
 
 ///|
 impl AsyncWrite with fn write_f64_be(self, value) {
-  write_typed(self, buffer => buffer.put_f64_be(value))
+  write_integer(self, value.reinterpret_as_uint64(), 8, false)
 }
 
 ///|
 impl AsyncWrite with fn write_f64_le(self, value) {
-  write_typed(self, buffer => buffer.put_f64_le(value))
+  write_integer(self, value.reinterpret_as_uint64(), 8, true)
 }
 
 ///|

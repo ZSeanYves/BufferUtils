@@ -193,9 +193,12 @@ pub fn BytesMut::extend_from_within(
   let count = end - start
   self.reserve(count)
   let source_start = self.start + start
-  for i in 0..<count {
-    self.storage.data[self.end + i] = self.storage.data[source_start + i]
-  }
+  self.storage.data.blit_to(
+    self.storage.data,
+    src_offset=source_start,
+    dst_offset=self.end,
+    len=count,
+  )
   self.end += count
 }
 
@@ -228,9 +231,7 @@ pub fn BytesMut::put_bytes_view(
   source : BytesView,
 ) -> Unit raise BufferError {
   self.reserve(source.length())
-  for i in 0..<source.length() {
-    self.storage.data[self.end + i] = source[i]
-  }
+  self.storage.data.blit_from_bytesview(self.end, source)
   self.end += source.length()
 }
 
@@ -239,7 +240,7 @@ pub fn BytesMut::put_bytes(
   self : BytesMut,
   source : SharedBytes,
 ) -> Unit raise BufferError {
-  self.put_slice(source.view())
+  self.put_bytes_view(source.as_bytes_view())
 }
 
 ///|
@@ -400,10 +401,7 @@ pub fn BytesMut::put_utf8(
   text : StringView,
 ) -> Unit raise BufferError {
   let encoded = @utf8.encode(text)
-  self.reserve(encoded.length())
-  for byte in encoded {
-    self.put_byte(byte)
-  }
+  self.put_bytes_view(encoded)
 }
 
 ///|
@@ -496,7 +494,9 @@ pub fn BytesMut::unsplit(
   other : BytesMut,
 ) -> Unit raise BufferError {
   if !self.try_unsplit(other) {
-    self.put_slice(other.view())
+    self.put_bytes_view(
+      other.storage.data.unsafe_reinterpret_as_bytes()[other.start:other.end],
+    )
   }
 }
 
@@ -504,7 +504,12 @@ pub fn BytesMut::unsplit(
 /// Freeze without copying. Future mutable writes detach through COW.
 pub fn BytesMut::freeze(self : BytesMut) -> SharedBytes {
   self.storage.immutable = true
-  { storage: self.storage, start: self.start, end: self.end }
+  {
+    data: self.storage.data,
+    start: self.start,
+    end: self.end,
+    copied_bytes: self.storage.copied_bytes,
+  }
 }
 
 ///|
@@ -541,17 +546,9 @@ pub fn BytesMut::copied_bytes(self : BytesMut) -> Int {
 
 ///|
 pub impl Eq for BytesMut with fn equal(self, other) {
-  let left = self.view()
-  let right = other.view()
-  if left.length() != right.length() {
-    return false
-  }
-  for i in 0..<left.length() {
-    if left[i] != right[i] {
-      return false
-    }
-  }
-  true
+  self.storage.data.unsafe_reinterpret_as_bytes()[self.start:self.end].equal(
+    other.storage.data.unsafe_reinterpret_as_bytes()[other.start:other.end],
+  )
 }
 
 ///|

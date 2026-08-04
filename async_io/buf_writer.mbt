@@ -101,9 +101,7 @@ pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W] with fn write(
     self.flush_buffer()
   }
   let count = Int::min(len, self.capacity - self.end)
-  for i in 0..<count {
-    self.buffer[self.end + i] = source[offset + i]
-  }
+  self.buffer.blit_from_bytes(self.end, source, offset, count)
   self.end += count
   count
 }

@@ -90,9 +90,10 @@ pub impl Eq for BytesMut
 pub impl @debug.Debug for BytesMut
 
 pub struct SharedBytes {
-  storage : SharedStorage
+  data : FixedArray[Byte]
   mut start : Int
   mut end : Int
+  copied_bytes : Int
 }
 pub fn SharedBytes::advance(Self, Int) -> Unit raise BufferError
 pub fn SharedBytes::as_bytes_view(Self) -> BytesView

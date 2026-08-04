@@ -115,6 +115,7 @@ pub fn[R] BufReader::get_mut(self : BufReader[R]) -> R {
 }
 
 ///|
+#inline
 pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length) {
   if offset < 0 || length < 0 || offset > dst.length() - length {
     raise io_error(
@@ -128,9 +129,12 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
   }
   if self.buffered_len() > 0 {
     let count = Int::min(length, self.buffered_len())
-    for i in 0..<count {
-      dst[offset + i] = self.buffer[self.position + i]
-    }
+    self.buffer.blit_to(
+      dst,
+      src_offset=self.position,
+      dst_offset=offset,
+      len=count,
+    )
     self.position += count
     return count
   }
@@ -144,9 +148,12 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
   }
   let available = BufRead::fill_buf(self)
   let count = Int::min(length, available.length())
-  for i in 0..<count {
-    dst[offset + i] = available[i]
-  }
+  self.buffer.blit_to(
+    dst,
+    src_offset=self.position,
+    dst_offset=offset,
+    len=count,
+  )
   self.position += count
   count
 }

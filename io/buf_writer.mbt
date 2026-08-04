@@ -150,6 +150,7 @@ fn[W : Write] BufWriter::flush_pending(
 }
 
 ///|
+#inline
 pub impl[W : Write] Write for BufWriter[W] with fn write(
   self,
   src,
@@ -180,9 +181,7 @@ pub impl[W : Write] Write for BufWriter[W] with fn write(
     self.compact()
   }
   let count = Int::min(length, self.capacity - self.end)
-  for i in 0..<count {
-    self.buffer[self.end + i] = src[offset + i]
-  }
+  self.buffer.blit_from_bytes(self.end, src, offset, count)
   self.end += count
   count
 }

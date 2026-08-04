@@ -23,21 +23,25 @@ pub fn IoSlice::new(
 }
 
 ///|
+#inline
 pub fn IoSlice::data(self : IoSlice) -> Bytes {
   self.data
 }
 
 ///|
+#inline
 pub fn IoSlice::offset(self : IoSlice) -> Int {
   self.offset
 }
 
 ///|
+#inline
 pub fn IoSlice::len(self : IoSlice) -> Int {
   self.length
 }
 
 ///|
+#inline
 pub fn IoSlice::is_empty(self : IoSlice) -> Bool {
   self.length == 0
 }
@@ -297,6 +301,7 @@ pub fn[R : Read] read_exact_fixed(
 
 ///|
 /// Write every source in order, preserving cumulative partial progress.
+#inline
 pub fn[W : Write] write_all_vectored(
   writer : W,
   sources : ArrayView[ArrayView[Byte]],
@@ -312,6 +317,7 @@ pub fn[W : Write] write_all_vectored(
 
 ///|
 /// Write a Core Bytes range, retrying short writes without copying.
+#inline
 pub fn[W : Write] write_all_bytes(
   writer : W,
   source : Bytes,

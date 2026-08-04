@@ -65,9 +65,12 @@ pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R] with fn read(
   let resident = self.buffered_len()
   if resident > 0 {
     let count = Int::min(max_len, resident)
-    for i in 0..<count {
-      destination[offset + i] = self.buffer[self.start + i]
-    }
+    self.buffer.blit_to(
+      destination,
+      src_offset=self.start,
+      dst_offset=offset,
+      len=count,
+    )
     self.start += count
     return count
   }
@@ -78,9 +81,12 @@ pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R] with fn read(
     return 0
   }
   let count = Int::min(max_len, self.buffered_len())
-  for i in 0..<count {
-    destination[offset + i] = self.buffer[self.start + i]
-  }
+  self.buffer.blit_to(
+    destination,
+    src_offset=self.start,
+    dst_offset=offset,
+    len=count,
+  )
   self.start += count
   count
 }
