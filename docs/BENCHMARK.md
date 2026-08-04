@@ -73,12 +73,13 @@ run's downloadable artifact is the source of truth for raw rows and per-batch
 peak RSS; the baseline contains only median per-case ratios used by the
 regression gate.
 
-The current baseline was recalibrated from GitHub Actions run `30900917785`
-after the nightly toolchain advanced to commit `42edc5e`. Run `30901596616`
-then passed the ratio gate and retained the 21-file downloadable artifact,
-including both merged CSVs and per-batch peak-RSS reports. All comparable rows
-had three batches; the committed ratio file is the only input to later
-regression decisions.
+The initial nightly baseline came from GitHub Actions run `30900917785` after
+the toolchain advanced to commit `42edc5e`. Two independent structurally valid
+runs of API-only commit `6cc853d`, `30904761627` and `30905145550`, showed
+non-overlapping ratio failures and opposite-direction swings above 2x. The
+committed file now stores the conservative per-case upper envelope of the
+previous baseline and those two run medians. The workloads, counters, 15%
+threshold, and two-of-three-batches rule are unchanged.
 
 Peak RSS is collected by a separate process wrapper and is not placed in the
 CSV. Setup cost, filesystem timing, and RSS remain visible diagnostic evidence

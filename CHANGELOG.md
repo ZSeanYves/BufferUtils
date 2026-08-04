@@ -31,6 +31,9 @@
   CI, and manual consumer-install verification workflow.
 - Rewrote the README files and added an explicit API surface and naming policy;
   removed the superseded 0.36-to-0.37 migration document.
+- Recalibrated the shared-runner ratio baseline from two independent,
+  structurally valid API-only CI runs without changing the 15% or two-of-three
+  regression rule.
 
 ### Release policy
 - This RC is not published by CI. A maintainer must review and publish it
