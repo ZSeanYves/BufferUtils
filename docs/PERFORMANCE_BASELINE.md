@@ -21,8 +21,9 @@ check, including when the ratio gate itself fails.
 
 The current baseline was recalibrated from GitHub Actions run `30900917785`
 after the nightly toolchain advanced to `42edc5e` / `091af3700-dev`. The raw
-rows passed both structural CSV checks across all three batches; the next
-passing run must also provide the downloadable artifact for audit retention.
+rows passed both structural CSV checks across all three batches. Run
+`30901596616` then passed the ratio gate and retained the 21-file downloadable
+artifact, including both merged CSVs and per-batch peak-RSS reports.
 
 For each later run, the current ratio is calculated independently in all three
 batches. A case fails only when its ratio exceeds the committed ratio by more

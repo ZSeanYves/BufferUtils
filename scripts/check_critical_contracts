@@ -17,6 +17,9 @@ run_contract() {
   fi
 }
 
+# Resolve dependencies once so every contract test can remain frozen.
+moon check --target native --deny-warn
+
 run_contract vectored-fallback \
   moon test io/io_test.mbt --target native --deny-warn --frozen --filter '*vectored*'
 run_contract buffered-writer-recovery \
