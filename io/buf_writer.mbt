@@ -66,11 +66,23 @@ pub fn[W] BufWriter::buffered_len(self : BufWriter[W]) -> Int {
 }
 
 ///|
+/// Return bytes currently waiting to be written.
+pub fn[W] BufWriter::buffer(self : BufWriter[W]) -> ArrayView[Byte] {
+  self.buffer[self.start:self.end]
+}
+
+///|
+/// Return the number of writes issued to the wrapped writer.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[W] BufWriter::underlying_write_calls(self : BufWriter[W]) -> Int {
   self.underlying_writes
 }
 
 ///|
+/// Return the number of writes that bypassed the internal buffer.
+///
+/// This is a diagnostic counter used by contract tests and benchmarks.
 pub fn[W] BufWriter::bypass_write_calls(self : BufWriter[W]) -> Int {
   self.bypass_writes
 }
@@ -213,6 +225,10 @@ pub fn[W] BufWriter::into_parts(
 ) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {
   (
     self.inner,
-    @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),
+    @buffer.SharedBytes::unsafe_adopt_fixed_array(
+      self.buffer,
+      self.start,
+      self.end,
+    ),
   )
 }

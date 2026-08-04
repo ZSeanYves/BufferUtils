@@ -1,0 +1,19 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ZSeanYves/bufferutils/bench_async"
+
+// Values
+
+// Errors
+
+// Types and methods
+type AsyncBenchCounters
+
+type AsyncBenchStats
+
+type CountingAsyncWriter
+
+type RepeatingAsyncReader
+
+// Type aliases
+
+// Traits

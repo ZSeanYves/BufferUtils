@@ -143,6 +143,41 @@ enum ErrorRead {
 }
 
 ///|
+enum InterruptedWithProgressReader {
+  InterruptedWithProgressReader
+}
+
+///|
+impl Read for InterruptedWithProgressReader with fn read(
+  _self,
+  _dst,
+  _offset,
+  _length,
+) {
+  raise io_error(Interrupted, "read", progress=1)
+}
+
+///|
+enum InterruptedWithProgressWriter {
+  InterruptedWithProgressWriter
+}
+
+///|
+impl Write for InterruptedWithProgressWriter with fn write(
+  _self,
+  _src,
+  _offset,
+  _length,
+) {
+  raise io_error(Interrupted, "write", progress=1)
+}
+
+///|
+impl Write for InterruptedWithProgressWriter with fn flush(_self) {
+  ()
+}
+
+///|
 impl Read for ErrorRead with fn read(_self, _dst, _offset, _length) {
   raise io_error(Backend, "read", message="injected read error")
 }
@@ -647,7 +682,8 @@ test "IoSlice validation and BufReader convenience APIs" {
   assert_eq(BufReader::peek(reader, 1).to_owned(), [b'a'])
   assert_eq(BufReader::skip_until(reader, b'\n'), 2)
   let lines = reader.lines()
-  assert_eq(lines, ["b\n"])
+  assert_eq(lines.next(), Some("b"))
+  assert_eq(lines.next(), None)
   let invalid = capture_io_result(() => IoSlice::new(b"x", 2, 0))
   assert_eq(invalid is Err(_), true)
   let destination = FixedArray::make(1, (0).to_byte())
@@ -674,8 +710,10 @@ test "BufStream and Sink compose independent buffered halves" {
     capacity=2,
   )
   let input = Array::make(2, (0).to_byte())
-  Read::read_exact(stream, input.mut_view())
-  assert_eq(input, [b'i', b'n'])
+  assert_eq(BufRead::fill_buf(stream).to_owned(), [b'i', b'n'])
+  BufRead::consume(stream, 1)
+  assert_eq(Read::read_array(stream, input.mut_view(end=1)), 1)
+  assert_eq(input[0], b'n')
   ignore(Write::write_array(stream, [b'o', b'k'][:]))
   Write::flush(stream)
 
@@ -707,6 +745,10 @@ test "adapter primary ranges reject invalid input" {
     capture_io_result(() => Read::read(limited, destination, 2, 1)) is Err(_),
     true,
   )
+  let offset_limited = Take::new(MemoryReader::new(b"abcd"), 4L)
+  let offset_destination = FixedArray::make(6, b'-')
+  assert_eq(Read::read(offset_limited, offset_destination, 2, 2), 2)
+  assert_eq(offset_destination.unsafe_reinterpret_as_bytes(), b"--ab--")
   let line_writer = LineWriter::new(MemoryWriter::new())
   assert_eq(
     capture_io_result(() => Write::write(line_writer, b"x", 2, 1)) is Err(_),
@@ -719,7 +761,10 @@ test "BufReader buffer split and relative seek helpers" {
   let reader = BufReader::new(MemoryReader::new(b"a,b"), capacity=2)
   assert_eq(reader.peek(1).to_owned(), [b'a'])
   assert_eq(reader.buffer().to_owned(), [b'a', b','])
-  assert_eq(reader.split(b','), [[b'a'], [b'b']])
+  let split = reader.split(b',')
+  assert_eq(split.next(), Some(b"a"))
+  assert_eq(split.next(), Some(b"b"))
+  assert_eq(split.next(), None)
   assert_true(
     try {
       ignore(reader.peek(-1))
@@ -745,6 +790,271 @@ test "BufReader buffer split and relative seek helpers" {
 }
 
 ///|
+test "lazy cursors and buffer adapters preserve progress" {
+  let reader = BufReader::new(MemoryReader::new(b"one\r\ntwo\n"), capacity=3)
+  assert_true(BufRead::has_data_left(reader))
+  let lines = reader.lines()
+  assert_eq(lines.next(), Some("one"))
+  assert_eq(lines.next(), Some("two"))
+  assert_eq(lines.next(), None)
+
+  let source = @buffer.BufChain::new(
+    @buffer.SharedBytes::from_array([b'a', b'b'][:]),
+    @buffer.SharedBytes::from_array([b'c'][:]),
+  )
+  let adapted = BufReaderAdapter::new(source)
+  let destination = Array::make(3, (0).to_byte())
+  Read::read_exact(adapted, destination.mut_view())
+  assert_eq(destination, [b'a', b'b', b'c'])
+  assert_eq(BufRead::has_data_left(adapted), false)
+
+  let mutable = @buffer.BytesMut::new(max_capacity=3)
+  let writer = BufMutWriterAdapter::new(mutable)
+  Write::write_all(writer, [b'x', b'y', b'z'][:])
+  assert_eq(writer.get_ref().view(), [b'x', b'y', b'z'])
+
+  let buffered = BufWriter::new(MemoryWriter::new(), capacity=4)
+  ignore(Write::write_array(buffered, [b'p', b'q'][:]))
+  assert_eq(buffered.buffer().to_owned(), [b'p', b'q'])
+}
+
+///|
 fn error_is_interrupted() -> Bool {
   io_error(Interrupted, "test").is_interrupted()
+}
+
+///|
+test "sync failure matrix covers adapters pipes and exact progress contracts" {
+  let source = @buffer.SharedBytes::from_array([b'a'][:])
+  let reader = BufReaderAdapter::new(source)
+  assert_eq(reader.get_ref().remaining(), 1)
+  assert_eq(
+    capture_io_result(() => {
+      ignore(Read::read(reader, FixedArray::make(1, b'-'), 2, 1))
+    })
+    is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => BufRead::consume(reader, 2)) is Err(_),
+    true,
+  )
+  ignore(reader.into_inner())
+
+  let mutable = @buffer.BytesMut::new(max_capacity=1)
+  let writer = BufMutWriterAdapter::new(mutable)
+  assert_eq(
+    capture_io_result(() => Write::write(writer, b"ab", 0, 2)) is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => Write::write(writer, b"x", 2, 1)) is Err(_),
+    true,
+  )
+  Write::flush(writer)
+  ignore(writer.into_inner())
+
+  let (pipe_reader, pipe_writer) = MemoryPipe::new()
+  let one = FixedArray::make(1, b'-')
+  assert_eq(Read::read(pipe_reader, one, 0, 1), 0)
+  assert_eq(BufRead::fill_buf(pipe_reader), [])
+  assert_eq(
+    capture_io_result(() => Read::read(pipe_reader, one, 2, 1)) is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => BufRead::consume(pipe_reader, 1)) is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => Write::write(pipe_writer, b"x", 2, 1)) is Err(_),
+    true,
+  )
+  Write::flush(pipe_writer)
+  Close::close(pipe_reader)
+  assert_true(Close::is_closed(pipe_reader))
+  assert_eq(
+    capture_io_result(() => Write::write(pipe_writer, b"x", 0, 1)) is Err(_),
+    true,
+  )
+
+  assert_eq(
+    capture_io_result(() => {
+      Read::read_exact(
+        InterruptedWithProgressReader::InterruptedWithProgressReader,
+        Array::make(1, b'-').mut_view(),
+      )
+    })
+    is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => {
+      Write::write_all(
+        InterruptedWithProgressWriter::InterruptedWithProgressWriter,
+        [b'x'][:],
+      )
+    })
+    is Err(_),
+    true,
+  )
+  let fixed = FixedArray::make(2, b'-')
+  read_exact_fixed(MemoryReader::new(b"ab", max_chunk=1), fixed, 0, 2)
+  assert_eq(fixed.unsafe_reinterpret_as_bytes(), b"ab")
+  assert_eq(
+    capture_io_result(() => {
+      read_exact_fixed(MemoryReader::new(b""), fixed, 0, 1)
+    })
+    is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => {
+      read_exact_fixed(MemoryReader::new(b""), fixed, 3, 1)
+    })
+    is Err(_),
+    true,
+  )
+  write_all_bytes(MemoryWriter::new(max_chunk=1), b"abc", offset=1, len=2)
+  assert_eq(
+    capture_io_result(() => write_all_bytes(InvalidWrite::ZeroWrite, b"x"))
+    is Err(_),
+    true,
+  )
+  assert_eq(
+    capture_io_result(() => write_all_bytes(MemoryWriter::new(), b"x", offset=2))
+    is Err(_),
+    true,
+  )
+}
+
+///|
+test "sync lazy cursors expose recovery and invalid UTF-8" {
+  let lines = BufReader::new(MemoryReader::new(b"x\n"), capacity=1).lines()
+  assert_eq(lines.next(), Some("x"))
+  ignore(lines.into_inner())
+  let invalid = BufReader::new(
+    MemoryReader::new(Bytes::from_array([0xFF, b'\n'])),
+    capacity=2,
+  ).lines()
+  assert_eq(capture_io_result(() => invalid.next()) is Err(_), true)
+  let split = BufReader::new(MemoryReader::new(b"x"), capacity=1).split(b',')
+  ignore(split.into_inner())
+}
+
+///|
+test "LineWriter flush commits incomplete tails and reports tail failures" {
+  let sink = MemoryWriter::new(max_chunk=1)
+  let writer = LineWriter::new(sink)
+  ignore(Write::write_array(writer, [b'a', b'b'][:]))
+  Write::flush(writer)
+  assert_eq(sink.to_bytes(), b"ab")
+
+  let failing : FailingWriter = { data: [], remaining_before_error: 0 }
+  let failed = LineWriter::new(failing)
+  ignore(Write::write_array(failed, [b'x'][:]))
+  assert_eq(capture_io_result(() => Write::flush(failed)) is Err(_), true)
+}
+
+///|
+fn io_state_model_holds(seed : UInt, steps : Int) -> Bool {
+  try {
+    let cursor_model = Array::makei(32, i => (i % 251).to_byte())
+    let cursor = Cursor::new(cursor_model[:])
+    let buffered_model : Array[Byte] = []
+    let buffered_sink = MemoryWriter::new(max_chunk=3)
+    let buffered = BufWriter::new(buffered_sink, capacity=7)
+    let vectored_model : Array[Byte] = []
+    let vectored_sink = MemoryWriter::new(max_chunk=2)
+    let mut state = seed
+    for _ in 0..<steps {
+      state = state * 1664525U + 1013904223U
+      match state % 5 {
+        0 => {
+          let position = (state %
+          (cursor_model.length() + 5).reinterpret_as_uint()).reinterpret_as_int()
+          ignore(Seek::seek(cursor, Start(position.to_int64())))
+          let value = (state >> 8).to_byte()
+          Write::write_all(cursor, [value][:])
+          if position == cursor_model.length() {
+            cursor_model.push(value)
+          } else if position > cursor_model.length() {
+            cursor_model.resize(position, (0).to_byte())
+            cursor_model.push(value)
+          } else {
+            cursor_model[position] = value
+          }
+        }
+        1 => {
+          let position = (state %
+          (cursor_model.length() + 1).reinterpret_as_uint()).reinterpret_as_int()
+          ignore(Seek::seek(cursor, Start(position.to_int64())))
+          let requested = ((state >> 12) % 5U).reinterpret_as_int()
+          let output = Array::make(requested, (0).to_byte())
+          let count = Read::read_array(cursor, output.mut_view())
+          let expected = Int::min(requested, cursor_model.length() - position)
+          if count != expected ||
+            output[0:count] != cursor_model[position:position + count] {
+            return false
+          }
+        }
+        2 => {
+          let length = ((state >> 16) % 4U + 1U).reinterpret_as_int()
+          let source = Array::makei(length, i => {
+            ((state >> (i % 3)) + i.reinterpret_as_uint()).to_byte()
+          })
+          Write::write_all(buffered, source[:])
+          for byte in source {
+            buffered_model.push(byte)
+          }
+        }
+        3 => {
+          Write::flush(buffered)
+          if buffered_sink.to_bytes() != Bytes::from_array(buffered_model[:]) {
+            return false
+          }
+        }
+        _ => {
+          let first = [(state >> 8).to_byte(), (state >> 16).to_byte()]
+          let second = [(state >> 24).to_byte()]
+          write_all_vectored(vectored_sink, [first[:], second[:]][:])
+          for byte in first {
+            vectored_model.push(byte)
+          }
+          for byte in second {
+            vectored_model.push(byte)
+          }
+          if vectored_sink.to_bytes() != Bytes::from_array(vectored_model[:]) {
+            return false
+          }
+        }
+      }
+      if cursor.to_bytes() != Bytes::from_array(cursor_model[:]) {
+        return false
+      }
+    }
+    Write::flush(buffered)
+    buffered_sink.to_bytes() == Bytes::from_array(buffered_model[:])
+  } catch {
+    _ => false
+  }
+}
+
+///|
+test "fixed-seed seek vectored and BufWriter state model is replayable" {
+  let seed = 0x5EED1234U
+  let steps = 2000
+  if !io_state_model_holds(seed, steps) {
+    let mut low = 1
+    let mut high = steps
+    while low < high {
+      let middle = low + (high - low) / 2
+      if io_state_model_holds(seed, middle) {
+        low = middle + 1
+      } else {
+        high = middle
+      }
+    }
+    fail("I/O model failed: seed=0x5EED1234 minimal_prefix=\{low}")
+  }
 }

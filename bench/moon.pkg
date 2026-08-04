@@ -3,6 +3,7 @@ import {
   "ZSeanYves/bufferutils/io",
   "ZSeanYves/bufferutils/native",
   "moonbitlang/core/bench" @mbench,
+  "moonbitlang/core/env",
   "moonbitlang/x/fs",
 }
 

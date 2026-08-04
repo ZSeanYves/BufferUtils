@@ -1,52 +1,34 @@
-# BufferUtils 0.37 Rust Parity Matrix
+# BufferUtils 0.40 Rust Parity Matrix
 
-This matrix compares BufferUtils with the bounded core surface of Rust
-`std::io`, `bytes`, and Tokio I/O. TLS, compression, UDP, codec frameworks,
-io_uring, and ownership/type-system equivalence are outside the denominator.
-A release at the stated 90% maturity level requires at least 90 points, all
-correctness and resource-safety blockers resolved, and a measured performance
-baseline without unexplained regression.
+Reference versions are Rust 1.97.1 `std::io`, `bytes` 1.12.1, and Tokio
+1.53.1. The matrix is a capability inventory, not a weighted maturity score.
 
-## Current score
+| Reference area | Status | BufferUtils surface | Evidence |
+| --- | --- | --- | --- |
+| `bytes::Bytes` clone, slice, split, truncate, clear | implemented | `SharedBytes` | buffer state-model and zero-copy tests; benchmark copy counters |
+| Safe construction from mutable storage | implemented | `from_fixed_array` copies; `unsafe_adopt_fixed_array` is explicit | alias mutation tests |
+| Visible-byte equality, ordering, hash, debug | implemented | `SharedBytes` trait implementations | cross-range tests and generated docs |
+| `bytes::BytesMut` zeroed, reserve, extend-within, freeze | implemented | `BytesMut` | buffer package tests and COW/growth structural benchmarks |
+| `Buf` / `BufMut` 8/16/32/64 integer and float helpers | implemented | big- and little-endian defaults | typed roundtrip and atomic-failure tests |
+| `Buf::chain` / `take` adapters | implemented | `BufChain`, `BufTake` | adapter progress tests |
+| `std::io::Read`, `Write`, vectored fallback | implemented | synchronous traits and helpers | short-progress, Interrupted, EOF, WriteZero tests |
+| `BufReader`, `BufWriter`, seek and recovery | implemented | cursor-based buffering and `into_parts` | recovery, bypass, seek, and model tests |
+| Lazy `lines` and `split` | implemented | `Lines[R]`, `Split[R]` | laziness, UTF-8 error, EOF recovery tests |
+| `BufRead::has_data_left`, `BufWriter::buffer` | implemented | matching methods | boundary tests and generated interface gate |
+| `Buf`/I/O adapters | implemented | `BufReaderAdapter`, `BufMutWriterAdapter` | short read/write and invalid-range tests |
+| Tokio typed async read/write helpers | implemented | `AsyncRead`, `AsyncWrite` defaults | signed, unsigned, float endian roundtrips |
+| Async lazy lines/split, chain/take, buffered stream | implemented | `AsyncLines`, `AsyncSplit`, `AsyncChain`, `AsyncTake`, `AsyncBufStream` | async cursor and cancellation tests |
+| In-memory async duplex | implemented | bounded `duplex` | wait, cancellation, pending-data, EOF tests |
+| Bidirectional async copy with independent sizes | implemented | `copy_bidirectional_with_sizes` | committed byte-count tests |
+| Structured socket addresses and timeout getters | implemented | `SocketAddress`, local/peer address, timeout getters | native loopback tests |
+| Concurrent file/socket/mmap close safety | implemented | native C locks and view lifetime lock | native race helper under ASan/UBSan/TSan |
+| Uninitialized spare-capacity APIs | excluded-language | only initialized `FixedArray[Byte]` views are exposed | MoonBit cannot express Rust's `MaybeUninit` ownership contract |
+| `u128` / `i128` typed helpers | excluded-language | 8/16/32/64-bit helpers only | current MoonBit public integer surface |
+| Rust ownership and borrowing equivalence | excluded-language | runtime COW and documented borrowed-view validity | no ownership-equivalent MoonBit type system |
+| TLS, compression, UDP, codec framework, io_uring | excluded-scope | none | explicitly outside BufferUtils 0.40 |
 
-| Area | Weight | Score | Evidence and remaining gap |
-| --- | ---: | ---: | --- |
-| Buffer and zero-copy | 20 | 19 | FixedArray ranges, geometric growth, COW, typed access, spare capacity, zero-copy BytesView, and checked fixed-array adoption; the backing-array immutability rule remains a documented caller obligation |
-| Synchronous I/O | 25 | 24 | borrowed ranges, progress/error contracts, buffering, seek, adapters, validated slices, and native vectored capability; iterator-style text APIs and some platform-specific address accessors remain outside the surface |
-| Asynchronous I/O | 20 | 18 | fixed ranges, reusable copy buffer, buffered views, cancellation protection, normalized runtime errors, flush-before-shutdown, and TCP half-close; cancellation-point and async TCP workload coverage can still grow |
-| Native resources | 15 | 14 | direct borrowed file/TCP I/O, POSIX `readv`/`writev`, Windows `WSARecv`/`WSASend`, scalar Windows-file fallback, counters, sync, mmap, locks, and idempotent close; full socket-address objects and timeout getters are not exposed |
-| Performance | 10 | 7 | four large sizes, isolated small/short/vectored/native/mmap workloads, counters, Ubuntu artifact, toolchain metadata, and two-of-three comparison; fixture construction and async/TCP workloads need further isolation |
-| Documentation and quality | 10 | 8 | bilingual README, API/native safety contracts, 0.36→0.37 migration, executable examples, 90% native-target coverage, cross-platform tests, and sanitizers; broad property/concurrent-close suites remain a follow-up |
-| **Total** | **100** | **90** | **90 release threshold met; residual deductions are recorded per area** |
-
-## Completed capabilities
-
-- Shared `FixedArray[Byte]` storage with logical ranges, geometric growth, COW
-  mutation, zero-copy clone/slice/split/freeze, and borrowed `BytesView`.
-- Signed and unsigned integers, floats, endian variants, UTF-8, resize,
-  reclaim, unsplit, and checked spare-capacity initialization.
-- Borrowed synchronous `Read`/`Write`, validated `IoSlice` types, scalar
-  vectored fallback, exact-progress helpers, and structured `IoError`.
-- Cursor-based `BufReader`/`BufWriter`, recoverable pending tails, seek,
-  BufStream, memory pipe, Cursor, Empty, Repeat, Take, Chain, and LineWriter.
-- Direct native borrowed file/TCP FFI, POSIX and Windows vectored paths,
-  scalar Windows-file fallback, syscall counters, durability sync, open-option
-  presets, mmap owner retention, TCP shutdown/timeouts/ports, independent
-  external objects, locks, finalizers, and idempotent close.
-- Fixed-buffer async traits and wrappers, cancellation-protected copy progress,
-  runtime error mapping, real write-half shutdown, cross-target tests,
-  sanitizer jobs, generated-interface checks, executable examples, and a 90%
-  library coverage gate.
-
-## Residual gaps after 90
-
-1. Move all benchmark fixture and adapter construction outside timed samples,
-   and add dedicated TCP loopback and async-copy rows.
-2. Expand property/model coverage to cancellation points, concurrent close,
-   random seek and vectored boundary generation.
-3. Consider richer socket address and timeout-getter APIs if the bounded Rust
-   parity scope is widened.
-
-The score describes implemented capability, not throughput relative to Rust.
-It should only increase when the corresponding implementation and gate are both
+Completion is determined by the release gates in CI: strict checks and docs,
+all stable targets, sanitizer races, 95% overall coverage, 90% per-package
+coverage, structural performance counters, Rust comparison ratios, and clean
+consumer installation. A row is only `implemented` when executable evidence is
 present in the repository.

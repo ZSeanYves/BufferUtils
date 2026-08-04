@@ -8,5 +8,5 @@ pub async fn async_copy_example(
     destination_path,
     buffer_size=64 * 1024,
   )
-  progress.bytes
+  progress.bytes_copied
 }

@@ -11,7 +11,318 @@ async test "async traits preserve exact memory and seek semantics" {
 
   let writer = AsyncMemoryWriter::new()
   write_all(writer, b"hello")
-  assert_eq(writer.bytes(), b"hello")
+  assert_eq(writer.to_bytes(), b"hello")
+}
+
+///|
+async test "typed async helpers cover signed unsigned and floating endianness" {
+  let writer = AsyncMemoryWriter::new()
+  AsyncWrite::write_u8(writer, b'\xFE')
+  AsyncWrite::write_i8(writer, -1)
+  AsyncWrite::write_u16_be(writer, 0x1234U.to_uint16())
+  AsyncWrite::write_u16_le(writer, 0x5678U.to_uint16())
+  AsyncWrite::write_i16_be(writer, Int16::from_int(-1234))
+  AsyncWrite::write_i16_le(writer, Int16::from_int(-2345))
+  AsyncWrite::write_u32_be(writer, 0x89ABCDEFU)
+  AsyncWrite::write_u32_le(writer, 0x76543210U)
+  AsyncWrite::write_i32_be(writer, -234567)
+  AsyncWrite::write_i32_le(writer, -123456)
+  AsyncWrite::write_f32_be(writer, 1.5)
+  AsyncWrite::write_f32_le(writer, -1.25)
+  AsyncWrite::write_u64_be(writer, 0x0123456789ABCDEFUL)
+  AsyncWrite::write_u64_le(writer, 0xFEDCBA9876543210UL)
+  AsyncWrite::write_i64_be(writer, -123456789L)
+  AsyncWrite::write_i64_le(writer, -987654321L)
+  AsyncWrite::write_f64_be(writer, -2.25)
+  AsyncWrite::write_f64_le(writer, 3.5)
+  let reader = AsyncMemoryReader::new(writer.to_bytes()[:])
+  assert_eq(AsyncRead::read_u8(reader), b'\xFE')
+  assert_eq(AsyncRead::read_i8(reader), -1)
+  assert_eq(AsyncRead::read_u16_be(reader), 0x1234U.to_uint16())
+  assert_eq(AsyncRead::read_u16_le(reader), 0x5678U.to_uint16())
+  assert_eq(AsyncRead::read_i16_be(reader), Int16::from_int(-1234))
+  assert_eq(AsyncRead::read_i16_le(reader), Int16::from_int(-2345))
+  assert_eq(AsyncRead::read_u32_be(reader), 0x89ABCDEFU)
+  assert_eq(AsyncRead::read_u32_le(reader), 0x76543210U)
+  assert_eq(AsyncRead::read_i32_be(reader), -234567)
+  assert_eq(AsyncRead::read_i32_le(reader), -123456)
+  assert_eq(AsyncRead::read_f32_be(reader), 1.5)
+  assert_eq(AsyncRead::read_f32_le(reader), -1.25)
+  assert_eq(AsyncRead::read_u64_be(reader), 0x0123456789ABCDEFUL)
+  assert_eq(AsyncRead::read_u64_le(reader), 0xFEDCBA9876543210UL)
+  assert_eq(AsyncRead::read_i64_be(reader), -123456789L)
+  assert_eq(AsyncRead::read_i64_le(reader), -987654321L)
+  assert_eq(AsyncRead::read_f64_be(reader), -2.25)
+  assert_eq(AsyncRead::read_f64_le(reader), 3.5)
+}
+
+///|
+async test "async cursors chain take and buffered stream remain lazy" {
+  try {
+    let lines = AsyncBufReader::new(
+      AsyncMemoryReader::new(b"one\r\ntwo\n"[:]),
+      capacity=3,
+    ).lines()
+    assert_eq(lines.next(), Some("one"))
+    assert_eq(lines.next(), Some("two"))
+    assert_eq(lines.next(), None)
+
+    let split = AsyncBufReader::new(
+      AsyncMemoryReader::new(b"a,b"[:]),
+      capacity=2,
+    ).split(b',')
+    assert_eq(split.next(), Some(b"a"))
+    assert_eq(split.next(), Some(b"b"))
+    assert_eq(split.next(), None)
+
+    let chain = AsyncChain::new(
+      AsyncMemoryReader::new(b"ab"[:]),
+      AsyncMemoryReader::new(b"cd"[:]),
+    )
+    let take = AsyncTake::new(chain, 3L)
+    assert_eq(AsyncRead::read_to_end(take), b"abc")
+    assert_eq(take.remaining(), 0L)
+
+    let direct = AsyncBufReader::new(
+      AsyncMemoryReader::new(b"in"[:]),
+      capacity=2,
+    )
+    assert_eq(AsyncBufRead::fill_buf(direct).to_owned(), [b'i', b'n'])
+    assert_eq(direct.buffered_len(), 2)
+    let direct_input = FixedArray::make(2, (0).to_byte())
+    assert_eq(AsyncRead::read(direct, direct_input, offset=0, max_len=2), 2)
+    assert_eq(
+      AsyncRead::read(direct, FixedArray::make(0, b'-'), offset=0, max_len=0),
+      0,
+    )
+
+    let stream = AsyncBufStream::new(
+      AsyncMemoryReader::new(b"in"[:]),
+      AsyncMemoryWriter::new(),
+      capacity=2,
+    )
+    assert_true(AsyncBufRead::has_data_left(stream))
+    assert_eq(AsyncBufRead::fill_buf(stream).to_owned(), [b'i', b'n'])
+    let (observed_reader, _) = stream.into_parts()
+    assert_eq(observed_reader.buffered_len(), 2)
+    AsyncBufRead::consume(stream, 0)
+    let (after_consume, _) = stream.into_parts()
+    assert_eq(after_consume.buffered_len(), 2)
+    let input = FixedArray::make(2, (0).to_byte())
+    assert_eq(AsyncRead::read(stream, input), 2)
+    assert_eq(input.unsafe_reinterpret_as_bytes(), b"in")
+    AsyncWrite::write_all(stream, b"out")
+    AsyncWrite::flush(stream)
+    AsyncWrite::shutdown(stream)
+    let (_, writer) = stream.into_parts()
+    assert_eq(writer.get_ref().to_bytes(), b"out")
+  } catch {
+    @syncio.IoError::Io(failure) =>
+      fail("\{failure.operation}: \{failure.message}")
+    error => raise error
+  }
+}
+
+///|
+struct OverReportingAsyncReader {}
+
+///|
+impl AsyncRead for OverReportingAsyncReader with fn read(
+  _self,
+  _destination,
+  offset? = 0,
+  max_len? = 0,
+) {
+  ignore(offset)
+  max_len + 1
+}
+
+///|
+async test "async cursor invalid and contract branches do not hide errors" {
+  assert_eq(
+    try {
+      ignore(AsyncTake::new(AsyncMemoryReader::new(b""[:]), -1L))
+      false
+    } catch {
+      _ => true
+    },
+    true,
+  )
+  let invalid_take = AsyncTake::new(AsyncMemoryReader::new(b"x"[:]), 1L)
+  let destination = FixedArray::make(1, (0).to_byte())
+  assert_eq(
+    try {
+      ignore(AsyncRead::read(invalid_take, destination, offset=2, max_len=1))
+      false
+    } catch {
+      _ => true
+    },
+    true,
+  )
+  let over = AsyncTake::new(OverReportingAsyncReader::{  }, 1L)
+  assert_eq(
+    try {
+      ignore(AsyncRead::read(over, destination))
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.ContractViolation)
+    },
+    true,
+  )
+  let invalid_line = AsyncBufReader::new(
+    AsyncMemoryReader::new(b"\xFF\n"[:]),
+    capacity=2,
+  ).lines()
+  assert_eq(
+    try {
+      ignore(invalid_line.next())
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.InvalidData)
+    },
+    true,
+  )
+  ignore(invalid_line.into_inner())
+  let split = AsyncBufReader::new(AsyncMemoryReader::new(b"x"[:]), capacity=1).split(
+    b',',
+  )
+  ignore(split.into_inner())
+  assert_eq(
+    try {
+      ignore(
+        copy_bidirectional_with_sizes(
+          TestDuplex::{ incoming: b"", position: 0, outgoing: [] },
+          TestDuplex::{ incoming: b"", position: 0, outgoing: [] },
+          0,
+          1,
+        ),
+      )
+      false
+    } catch {
+      _ => true
+    },
+    true,
+  )
+}
+
+///|
+async test "bounded memory duplex waits transfers and drains before EOF" {
+  let (left, right) = duplex(capacity=2)
+  assert_eq(left.capacity(), 2)
+  let zero = FixedArray::make(0, (0).to_byte())
+  assert_eq(AsyncRead::read(right, zero), 0)
+  assert_eq(AsyncWrite::write(left, b"", offset=0, len=0), 0)
+  AsyncWrite::flush(left)
+  @async.with_task_group(group => {
+    let sender = group.spawn(() => {
+      AsyncWrite::write_all(left, b"ping")
+      AsyncWrite::shutdown(left)
+    })
+    assert_eq(AsyncRead::read_to_end(right), b"ping")
+    sender.wait()
+  })
+  AsyncClose::close(left)
+  AsyncClose::close(right)
+  assert_true(AsyncClose::is_closed(left))
+  assert_true(AsyncClose::is_closed(right))
+}
+
+///|
+async test "duplex cancellation preserves pending-data and progress contracts" {
+  assert_eq(
+    try {
+      ignore(duplex(capacity=0))
+      false
+    } catch {
+      _ => true
+    },
+    true,
+  )
+  let (left, right) = duplex(capacity=1)
+  assert_eq(
+    try {
+      ignore(AsyncWrite::write(left, b"x", offset=2, len=1))
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.InvalidInput)
+    },
+    true,
+  )
+  @async.with_task_group(group => {
+    let waiting_read = group.spawn(() => {
+      let byte = FixedArray::make(1, (0).to_byte())
+      ignore(AsyncRead::read(right, byte))
+    })
+    @async.pause()
+    waiting_read.cancel()
+    assert_eq(
+      try {
+        waiting_read.wait()
+        false
+      } catch {
+        error => @async.is_cancellation_error(error)
+      },
+      true,
+    )
+    assert_eq(AsyncWrite::write(left, b"a", offset=0, len=1), 1)
+    let blocked_write = group.spawn(() => {
+      ignore(AsyncWrite::write(left, b"b", offset=0, len=1))
+    })
+    @async.pause()
+    blocked_write.cancel()
+    assert_eq(
+      try {
+        blocked_write.wait()
+        false
+      } catch {
+        error => @async.is_cancellation_error(error)
+      },
+      true,
+    )
+    let received = FixedArray::make(1, (0).to_byte())
+    AsyncRead::read_exact(right, received)
+    assert_eq(received.unsafe_reinterpret_as_bytes(), b"a")
+  })
+  AsyncClose::close(right)
+  assert_eq(
+    try {
+      ignore(AsyncWrite::write(left, b"x", offset=0, len=1))
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.BrokenPipe)
+    },
+    true,
+  )
+  AsyncWrite::shutdown(left)
+  assert_eq(
+    try {
+      ignore(AsyncWrite::write(left, b"x", offset=0, len=1))
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.Closed)
+    },
+    true,
+  )
+  let invalid = FixedArray::make(1, (0).to_byte())
+  assert_eq(
+    try {
+      ignore(AsyncRead::read(left, invalid, offset=2, max_len=1))
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.InvalidInput)
+    },
+    true,
+  )
+  AsyncClose::close(left)
+  assert_eq(AsyncRead::read(left, invalid), 0)
+}
+
+///|
+fn async_error_has_kind(error : Error, expected : @syncio.IoErrorKind) -> Bool {
+  match error {
+    @syncio.IoError::Io(failure) => failure.kind == expected
+    _ => false
+  }
 }
 
 ///|
@@ -36,6 +347,7 @@ async test "async buffered seek accounts for unread and pending bytes" {
   AsyncBufRead::consume(reader, 1)
   assert_eq(AsyncSeek::stream_position(reader), 1L)
   assert_eq(AsyncSeek::seek(reader, Current(1L)), 2L)
+  assert_eq(AsyncSeek::seek(reader, Start(2L)), 2L)
   let byte = FixedArray::make(1, (0).to_byte())
   AsyncRead::read_exact(reader, byte)
   assert_eq(byte.unsafe_reinterpret_as_bytes(), b"c")
@@ -210,6 +522,34 @@ impl AsyncWrite for ShutdownProbe with fn shutdown(self) {
 }
 
 ///|
+struct ShutdownFailWriter {
+  output : Array[Byte]
+}
+
+///|
+impl AsyncWrite for ShutdownFailWriter with fn write(
+  self,
+  source,
+  offset~,
+  len~,
+) {
+  for i in 0..<len {
+    self.output.push(source[offset + i])
+  }
+  len
+}
+
+///|
+impl AsyncWrite for ShutdownFailWriter with fn flush(_self) {
+  ()
+}
+
+///|
+impl AsyncWrite for ShutdownFailWriter with fn shutdown(_self) {
+  raise @syncio.io_error(@syncio.Backend, "injected async shutdown")
+}
+
+///|
 async test "buffered shutdown flushes pending bytes before the inner shutdown" {
   let probe : ShutdownProbe = { events: [] }
   let writer = AsyncBufWriter::new(probe, capacity=8)
@@ -219,17 +559,38 @@ async test "buffered shutdown flushes pending bytes before the inner shutdown" {
 }
 
 ///|
+async test "buffered shutdown preserves committed bytes and propagates failure" {
+  let inner : ShutdownFailWriter = { output: [] }
+  let writer = AsyncBufWriter::new(inner, capacity=8)
+  ignore(AsyncWrite::write(writer, b"ok", offset=0, len=2))
+  assert_eq(
+    try {
+      AsyncWrite::shutdown(writer)
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.Backend)
+    },
+    true,
+  )
+  assert_eq(Bytes::from_array(inner.output), b"ok")
+}
+
+///|
 async test "copy and copy_bidirectional report committed bytes" {
   let source = AsyncMemoryReader::new(b"copy"[:])
   let destination = AsyncMemoryWriter::new()
   assert_eq(copy(source, destination, buffer_size=2), 4)
-  assert_eq(destination.bytes(), b"copy")
+  assert_eq(destination.to_bytes(), b"copy")
 
   let left : TestDuplex = { incoming: b"left", position: 0, outgoing: [] }
   let right : TestDuplex = { incoming: b"right", position: 0, outgoing: [] }
-  assert_eq(copy_bidirectional(left, right), (4, 5))
+  assert_eq(copy_bidirectional_with_sizes(left, right, 2, 3), (4, 5))
   assert_eq(Bytes::from_array(left.outgoing), b"right")
   assert_eq(Bytes::from_array(right.outgoing), b"left")
+
+  let empty_left : TestDuplex = { incoming: b"", position: 0, outgoing: [] }
+  let empty_right : TestDuplex = { incoming: b"", position: 0, outgoing: [] }
+  assert_eq(copy_bidirectional(empty_left, empty_right), (0, 0))
 }
 
 ///|
@@ -680,14 +1041,14 @@ async test "async buffered paths flush full buffers and copy files" {
   ignore(AsyncWrite::write(writer, b"b", offset=0, len=1))
   ignore(AsyncWrite::write(writer, b"c", offset=0, len=1))
   AsyncWrite::flush(writer)
-  assert_eq(AsyncBufWriter::get_ref(writer).bytes(), b"abc")
+  assert_eq(AsyncBufWriter::get_ref(writer).to_bytes(), b"abc")
 
   ensure_async_test_dir()
   let source_path = async_test_dir + "/copy-source.bin"
   let destination_path = async_test_dir + "/copy-destination.bin"
   write_file(source_path, b"copy-file"[:])
   let progress = copy_file(source_path, destination_path, buffer_size=3)
-  assert_eq(progress.bytes, 9)
+  assert_eq(progress.bytes_copied, 9)
   assert_eq(
     try {
       ignore(

@@ -1,4 +1,5 @@
 ///|
+/// A cancellation-aware buffered reader over an `AsyncRead` implementation.
 pub struct AsyncBufReader[R] {
   inner : R
   buffer : FixedArray[Byte]
@@ -18,6 +19,7 @@ pub fn[R] AsyncBufReader::new(
 }
 
 ///|
+/// Return the number of unread bytes held in the internal buffer.
 pub fn[R] AsyncBufReader::buffered_len(self : AsyncBufReader[R]) -> Int {
   self.end - self.start
 }
@@ -57,10 +59,22 @@ pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R] with fn read(
   if offset < 0 || max_len < 0 || offset > destination.length() - max_len {
     raise @syncio.io_error(@syncio.InvalidInput, "async buffered read")
   }
-  if self.buffered_len() == 0 && max_len >= self.buffer.length() {
+  if max_len == 0 {
+    return 0
+  }
+  let resident = self.buffered_len()
+  if resident > 0 {
+    let count = Int::min(max_len, resident)
+    for i in 0..<count {
+      destination[offset + i] = self.buffer[self.start + i]
+    }
+    self.start += count
+    return count
+  }
+  if max_len >= self.buffer.length() {
     return AsyncRead::read(self.inner, destination, offset~, max_len~)
   }
-  if self.buffered_len() == 0 && self.refill() == 0 {
+  if self.refill() == 0 {
     return 0
   }
   let count = Int::min(max_len, self.buffered_len())

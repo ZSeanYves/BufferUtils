@@ -184,6 +184,7 @@ pub fn NativeFile::append(path : String) -> NativeFile raise @io.IoError {
 }
 
 ///|
+/// Return the path associated with this native file handle.
 pub fn NativeFile::path(self : NativeFile) -> String {
   self.path
 }
@@ -364,11 +365,17 @@ pub impl @io.Write for NativeFile with fn is_write_vectored(self) {
 }
 
 ///|
+/// Return the number of native read syscalls observed by this handle.
+///
+/// This is diagnostic evidence only; it is not synchronization state.
 pub fn NativeFile::read_syscalls(self : NativeFile) -> Int {
   native_file_read_syscalls_ffi(self.handle)
 }
 
 ///|
+/// Return the number of native write syscalls observed by this handle.
+///
+/// This is diagnostic evidence only; it is not synchronization state.
 pub fn NativeFile::write_syscalls(self : NativeFile) -> Int {
   native_file_write_syscalls_ffi(self.handle)
 }

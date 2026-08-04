@@ -1,98 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-baseline=${1:?usage: check_performance_batches BASELINE.csv BATCH1.csv BATCH2.csv BATCH3.csv}
-batch_one=${2:?missing batch 1}
-batch_two=${3:?missing batch 2}
-batch_three=${4:?missing batch 3}
-minimum_gate_us=50
+baseline=${1:?usage: check_performance_batches BASELINE.csv MOONBIT.csv RUST.csv}
+moonbit_csv=${2:?missing MoonBit CSV}
+rust_csv=${3:?missing Rust CSV}
 
-for file in "$baseline" "$batch_one" "$batch_two" "$batch_three"; do
-  [[ -f "$file" ]] || { printf 'benchmark CSV not found: %s\n' "$file" >&2; exit 1; }
+for file in "$baseline" "$moonbit_csv" "$rust_csv"; do
+  [[ -f "$file" ]] || {
+    printf 'benchmark CSV not found: %s\n' "$file" >&2
+    exit 1
+  }
 done
 
-awk -F, -v batch_one="$batch_one" -v batch_two="$batch_two" -v batch_three="$batch_three" -v minimum_gate_us="$minimum_gate_us" '
-function workload_group(name) {
-  if (name ~ /^buffer_/) return "buffer"
-  if (name ~ /^sync_.*read/) return "sync_read"
-  if (name ~ /^sync_/) return "sync_write"
-  if (name ~ /^native_file_read/) return "native_read"
-  if (name ~ /^native_file_write/) return "native_write"
-  if (name ~ /^native_mmap/) return "native_mmap"
-  return name
+awk -F, -v baseline_file="$baseline" '
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
 }
-NR == FNR {
-  if (FNR == 1) { for (i = 1; i <= NF; i++) col[$i] = i; next }
-  key = $(col["name"]) SUBSEP $(col["size"])
-  base[key] = $(col["median_us"])
+FILENAME == baseline_file {
+  if (FNR == 1) {
+    if ($1 != "name" || $2 != "size" || $3 != "moonbit_over_rust") {
+      fail("invalid ratio baseline header")
+    }
+    next
+  }
+  key = $1 SUBSEP $2
+  baseline[key] = $3 + 0
   next
 }
-FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
-{
-  name = $(col["name"])
-  key = name SUBSEP $(col["size"])
-  batch = FILENAME
-  value = $(col["median_us"])
-  if (key in base && base[key] >= minimum_gate_us) {
-    group = workload_group(name)
-    measured[key, batch] = value
-    measured_group[key, batch] = group
-    ratios[batch, group, ++ratio_count[batch, group]] = value / base[key]
-    group_seen[batch, group] = 1
-  }
+FILENAME != baseline_file {
+  if (FNR == 1) { next }
+  implementation = $1
+  key = $2 SUBSEP $3
+  batch = $4 + 0
+  per_iteration = ($6 + 0) / ($5 + 0)
+  timing[implementation, key, batch] = per_iteration
+  next
 }
 END {
-  batches[1] = batch_one
-  batches[2] = batch_two
-  batches[3] = batch_three
-  for (batch_index = 1; batch_index <= 3; batch_index++) {
-    batch = batches[batch_index]
-    batch_count = 0
-    for (seen in group_seen) {
-      split(seen, seen_parts, SUBSEP)
-      if (seen_parts[1] == batch) batch_count++
-    }
-    if (batch_count == 0) {
-      print "benchmark batch contains no baseline cases: " batch > "/dev/stderr"
-      failed = 1
-    }
-  }
-  for (seen in group_seen) {
-    split(seen, seen_parts, SUBSEP)
-    batch = seen_parts[1]
-    group = seen_parts[2]
-    count = ratio_count[batch, group]
-    delete sorted
-    for (i = 1; i <= count; i++) {
-      current = ratios[batch, group, i]
-      position = i - 1
-      while (position >= 1 && sorted[position] > current) {
-        sorted[position + 1] = sorted[position]
-        position--
+  for (key in baseline) {
+    for (batch = 1; batch <= 3; batch++) {
+      moon_key = "moonbit" SUBSEP key SUBSEP batch
+      rust_key = "rust" SUBSEP key SUBSEP batch
+      if (!(moon_key in timing) || !(rust_key in timing)) {
+        fail("missing comparison row: " key " batch " batch)
+        continue
       }
-      sorted[position + 1] = current
-    }
-    if (count % 2 == 1) {
-      scale[batch, group] = sorted[(count + 1) / 2]
-    } else {
-      scale[batch, group] = (sorted[count / 2] + sorted[count / 2 + 1]) / 2
-    }
-    if (scale[batch, group] < 1.0) scale[batch, group] = 1.0
-  }
-  for (entry in measured) {
-    split(entry, parts, SUBSEP)
-    key = parts[1] SUBSEP parts[2]
-    batch = parts[3]
-    group = measured_group[entry]
-    if (group ~ /^native_/) continue
-    if (measured[entry] > base[key] * scale[batch, group] * 1.10) failures[key]++
-  }
-  for (key in failures) {
-    if (failures[key] >= 2) {
-      print "normalized median regression exceeds 10% in at least two batches: " key > "/dev/stderr"
-      failed = 1
+      ratio = timing[moon_key] / timing[rust_key]
+      if (ratio > baseline[key] * 1.15) regressions[key]++
     }
   }
+  for (key in regressions) {
+    if (regressions[key] >= 2) {
+      fail("MoonBit/Rust ratio regressed by more than 15% in at least two batches: " key)
+    }
+  }
+  if (!failed) print "per-case MoonBit/Rust ratio gate passed"
   exit failed
 }
-' "$baseline" "$batch_one" "$batch_two" "$batch_three"
+' "$baseline" "$moonbit_csv" "$rust_csv"

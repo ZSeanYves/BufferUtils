@@ -1,0 +1,12 @@
+import {
+  "ZSeanYves/bufferutils/buffer",
+  "ZSeanYves/bufferutils/io",
+  "ZSeanYves/bufferutils/async_io" @asyncio,
+  "ZSeanYves/bufferutils/native",
+}
+
+import {
+  "moonbitlang/async",
+} for "test"
+
+supported_targets = "native"

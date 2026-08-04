@@ -1,106 +1,156 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-csv=${1:-.tmp/bufferutils-bench/results.csv}
-baseline=${2:-}
-if [[ ! -f "$csv" ]]; then
+csv=${1:-.tmp/bufferutils-bench/moonbit.csv}
+[[ -f "$csv" ]] || {
   printf 'benchmark CSV not found: %s\n' "$csv" >&2
+  exit 1
+}
+
+expected_header='implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s'
+actual_header=$(head -n 1 "$csv")
+if [[ "$actual_header" != "$expected_header" ]]; then
+  printf 'benchmark CSV header mismatch\nexpected: %s\nactual:   %s\n' \
+    "$expected_header" "$actual_header" >&2
   exit 1
 fi
 
 awk -F, '
-NR == 1 {
-  for (i = 1; i <= NF; i++) column[$i] = i
-  required["median_us"] = 1
-  required["p95_us"] = 1
-  required["copied_bytes"] = 1
-  required["allocations"] = 1
-  required["underlying_calls"] = 1
-  required["syscalls"] = 1
-  for (name in required) if (!(name in column)) missing = missing name " "
-  if (missing != "") { print "missing benchmark columns: " missing > "/dev/stderr"; exit 1 }
-  next
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
 }
+function expected_iterations_calls(size, chunk, iterations) {
+  return int((size + chunk - 1) / chunk) * iterations
+}
+NR == 1 { next }
 {
-  name = $(column["name"])
-  size = $(column["size"])
-  median = $(column["median_us"])
-  p95 = $(column["p95_us"])
-  if (median <= 0 || p95 < median) {
-    print "invalid benchmark timing: " name " " size > "/dev/stderr"
-    exit 1
+  implementation = $1
+  name = $2
+  size = $3 + 0
+  batch = $4 + 0
+  iterations = $5 + 0
+  median = $6 + 0
+  p95 = $7 + 0
+  bytes = $8 + 0
+  copied = $9 + 0
+  calls = $10 + 0
+  syscalls = $11 + 0
+  throughput = $12 + 0
+  row = implementation "/" name "/" size "/batch-" batch
+
+  if (NF != 12) fail("benchmark row does not contain 12 columns: " row)
+  if (implementation != "moonbit" && implementation != "rust") {
+    fail("unknown benchmark implementation: " implementation)
   }
-  if ($(column["copied_bytes"]) < 0) { print "negative copied_bytes" > "/dev/stderr"; exit 1 }
-  if ($(column["allocations"]) < 0 || $(column["underlying_calls"]) < 0 || $(column["syscalls"]) < 0) {
-    print "negative benchmark counters" > "/dev/stderr"; exit 1
+  if (name == "" || size <= 0 || batch < 1 || batch > 3 || iterations <= 0) {
+    fail("invalid benchmark identity: " row)
   }
-  seen[name] = 1
-  timings[name SUBSEP size] = median
-  if (name == "buffer_shared_split_freeze" &&
-      $(column["copied_bytes"]) != 0) {
-    print "split/freeze copied payload bytes" > "/dev/stderr"
-    exit 1
+  if (median < 10000 || p95 < median || throughput <= 0) {
+    fail("invalid or under-calibrated timing: " row)
+  }
+  if (bytes != size * iterations) fail("bytes/iterations mismatch: " row)
+  if (copied < 0 || calls < 0 || syscalls < 0) {
+    fail("negative benchmark counter: " row)
+  }
+
+  key = implementation SUBSEP name SUBSEP size SUBSEP batch
+  if (seen[key]++) fail("duplicate benchmark row: " row)
+  case_key = implementation SUBSEP name SUBSEP size
+  case_batches[case_key]++
+  implementations[implementation] = 1
+
+  if (name ~ /^buffer_shared_/ || name == "buffer_freeze" ||
+      name == "native_mmap_scan") {
+    if (copied != 0) fail("zero-copy case copied payload bytes: " row)
+  }
+  if (name == "buffer_cow_mutation" && copied != bytes) {
+    fail("COW copy counter does not equal detached payload: " row)
+  }
+  if (name == "buffer_growth" && copied != bytes / 2) {
+    fail("growth copy counter does not equal retained prefix: " row)
+  }
+  if (name == "sync_bufreader_small" || name == "sync_bufwriter_small") {
+    if (copied != bytes * 2) fail("buffered small-I/O copy counter mismatch: " row)
+  }
+  if (name == "sync_bufreader_bypass" || name == "sync_bufwriter_bypass") {
+    if (copied != bytes || calls != iterations) {
+      fail("large-buffer bypass structure mismatch: " row)
+    }
+  }
+  if (name == "sync_vectored_fallback") {
+    expected_copied = implementation == "moonbit" ? bytes * 2 : bytes
+    if (copied != expected_copied || calls != iterations * 2) {
+      fail("vectored fallback structure mismatch: " row)
+    }
+  }
+  if (name == "sync_raw_read" && calls != iterations) {
+    fail("raw read underlying-call counter mismatch: " row)
+  }
+  if (name == "sync_raw_small_write" &&
+      calls != expected_iterations_calls(size, 32, iterations)) {
+    fail("raw small-write underlying-call counter mismatch: " row)
+  }
+  if (name == "sync_short_write_16" &&
+      calls != expected_iterations_calls(size, 16, iterations)) {
+    fail("short-write counter mismatch: " row)
+  }
+  if (name ~ /^native_file_/) {
+    if (copied != bytes || calls != iterations || syscalls != iterations) {
+      fail("native syscall structure mismatch: " row)
+    }
+  }
+  if (name == "async_copy") {
+    if (copied != bytes * 2 || calls <= 0 || syscalls != 0) {
+      fail("async copy structure mismatch: " row)
+    }
+  }
+  if (name == "tcp_loopback") {
+    if (copied != bytes * 2 || calls != 0 || syscalls != 0) {
+      fail("TCP diagnostic counters must remain explicit unknowns: " row)
+    }
   }
 }
 END {
-  required_case["buffer_shared_split_freeze"] = 1
-  required_case["buffer_cow_mutation"] = 1
-  required_case["sync_raw_read_to_end"] = 1
-  required_case["sync_bufreader_read_to_end"] = 1
-  required_case["sync_raw_write_all"] = 1
-  required_case["sync_bufwriter_write_flush"] = 1
-  required_case["native_file_write_flush"] = 1
-  required_case["native_file_read"] = 1
-  required_case["native_mmap_read_scan"] = 1
-  required_case["sync_short_write_1B"] = 1
-  required_case["sync_short_write_16B"] = 1
-  required_case["sync_small_write_1B"] = 1
-  required_case["sync_small_write_32B"] = 1
-  required_case["sync_small_write_256B"] = 1
-  required_case["sync_vectored_write"] = 1
-  for (name in required_case) if (!(name in seen)) {
-    print "missing benchmark case: " name > "/dev/stderr"
-    exit 1
+  if (NR <= 1) fail("benchmark CSV contains no result rows")
+  for (key in case_batches) {
+    if (case_batches[key] != 3) fail("benchmark case does not have three batches: " key)
   }
-  raw_read = timings["sync_raw_read_to_end" SUBSEP "1MB"]
-  buffered_read = timings["sync_bufreader_read_to_end" SUBSEP "1MB"]
-  raw_write = timings["sync_raw_write_all" SUBSEP "1MB"]
-  buffered_write = timings["sync_bufwriter_write_flush" SUBSEP "1MB"]
-  if (buffered_read > raw_read * 1.10) {
-    print "1MB BufReader bypass is more than 10% slower than raw read" > "/dev/stderr"
-    exit 1
-  }
-  if (buffered_write > raw_write * 1.10) {
-    print "1MB BufWriter bypass is more than 10% slower than raw write" > "/dev/stderr"
-    exit 1
-  }
-  print "performance budget input is structurally valid"
-}
-' "$csv"
-
-if [[ -n "$baseline" ]]; then
-  [[ -f "$baseline" ]] || {
-    printf 'benchmark baseline not found: %s\n' "$baseline" >&2
-    exit 1
-  }
-  awk -F, '
-  NR == 1 {
-    for (i = 1; i <= NF; i++) column[$i] = i
-    next
-  }
-  NR == FNR {
-    key = $(column["name"]) SUBSEP $(column["size"])
-    base[key] = $(column["median_us"])
-    next
-  }
-  FNR == 1 { next }
-  {
-    key = $(column["name"]) SUBSEP $(column["size"])
-    if (key in base && $(column["median_us"]) > base[key] * 1.10) {
-      print "median regression exceeds 10%: " key > "/dev/stderr"
-      failed = 1
+  required["sync_vectored_fallback"] = 1
+  required["buffer_shared_clone"] = 1
+  required["buffer_shared_slice"] = 1
+  required["buffer_shared_split"] = 1
+  required["sync_raw_read"] = 1
+  required["sync_bufreader_small"] = 1
+  required["sync_bufreader_bypass"] = 1
+  required["sync_raw_small_write"] = 1
+  required["sync_bufwriter_small"] = 1
+  required["sync_bufwriter_bypass"] = 1
+  required["sync_short_write_16"] = 1
+  required["async_copy"] = 1
+  moonbit_required["buffer_freeze"] = 1
+  moonbit_required["buffer_cow_mutation"] = 1
+  moonbit_required["buffer_growth"] = 1
+  moonbit_required["native_file_write"] = 1
+  moonbit_required["native_file_read"] = 1
+  moonbit_required["native_mmap_scan"] = 1
+  moonbit_required["tcp_loopback"] = 1
+  for (implementation in implementations) {
+    delete found
+    for (key in case_batches) {
+      split(key, parts, SUBSEP)
+      if (parts[1] == implementation) found[parts[2]] = 1
+    }
+    for (name in required) {
+      if (!(name in found)) fail("missing benchmark case for " implementation ": " name)
+    }
+    if (implementation == "moonbit") {
+      for (name in moonbit_required) {
+        if (!(name in found)) fail("missing MoonBit diagnostic case: " name)
+      }
     }
   }
-  END { exit failed }
-  ' "$baseline" "$csv"
-fi
+  if (!failed) print "performance CSV and structural counters are valid"
+  exit failed
+}
+' "$csv"

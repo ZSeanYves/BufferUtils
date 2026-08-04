@@ -225,7 +225,7 @@ pub impl[R : Read] Read for Take[R] with fn read(self, dst, offset, length) {
   let count = if self.remaining < length.to_int64() {
     self.remaining.to_int()
   } else {
-    dst.length()
+    length
   }
   let progress = Read::read(self.inner, dst, offset, count)
   validate_progress("Take::read", progress, count)

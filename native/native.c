@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -24,6 +25,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <sched.h>
 #endif
 
 typedef struct bufferutils_file_payload {
@@ -66,6 +68,11 @@ typedef struct bufferutils_mapping_view {
   int64_t offset;
   int64_t len;
   int32_t closed;
+#if defined(_WIN32)
+  CRITICAL_SECTION lock;
+#else
+  pthread_mutex_t lock;
+#endif
 } bufferutils_mapping_view;
 
 typedef struct bufferutils_socket_payload {
@@ -117,6 +124,22 @@ static void v1_mapping_unlock(bufferutils_mapping_owner *owner) {
   LeaveCriticalSection(&owner->lock);
 #else
   pthread_mutex_unlock(&owner->lock);
+#endif
+}
+
+static void v1_view_lock(bufferutils_mapping_view *view) {
+#if defined(_WIN32)
+  EnterCriticalSection(&view->lock);
+#else
+  pthread_mutex_lock(&view->lock);
+#endif
+}
+
+static void v1_view_unlock(bufferutils_mapping_view *view) {
+#if defined(_WIN32)
+  LeaveCriticalSection(&view->lock);
+#else
+  pthread_mutex_unlock(&view->lock);
 #endif
 }
 
@@ -180,10 +203,19 @@ static void v1_mapping_release(bufferutils_mapping_owner *owner) {
 
 static void v1_mapping_finalize(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
+  bufferutils_mapping_owner *owner = NULL;
+  v1_view_lock(view);
   if (view->owner != NULL && !view->closed) {
     view->closed = 1;
-    v1_mapping_release(view->owner);
+    owner = view->owner;
   }
+  v1_view_unlock(view);
+  if (owner != NULL) v1_mapping_release(owner);
+#if defined(_WIN32)
+  DeleteCriticalSection(&view->lock);
+#else
+  pthread_mutex_destroy(&view->lock);
+#endif
 }
 
 static void v1_socket_finalize(void *payload) {
@@ -481,11 +513,15 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_read(
   void *payload, uint8_t *dst, int32_t offset, int32_t len
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (offset < 0 || len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
   dst += offset;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   file->read_syscalls += 1;
 #if defined(_WIN32)
   DWORD count = 0;
@@ -493,16 +529,18 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_read(
   if (!ok) {
     file->os_error = (int32_t)GetLastError();
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_READ_FAILED);
+    int32_t error = file->error;
     v1_file_unlock(file);
-    return -file->error;
+    return -error;
   }
 #else
   ssize_t count = read(file->file, dst, (size_t)len);
   if (count < 0) {
     file->os_error = errno;
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_READ_FAILED);
+    int32_t error = file->error;
     v1_file_unlock(file);
-    return -file->error;
+    return -error;
   }
 #endif
   v1_file_unlock(file);
@@ -513,11 +551,15 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write(
   void *payload, const uint8_t *src, int32_t offset, int32_t len
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (offset < 0 || len < 0 || (len > 0 && src == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
   src += offset;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   file->write_syscalls += 1;
 #if defined(_WIN32)
   DWORD count = 0;
@@ -525,16 +567,18 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write(
   if (!ok) {
     file->os_error = (int32_t)GetLastError();
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_WRITE_FAILED);
+    int32_t error = file->error;
     v1_file_unlock(file);
-    return -file->error;
+    return -error;
   }
 #else
   ssize_t count = write(file->file, src, (size_t)len);
   if (count < 0) {
     file->os_error = errno;
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_WRITE_FAILED);
+    int32_t error = file->error;
     v1_file_unlock(file);
-    return -file->error;
+    return -error;
   }
 #endif
   v1_file_unlock(file);
@@ -543,8 +587,12 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write(
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_flush(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return BUFFERUTILS_V1_CLOSED;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return BUFFERUTILS_V1_CLOSED;
+  }
 #if defined(_WIN32)
   BOOL ok = FlushFileBuffers(file->file);
   int result = ok ? 0 : -1;
@@ -553,19 +601,28 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_flush(void *payload) {
   int result = fsync(file->file);
   if (result != 0) { file->os_error = errno; file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_FLUSH_FAILED); }
 #endif
+  int32_t returned = result == 0 ? BUFFERUTILS_V1_OK : file->error;
   v1_file_unlock(file);
-  return result == 0 ? BUFFERUTILS_V1_OK : file->error;
+  return returned;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_sync(void *payload, int32_t data_only) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return BUFFERUTILS_V1_CLOSED;
+  v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return BUFFERUTILS_V1_CLOSED;
+  }
 #if defined(_WIN32)
   if (!FlushFileBuffers(file->file)) {
     file->os_error = (int32_t)GetLastError();
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_FLUSH_FAILED);
-    return file->error;
+    int error = file->error;
+    v1_file_unlock(file);
+    return error;
   }
+  v1_file_unlock(file);
   return 0;
 #else
   int result;
@@ -578,8 +635,11 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_sync(void *payload, int32_t data_onl
   if (result != 0) {
     file->os_error = errno;
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_FLUSH_FAILED);
-    return file->error;
+    int error = file->error;
+    v1_file_unlock(file);
+    return error;
   }
+  v1_file_unlock(file);
   return 0;
 #endif
 }
@@ -588,8 +648,12 @@ MOONBIT_FFI_EXPORT int64_t bufferutils_file_seek(
   void *payload, int64_t offset, int32_t whence
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return -(int64_t)BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return -(int64_t)BUFFERUTILS_V1_CLOSED;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return -(int64_t)BUFFERUTILS_V1_CLOSED;
+  }
 #if defined(_WIN32)
   LARGE_INTEGER distance;
   LARGE_INTEGER position_value;
@@ -617,12 +681,20 @@ MOONBIT_FFI_EXPORT int64_t bufferutils_file_seek(
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_error(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  return file == NULL ? BUFFERUTILS_V1_INVALID_ARGUMENT : file->error;
+  if (file == NULL) return BUFFERUTILS_V1_INVALID_ARGUMENT;
+  v1_file_lock(file);
+  int32_t result = file->error;
+  v1_file_unlock(file);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_os_error(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  return file == NULL ? 0 : file->os_error;
+  if (file == NULL) return 0;
+  v1_file_lock(file);
+  int32_t result = file->os_error;
+  v1_file_unlock(file);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_close(void *payload) {
@@ -647,7 +719,11 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_close(void *payload) {
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_is_closed(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  return file == NULL || file->closed;
+  if (file == NULL) return 1;
+  v1_file_lock(file);
+  int32_t result = file->closed;
+  v1_file_unlock(file);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_vectored(
@@ -655,8 +731,12 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_vectored(
   const int32_t *lengths, int32_t count
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  v1_file_lock(file);
+  int32_t closed = file->closed;
+  v1_file_unlock(file);
+  if (closed) return -BUFFERUTILS_V1_CLOSED;
 #if defined(_WIN32)
   (void)buffers; (void)offsets; (void)lengths; (void)count;
   return -BUFFERUTILS_V1_UNSUPPORTED;
@@ -672,14 +752,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_vectored(
   }
   if (used == 0) return 0;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   file->read_syscalls += 1;
   ssize_t result = readv(file->file, iov, used);
   if (result < 0) {
     file->os_error = errno;
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_READ_FAILED);
   }
+  int32_t returned = result < 0 ? -file->error : (int32_t)result;
   v1_file_unlock(file);
-  return result < 0 ? -file->error : (int32_t)result;
+  return returned;
 #endif
 }
 
@@ -688,8 +773,12 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write_vectored(
   const int32_t *lengths, int32_t count
 ) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  if (file == NULL || file->closed) return -BUFFERUTILS_V1_CLOSED;
+  if (file == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  v1_file_lock(file);
+  int32_t closed = file->closed;
+  v1_file_unlock(file);
+  if (closed) return -BUFFERUTILS_V1_CLOSED;
 #if defined(_WIN32)
   (void)buffers; (void)offsets; (void)lengths; (void)count;
   return -BUFFERUTILS_V1_UNSUPPORTED;
@@ -705,14 +794,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_write_vectored(
   }
   if (used == 0) return 0;
   v1_file_lock(file);
+  if (file->closed) {
+    v1_file_unlock(file);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   file->write_syscalls += 1;
   ssize_t result = writev(file->file, iov, used);
   if (result < 0) {
     file->os_error = errno;
     file->error = v1_status_from_os_error(file->os_error, BUFFERUTILS_V1_WRITE_FAILED);
   }
+  int32_t returned = result < 0 ? -file->error : (int32_t)result;
   v1_file_unlock(file);
-  return result < 0 ? -file->error : (int32_t)result;
+  return returned;
 #endif
 }
 
@@ -732,11 +826,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_file_is_write_vectored(void *payload) {
 }
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_read_syscalls(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  return file == NULL ? 0 : file->read_syscalls;
+  if (file == NULL) return 0;
+  v1_file_lock(file);
+  int32_t result = file->read_syscalls;
+  v1_file_unlock(file);
+  return result;
 }
 MOONBIT_FFI_EXPORT int32_t bufferutils_file_write_syscalls(void *payload) {
   bufferutils_file_payload *file = (bufferutils_file_payload *)payload;
-  return file == NULL ? 0 : file->write_syscalls;
+  if (file == NULL) return 0;
+  v1_file_lock(file);
+  int32_t result = file->write_syscalls;
+  v1_file_unlock(file);
+  return result;
 }
 
 static bufferutils_mapping_owner *v1_mapping_owner_new(void) {
@@ -770,6 +872,11 @@ static bufferutils_mapping_view *v1_mapping_view_new(
   view->offset = offset;
   view->len = len;
   view->closed = 0;
+#if defined(_WIN32)
+  InitializeCriticalSection(&view->lock);
+#else
+  pthread_mutex_init(&view->lock, NULL);
+#endif
   return view;
 }
 
@@ -883,73 +990,137 @@ MOONBIT_FFI_EXPORT void *bufferutils_mapped_slice(
   void *payload, int32_t start, int32_t len
 ) {
   bufferutils_mapping_view *parent = (bufferutils_mapping_view *)payload;
-  if (parent == NULL || parent->closed || start < 0 || len < 0 || (int64_t)start + len > parent->len) return NULL;
+  if (parent == NULL) return NULL;
+  v1_view_lock(parent);
+  if (parent->closed || start < 0 || len < 0 ||
+      (int64_t)start + len > parent->len) {
+    v1_view_unlock(parent);
+    return NULL;
+  }
   bufferutils_mapping_owner *owner = parent->owner;
   v1_mapping_lock(owner);
   owner->refs += 1;
   v1_mapping_unlock(owner);
   bufferutils_mapping_view *view = v1_mapping_view_new(owner, parent->offset + start, len);
   if (view == NULL) v1_mapping_release(owner);
+  v1_view_unlock(parent);
   return view;
-}
-
-static int v1_view_ok(bufferutils_mapping_view *view) {
-  return view != NULL && !view->closed && view->owner != NULL &&
-    view->owner->error == BUFFERUTILS_V1_OK;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_len(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  if (view == NULL || view->closed || view->owner == NULL) return -BUFFERUTILS_V1_CLOSED;
-  if (view->owner->error != BUFFERUTILS_V1_OK) return -view->owner->error;
-  return (int32_t)view->len;
+  if (view == NULL) return -BUFFERUTILS_V1_CLOSED;
+  v1_view_lock(view);
+  int32_t result = view->closed || view->owner == NULL
+    ? -BUFFERUTILS_V1_CLOSED
+    : (view->owner->error == BUFFERUTILS_V1_OK
+      ? (int32_t)view->len
+      : -view->owner->error);
+  v1_view_unlock(view);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_error(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  return view == NULL || view->owner == NULL ? BUFFERUTILS_V1_OUT_OF_MEMORY : view->owner->error;
+  if (view == NULL) return BUFFERUTILS_V1_OUT_OF_MEMORY;
+  v1_view_lock(view);
+  int32_t result = view->owner == NULL
+    ? BUFFERUTILS_V1_OUT_OF_MEMORY
+    : view->owner->error;
+  v1_view_unlock(view);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_os_error(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  return view == NULL || view->owner == NULL ? 0 : view->owner->os_error;
+  if (view == NULL) return 0;
+  v1_view_lock(view);
+  int32_t result = view->owner == NULL ? 0 : view->owner->os_error;
+  v1_view_unlock(view);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_read_byte(void *payload, int32_t index) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  if (!v1_view_ok(view)) return -BUFFERUTILS_V1_CLOSED;
-  if (index < 0 || (int64_t)index >= view->len) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
-  return (int32_t)view->owner->data[view->offset + index];
+  if (view == NULL) return -BUFFERUTILS_V1_CLOSED;
+  v1_view_lock(view);
+  if (view->closed || view->owner == NULL ||
+      view->owner->error != BUFFERUTILS_V1_OK) {
+    v1_view_unlock(view);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
+  if (index < 0 || (int64_t)index >= view->len) {
+    v1_view_unlock(view);
+    return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  }
+  int32_t result = (int32_t)view->owner->data[view->offset + index];
+  v1_view_unlock(view);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_mapped_copy(
   void *payload, int32_t start, int32_t len
 ) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  if (!v1_view_ok(view) || start < 0 || len < 0 || (int64_t)start + len > view->len) return moonbit_empty_int8_array;
+  if (view == NULL) return moonbit_empty_int8_array;
+  v1_view_lock(view);
+  if (view->closed || view->owner == NULL ||
+      view->owner->error != BUFFERUTILS_V1_OK || start < 0 || len < 0 ||
+      (int64_t)start + len > view->len) {
+    v1_view_unlock(view);
+    return moonbit_empty_int8_array;
+  }
   moonbit_bytes_t result = moonbit_make_bytes_raw(len);
   if (len > 0) memcpy(result, view->owner->data + view->offset + start, (size_t)len);
+  v1_view_unlock(view);
   return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_find(void *payload, int32_t value) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  if (!v1_view_ok(view) || value < 0 || value > 255) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
-  for (int64_t i = 0; i < view->len; i++) if (view->owner->data[view->offset + i] == (uint8_t)value) return (int32_t)i;
+  if (view == NULL) return -BUFFERUTILS_V1_CLOSED;
+  v1_view_lock(view);
+  if (view->closed || view->owner == NULL ||
+      view->owner->error != BUFFERUTILS_V1_OK) {
+    v1_view_unlock(view);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
+  if (value < 0 || value > 255) {
+    v1_view_unlock(view);
+    return -BUFFERUTILS_V1_INVALID_ARGUMENT;
+  }
+  for (int64_t i = 0; i < view->len; i++) {
+    if (view->owner->data[view->offset + i] == (uint8_t)value) {
+      v1_view_unlock(view);
+      return (int32_t)i;
+    }
+  }
+  v1_view_unlock(view);
   return -1;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_close(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  if (view == NULL || view->closed) return BUFFERUTILS_V1_OK;
-  view->closed = 1;
-  v1_mapping_release(view->owner);
+  if (view == NULL) return BUFFERUTILS_V1_OK;
+  bufferutils_mapping_owner *owner = NULL;
+  v1_view_lock(view);
+  if (!view->closed) {
+    view->closed = 1;
+    owner = view->owner;
+  }
+  v1_view_unlock(view);
+  if (owner != NULL) v1_mapping_release(owner);
   return BUFFERUTILS_V1_OK;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_mapped_is_closed(void *payload) {
   bufferutils_mapping_view *view = (bufferutils_mapping_view *)payload;
-  return !v1_view_ok(view);
+  if (view == NULL) return 1;
+  v1_view_lock(view);
+  int result = view->closed || view->owner == NULL ||
+    view->owner->error != BUFFERUTILS_V1_OK;
+  v1_view_unlock(view);
+  return result;
 }
 
 static void *v1_tcp_open_common(
@@ -1099,15 +1270,106 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_peer_port(void *payload) {
   return -BUFFERUTILS_V1_OPEN_FAILED;
 }
 
+static int v1_tcp_get_address(
+  bufferutils_socket_payload *socket,
+  int peer,
+  struct sockaddr_storage *address,
+#if defined(_WIN32)
+  int *len
+#else
+  socklen_t *len
+#endif
+) {
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
+  v1_socket_lock(socket);
+  if (socket->closed) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
+  int status = peer
+    ? getpeername(socket->socket, (struct sockaddr *)address, len)
+    : getsockname(socket->socket, (struct sockaddr *)address, len);
+  if (status != 0) {
+#if defined(_WIN32)
+    socket->os_error = WSAGetLastError();
+#else
+    socket->os_error = errno;
+#endif
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_OPEN_FAILED);
+    status = -socket->error;
+  }
+  v1_socket_unlock(socket);
+  return status;
+}
+
+static int32_t v1_tcp_family(void *payload, int peer) {
+  struct sockaddr_storage address;
+#if defined(_WIN32)
+  int len = (int)sizeof(address);
+#else
+  socklen_t len = (socklen_t)sizeof(address);
+#endif
+  int status = v1_tcp_get_address(
+    (bufferutils_socket_payload *)payload, peer, &address, &len
+  );
+  if (status != 0) return status;
+  if (address.ss_family == AF_INET) return 4;
+  if (address.ss_family == AF_INET6) return 6;
+  return -BUFFERUTILS_V1_UNSUPPORTED;
+}
+
+static moonbit_bytes_t v1_tcp_host(void *payload, int peer) {
+  struct sockaddr_storage address;
+#if defined(_WIN32)
+  int len = (int)sizeof(address);
+#else
+  socklen_t len = (socklen_t)sizeof(address);
+#endif
+  int status = v1_tcp_get_address(
+    (bufferutils_socket_payload *)payload, peer, &address, &len
+  );
+  if (status != 0) return moonbit_empty_int8_array;
+  char host[NI_MAXHOST];
+  status = getnameinfo(
+    (struct sockaddr *)&address, len, host, sizeof(host), NULL, 0,
+    NI_NUMERICHOST
+  );
+  if (status != 0) return moonbit_empty_int8_array;
+  size_t host_len = strlen(host);
+  moonbit_bytes_t result = moonbit_make_bytes_raw((int32_t)host_len);
+  if (host_len > 0) memcpy(result, host, host_len);
+  return result;
+}
+
+MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_tcp_local_host(void *payload) {
+  return v1_tcp_host(payload, 0);
+}
+
+MOONBIT_FFI_EXPORT moonbit_bytes_t bufferutils_tcp_peer_host(void *payload) {
+  return v1_tcp_host(payload, 1);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_local_family(void *payload) {
+  return v1_tcp_family(payload, 0);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_peer_family(void *payload) {
+  return v1_tcp_family(payload, 1);
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
   void *payload, uint8_t *dst, int32_t offset, int32_t len
 ) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (offset < 0 || len < 0 || (len > 0 && dst == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
   dst += offset;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->read_syscalls += 1;
 #if defined(_WIN32)
   int count = recv(socket->socket, (char *)dst, len, 0);
@@ -1122,19 +1384,24 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read(
 #endif
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
   }
+  int32_t returned = count < 0 ? -socket->error : count;
   v1_socket_unlock(socket);
-  return count < 0 ? -socket->error : count;
+  return returned;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(
   void *payload, const uint8_t *src, int32_t offset, int32_t len
 ) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (offset < 0 || len < 0 || (len > 0 && src == NULL)) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   if (len == 0) return 0;
   src += offset;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->write_syscalls += 1;
 #if defined(_WIN32)
   int count = send(socket->socket, (const char *)src, len, 0);
@@ -1149,8 +1416,9 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write(
 #endif
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
   }
+  int32_t returned = count < 0 ? -socket->error : count;
   v1_socket_unlock(socket);
-  return count < 0 ? -socket->error : count;
+  return returned;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_vectored(
@@ -1158,7 +1426,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_vectored(
   const int32_t *lengths, int32_t count
 ) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   int used = 0;
 #if defined(_WIN32)
@@ -1174,14 +1442,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_vectored(
   DWORD received = 0;
   DWORD flags = 0;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->read_syscalls += 1;
   int status = WSARecv(socket->socket, parts, (DWORD)used, &received, &flags, NULL, NULL);
   if (status != 0) {
     socket->os_error = WSAGetLastError();
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
   }
+  int32_t returned = status == 0 ? (int32_t)received : -socket->error;
   v1_socket_unlock(socket);
-  return status == 0 ? (int32_t)received : -socket->error;
+  return returned;
 #else
   struct iovec parts[64];
   for (int i = 0; i < count; i++) {
@@ -1193,14 +1466,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_vectored(
   }
   if (used == 0) return 0;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->read_syscalls += 1;
   ssize_t result = readv(socket->socket, parts, used);
   if (result < 0) {
     socket->os_error = errno;
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
   }
+  int32_t returned = result < 0 ? -socket->error : (int32_t)result;
   v1_socket_unlock(socket);
-  return result < 0 ? -socket->error : (int32_t)result;
+  return returned;
 #endif
 }
 
@@ -1209,7 +1487,7 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_vectored(
   const int32_t *lengths, int32_t count
 ) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  if (socket == NULL || socket->closed || socket->listener) return -BUFFERUTILS_V1_CLOSED;
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
   if (count < 0 || count > 64 || (count > 0 && (buffers == NULL || offsets == NULL || lengths == NULL))) return -BUFFERUTILS_V1_INVALID_ARGUMENT;
   int used = 0;
 #if defined(_WIN32)
@@ -1224,14 +1502,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_vectored(
   if (used == 0) return 0;
   DWORD sent = 0;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->write_syscalls += 1;
   int status = WSASend(socket->socket, parts, (DWORD)used, &sent, 0, NULL, NULL);
   if (status != 0) {
     socket->os_error = WSAGetLastError();
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
   }
+  int32_t returned = status == 0 ? (int32_t)sent : -socket->error;
   v1_socket_unlock(socket);
-  return status == 0 ? (int32_t)sent : -socket->error;
+  return returned;
 #else
   struct iovec parts[64];
   for (int i = 0; i < count; i++) {
@@ -1243,14 +1526,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_vectored(
   }
   if (used == 0) return 0;
   v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
   socket->write_syscalls += 1;
   ssize_t result = writev(socket->socket, parts, used);
   if (result < 0) {
     socket->os_error = errno;
     socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_WRITE_FAILED);
   }
+  int32_t returned = result < 0 ? -socket->error : (int32_t)result;
   v1_socket_unlock(socket);
-  return result < 0 ? -socket->error : (int32_t)result;
+  return returned;
 #endif
 }
 
@@ -1262,11 +1550,19 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_is_write_vectored(void *payload) {
 }
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_syscalls(void *payload) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  return socket == NULL ? 0 : socket->read_syscalls;
+  if (socket == NULL) return 0;
+  v1_socket_lock(socket);
+  int32_t result = socket->read_syscalls;
+  v1_socket_unlock(socket);
+  return result;
 }
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_syscalls(void *payload) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  return socket == NULL ? 0 : socket->write_syscalls;
+  if (socket == NULL) return 0;
+  v1_socket_lock(socket);
+  int32_t result = socket->write_syscalls;
+  v1_socket_unlock(socket);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_close(void *payload) {
@@ -1339,17 +1635,182 @@ MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_timeout(void *payload, int32_t read_m
   return 0;
 }
 
+static int32_t v1_tcp_get_timeout(void *payload, int option) {
+  bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
+  if (socket == NULL) return -BUFFERUTILS_V1_CLOSED;
+  v1_socket_lock(socket);
+  if (socket->closed || socket->listener) {
+    v1_socket_unlock(socket);
+    return -BUFFERUTILS_V1_CLOSED;
+  }
+#if defined(_WIN32)
+  DWORD timeout = 0;
+  int len = (int)sizeof(timeout);
+  int status = getsockopt(
+    socket->socket, SOL_SOCKET, option, (char *)&timeout, &len
+  );
+  int64_t milliseconds = timeout;
+#else
+  struct timeval timeout;
+  socklen_t len = (socklen_t)sizeof(timeout);
+  int status = getsockopt(socket->socket, SOL_SOCKET, option, &timeout, &len);
+  int64_t milliseconds =
+    (int64_t)timeout.tv_sec * 1000 + timeout.tv_usec / 1000;
+#endif
+  if (status != 0) {
+#if defined(_WIN32)
+    socket->os_error = WSAGetLastError();
+#else
+    socket->os_error = errno;
+#endif
+    socket->error = v1_status_from_os_error(socket->os_error, BUFFERUTILS_V1_READ_FAILED);
+    v1_socket_unlock(socket);
+    return -socket->error;
+  }
+  v1_socket_unlock(socket);
+  return milliseconds > INT32_MAX ? INT32_MAX : (int32_t)milliseconds;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_read_timeout(void *payload) {
+  return v1_tcp_get_timeout(payload, SO_RCVTIMEO);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_write_timeout(void *payload) {
+  return v1_tcp_get_timeout(payload, SO_SNDTIMEO);
+}
+
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_is_closed(void *payload) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  return socket == NULL || socket->closed;
+  if (socket == NULL) return 1;
+  v1_socket_lock(socket);
+  int32_t result = socket->closed;
+  v1_socket_unlock(socket);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_error(void *payload) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  return socket == NULL ? BUFFERUTILS_V1_INVALID_ARGUMENT : socket->error;
+  if (socket == NULL) return BUFFERUTILS_V1_INVALID_ARGUMENT;
+  v1_socket_lock(socket);
+  int32_t result = socket->error;
+  v1_socket_unlock(socket);
+  return result;
 }
 
 MOONBIT_FFI_EXPORT int32_t bufferutils_tcp_os_error(void *payload) {
   bufferutils_socket_payload *socket = (bufferutils_socket_payload *)payload;
-  return socket == NULL ? 0 : socket->os_error;
+  if (socket == NULL) return 0;
+  v1_socket_lock(socket);
+  int32_t result = socket->os_error;
+  v1_socket_unlock(socket);
+  return result;
+}
+
+typedef struct bufferutils_race_args {
+  void *payload;
+  int32_t resource;
+  int32_t operation;
+} bufferutils_race_args;
+
+static void v1_race_yield(void) {
+#if defined(_WIN32)
+  Sleep(0);
+#else
+  sched_yield();
+#endif
+}
+
+static void v1_run_race_operation(bufferutils_race_args *args) {
+  uint8_t byte = (uint8_t)'x';
+  if (args->operation == 2) {
+    for (int i = 0; i < 32; i++) v1_race_yield();
+    if (args->resource == 0) bufferutils_file_close(args->payload);
+    else if (args->resource == 1) bufferutils_tcp_close(args->payload);
+    else bufferutils_mapped_close(args->payload);
+    return;
+  }
+  for (int i = 0; i < 256; i++) {
+    if (args->resource == 0) {
+      if (args->operation == 0) {
+        bufferutils_file_read(args->payload, &byte, 0, 1);
+      } else {
+        bufferutils_file_write(args->payload, &byte, 0, 1);
+      }
+    } else if (args->resource == 1) {
+      if (args->operation == 0) {
+        bufferutils_tcp_read(args->payload, &byte, 0, 1);
+      } else {
+        bufferutils_tcp_write(args->payload, &byte, 0, 1);
+      }
+    } else if (args->operation == 0) {
+      bufferutils_mapped_read_byte(args->payload, 0);
+    } else {
+      bufferutils_mapped_find(args->payload, (int32_t)'x');
+    }
+    v1_race_yield();
+  }
+}
+
+#if defined(_WIN32)
+static DWORD WINAPI v1_race_worker(LPVOID payload) {
+  v1_run_race_operation((bufferutils_race_args *)payload);
+  return 0;
+}
+#else
+static void *v1_race_worker(void *payload) {
+  v1_run_race_operation((bufferutils_race_args *)payload);
+  return NULL;
+}
+#endif
+
+static int32_t v1_run_close_race(void *payload, int32_t resource) {
+  bufferutils_race_args args[3];
+#if defined(_WIN32)
+  HANDLE threads[3] = { NULL, NULL, NULL };
+#else
+  pthread_t threads[3];
+  int created = 0;
+#endif
+  for (int i = 0; i < 3; i++) {
+    args[i].payload = payload;
+    args[i].resource = resource;
+    args[i].operation = i;
+#if defined(_WIN32)
+    threads[i] = CreateThread(NULL, 0, v1_race_worker, &args[i], 0, NULL);
+    if (threads[i] == NULL) {
+      for (int j = 0; j < i; j++) {
+        WaitForSingleObject(threads[j], INFINITE);
+        CloseHandle(threads[j]);
+      }
+      return -1;
+    }
+#else
+    if (pthread_create(&threads[i], NULL, v1_race_worker, &args[i]) != 0) {
+      for (int j = 0; j < created; j++) pthread_join(threads[j], NULL);
+      return -1;
+    }
+    created += 1;
+#endif
+  }
+  for (int i = 0; i < 3; i++) {
+#if defined(_WIN32)
+    WaitForSingleObject(threads[i], INFINITE);
+    CloseHandle(threads[i]);
+#else
+    pthread_join(threads[i], NULL);
+#endif
+  }
+  return 0;
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_file_close_race(void *payload) {
+  return v1_run_close_race(payload, 0);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_tcp_close_race(void *payload) {
+  return v1_run_close_race(payload, 1);
+}
+
+MOONBIT_FFI_EXPORT int32_t bufferutils_test_mapped_close_race(void *payload) {
+  return v1_run_close_race(payload, 2);
 }

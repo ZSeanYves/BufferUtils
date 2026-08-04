@@ -1,73 +1,87 @@
 # BufferUtils
 
-BufferUtils 0.37 是 MoonBit 的零拷贝共享字节缓冲区与 I/O 工具库。核心路径
-使用 `FixedArray[Byte]` 加逻辑范围保存数据，slice、split、freeze 和缓冲
-尾部都共享存储；只有明确调用复制适配器时才物化新的 `Array` 或 Core
-`Bytes`。
+BufferUtils 是面向 MoonBit 的 pre-1.0 字节缓冲区与 I/O 工具库，覆盖共享
+字节存储、同步 I/O、异步 I/O 和原生 I/O。0.40 有意直接破坏 0.37 源码 API，
+不提供弃用兼容层。
 
-## 包结构
+当前源码版本为 `0.40.0-rc.1`。本仓库不会自动执行发布、打 tag 或创建
+GitHub Release。
 
-| 包 | 职责 | 目标 |
+## 包职责
+
+| 包 | 对外职责 | 目标 |
 | --- | --- | --- |
-| `buffer` | `SharedBytes`、`BytesMut`、`Buf`/`BufMut`、大小端 typed API | 全目标 |
-| `io` | 可失败同步读写、缓冲、seek 与组合器 | 全目标 |
-| `async_io` | 异步 trait、缓冲包装器、copy 与 stream adapter | native |
-| `native` | 文件、TCP、mmap、操作系统错误映射 | native |
+| `buffer` | `SharedBytes`、`BytesMut`、`Buf`/`BufMut` 和范围操作 | 全目标 |
+| `io` | 可失败的同步 I/O trait、缓冲、seek 和 adapter | 全目标 |
+| `async_io` | 支持取消的异步 trait、缓冲、duplex 和 copy | native |
+| `native` | 阻塞文件、TCP、mmap 和结构化 socket 地址 | native |
 
-安装固定版本：
+默认使用可移植的 `buffer`/`io`。`native` 是明确的操作系统边界，只能用于
+`native` 目标。
 
-```bash
-moon add ZSeanYves/bufferutils@0.37.0
+## 最小示例
+
+```moonbit
+let mutable = @buffer.BytesMut::new(capacity=32)
+mutable.put_u16_be(0x1234U.to_uint16())
+mutable.put_utf8("MoonBit")
+let bytes = mutable.freeze()
+let prefix = bytes.slice(0, 2)
 ```
 
-0.37 有意破坏 0.36 源码兼容性，升级前请阅读
-[`docs/MIGRATION_0.36_TO_0.37.md`](docs/MIGRATION_0.36_TO_0.37.md)。
+`SharedBytes::from_fixed_array` 会复制指定范围。只有调用者独占 backing 且
+能保证后续不再修改源数组时，才可使用不安全的
+`unsafe_adopt_fixed_array`。`clone`、`slice`、`split`、`freeze` 共享存储，
+可变别名写入时通过 COW 分离。
 
-## 零拷贝与缓冲区
+同步 `BufReader::lines` 和 `split` 是惰性游标：
 
-`SharedBytes` 的 clone、slice、split_to、split_off 和 `BytesMut::freeze`
-共享 backing allocation。对冻结或别名范围写入时只对需要修改的范围执行
-COW。`SharedBytes::as_bytes_view()` 返回固定存储上的借用 Core view，不分配；
-`to_array`、`to_bytes`、`read_array`、`write_array` 明确表示复制边界。
+```moonbit
+let reader = @io.BufReader::new(@io.MemoryReader::new(b"one\ntwo\n"))
+let lines = reader.lines()
+while lines.next() is Some(line) {
+  process(line)
+}
+```
 
-支持有符号/无符号整数、`f32`/`f64`、大小端、UTF-8、自动扩容、spare
-capacity、reclaim、split/unsplit。underflow、overflow、非法 UTF-8 和非法
-范围都会返回 `BufferError`，并保持游标不变。
+## API 约定
 
-## 同步、native 与异步 I/O
+`pkg.generated.mbti` 是唯一权威的公开接口。命名统一为：方法和字段使用
+lower snake case，类型使用 PascalCase，异步对应物使用 `Async` 前缀，操作系统
+资源使用 `Native` 前缀。`get_ref`/`get_mut` 借用包装值，`into_inner` 消费
+包装器。view 只保证在所属对象的下一次操作前有效。
 
-`Read` 主接口借用 `FixedArray[Byte]` 范围，`Write` 主接口借用 `Bytes` 范围；
-Array 便利接口会显式复制。`read_exact`/`write_all` 处理短读短写、
-`Interrupted`、EOF 与 `WriteZero`。
+内存、I/O 和 native 的计数器只是测试与 benchmark 的诊断钩子，不是同步原语或
+正确性状态。`examples` 包属于可执行文档，不纳入四个核心包的兼容承诺。
 
-`BufReader` 提供 `buffer`、`peek`、`seek_relative`、`skip_until`、`lines`、
-`split`；`BufWriter` 使用 start/end 游标，只在必要时 compact，并通过
-`into_parts` 保留零拷贝 pending tail。还包含 Cursor、Empty、Repeat、Take、
-Chain、LineWriter、BufStream 和内存 duplex。
+0.40 的稳定范围包括可表达的 8/16/32/64 位整数和浮点 typed helpers、短读写与
+错误合同、惰性游标、vectored fallback、buffer 恢复、有界内存 duplex 以及
+native close 安全。TLS、压缩、UDP、codec 框架、io_uring、Rust 所有权等价、
+u128/i128 和未初始化内存接口不在本版本范围内。
 
-native 资源独立管理，带锁、幂等 close 和 finalizer 兜底；文件支持
-OpenOptions、seek、flush、`sync_all`/`sync_data` 和 mmap。POSIX 文件和 TCP
-使用 `readv`/`writev`，Windows socket 使用 `WSARecv`/`WSASend`；Windows
-文件明确回退到 scalar I/O。TCP 支持读、写及双向半关闭、timeout 与本地/对端
-端口元数据。
-
-async_io 复用同步接口的范围校验，copy 复用单一固定缓冲并保留取消时已提交的
-进度。runtime 错误统一映射为 `IoError`，取消错误原样传播；异步缓冲 writer
-在 shutdown 前排空 pending 数据，TCP adapter 执行真实 write-half shutdown。
-
-TLS、压缩、UDP、完整 codec、io_uring 和 Rust 所有权类型系统等价性不在范围内。
-
-## 验证
+## 验证与证据
 
 ```bash
-moon info && scripts/normalize_interfaces && moon fmt
+moon fmt --check
+moon info --target all
+scripts/normalize_interfaces
+git diff --exit-code
 moon check --target all --deny-warn
 moon test --target all --deny-warn
+moon doc --frozen
 scripts/check_api_surface
-moon check examples --target native --deny-warn
-moon test examples --target native --deny-warn
-moon run bench --target native --release > .tmp/bufferutils-bench/results.csv
-scripts/check_performance_budget
+scripts/check_critical_contracts
 ```
 
-详细合同、对齐矩阵、性能方法和 native 安全说明见 `docs/`。
+CI 还要求总体覆盖率至少 95%，四个核心包各至少 90%，并执行 sanitizer 并发
+检查、benchmark 结构计数和逐 case MoonBit/Rust 回归门禁。这些门禁不承诺
+MoonBit 吞吐绝对追平 Rust。
+
+请先阅读 [`docs/API_SURFACE.md`](docs/API_SURFACE.md) 了解公开边界，升级时阅读
+[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md)，发布前按
+[`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) 手工审查和验证 consumer。
+
+详细语义与验证证据见 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)、
+[`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md)、
+[`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md) 和
+[`docs/BENCHMARK.md`](docs/BENCHMARK.md)。

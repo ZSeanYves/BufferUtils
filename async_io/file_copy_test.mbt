@@ -22,9 +22,9 @@ async test "async copy reuses bounded chunks and reports committed progress" {
   let progress = copy_file(source, destination, buffer_size=3, on_progress=fn(
     current,
   ) {
-    observations.push(current.bytes)
+    observations.push(current.bytes_copied)
   })
-  assert_eq(progress.bytes, data.length())
+  assert_eq(progress.bytes_copied, data.length())
   assert_eq(progress.write_calls, 6)
   assert_eq(progress.read_calls, 7)
   assert_eq(observations, [3, 6, 9, 12, 15, 16])
@@ -54,7 +54,7 @@ async test "async copy cancellation leaves only committed progress observable" {
   @async.with_task_group(root => {
     let task = root.spawn(() => {
       copy_file(source, destination, buffer_size=1, on_progress=fn(current) {
-        committed = current.bytes
+        committed = current.bytes_copied
       })
     })
     @async.pause()

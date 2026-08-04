@@ -1,4 +1,5 @@
 ///|
+/// A cancellation-aware buffered writer over an `AsyncWrite` implementation.
 pub struct AsyncBufWriter[W] {
   inner : W
   buffer : FixedArray[Byte]
@@ -25,7 +26,8 @@ pub fn[W] AsyncBufWriter::new(
 }
 
 ///|
-pub fn[W] AsyncBufWriter::pending_len(self : AsyncBufWriter[W]) -> Int {
+/// Return the number of bytes currently buffered for writing.
+pub fn[W] AsyncBufWriter::buffered_len(self : AsyncBufWriter[W]) -> Int {
   self.end - self.start
 }
 
@@ -45,7 +47,11 @@ pub fn[W] AsyncBufWriter::into_parts(
 ) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {
   (
     self.inner,
-    @buffer.SharedBytes::from_fixed_array(self.buffer, self.start, self.end),
+    @buffer.SharedBytes::unsafe_adopt_fixed_array(
+      self.buffer,
+      self.start,
+      self.end,
+    ),
   )
 }
 
@@ -53,19 +59,19 @@ pub fn[W] AsyncBufWriter::into_parts(
 async fn[W : AsyncWrite] AsyncBufWriter::flush_buffer(
   self : AsyncBufWriter[W],
 ) -> Unit {
-  while self.pending_len() > 0 {
+  while self.buffered_len() > 0 {
     @async.protect_from_cancel(() => {
       let pending = self.buffer.unsafe_reinterpret_as_bytes()
       let count = AsyncWrite::write(
         self.inner,
         pending,
         offset=self.start,
-        len=self.pending_len(),
+        len=self.buffered_len(),
       )
       if count == 0 {
         raise @syncio.io_error(@syncio.WriteZero, "async buffered flush")
       }
-      if count < 0 || count > self.pending_len() {
+      if count < 0 || count > self.buffered_len() {
         raise @syncio.io_error(
           @syncio.ContractViolation,
           "async buffered flush",
@@ -88,7 +94,7 @@ pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W] with fn write(
   if offset < 0 || len < 0 || offset > source.length() - len {
     raise @syncio.io_error(@syncio.InvalidInput, "async buffered write")
   }
-  if self.pending_len() == 0 && len >= self.capacity {
+  if self.buffered_len() == 0 && len >= self.capacity {
     return AsyncWrite::write(self.inner, source, offset~, len~)
   }
   if self.end == self.capacity {

@@ -1,4 +1,4 @@
-# BufferUtils 0.37 API Contract
+# BufferUtils 0.40 API Contract
 
 All byte ranges validate `offset >= 0`, `length >= 0`, and
 `offset + length <= storage.length`. Invalid ranges raise `InvalidInput` (I/O)
@@ -15,9 +15,10 @@ range is reachable. `as_bytes_view`, `BytesMut::freeze`, split, and buffered
 pending tails do not copy; `to_array`, `to_bytes`, and `read_array`/
 `write_array` are explicit copy boundaries.
 
-`SharedBytes::from_fixed_array` validates the complete adopted range and raises
-`BufferError::InvalidRange` before constructing a view. Adoption is zero-copy,
-so the caller must not mutate the fixed array afterward.
+`SharedBytes::from_fixed_array` validates and copies the selected range, so
+later caller mutation cannot change the immutable value.
+`unsafe_adopt_fixed_array` is the explicit zero-copy constructor; its caller
+must not mutate the fixed array while any derived shared value is reachable.
 
 `BufRead::fill_buf` and async `AsyncBufRead::fill_buf` borrow internal storage.
 The view must not be retained across the next operation on that reader.

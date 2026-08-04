@@ -29,6 +29,18 @@ pub fn BytesMut::new(
 }
 
 ///|
+/// Create a buffer containing `length` initialized zero bytes.
+pub fn BytesMut::zeroed(
+  length : Int,
+  max_capacity? : Int = 2147483647,
+) -> BytesMut raise BufferError {
+  let result = BytesMut::new(capacity=length, max_capacity~)
+  result.end = length
+  result
+}
+
+///|
+/// Create a mutable buffer from an initialized byte view by copying it.
 pub fn BytesMut::from_array(
   data : ArrayView[Byte],
   max_capacity? : Int = 2147483647,
@@ -39,11 +51,13 @@ pub fn BytesMut::from_array(
 }
 
 ///|
+/// Return the number of initialized bytes.
 pub fn BytesMut::len(self : BytesMut) -> Int {
   self.end - self.start
 }
 
 ///|
+/// Test whether no initialized bytes remain.
 pub fn BytesMut::is_empty(self : BytesMut) -> Bool {
   self.len() == 0
 }
@@ -56,6 +70,11 @@ pub fn BytesMut::capacity(self : BytesMut) -> Int {
 ///|
 pub fn BytesMut::remaining_mut(self : BytesMut) -> Int {
   self.max_capacity - self.len()
+}
+
+///|
+pub fn BytesMut::has_remaining_mut(self : BytesMut) -> Bool {
+  self.remaining_mut() > 0
 }
 
 ///|
@@ -161,6 +180,26 @@ pub fn BytesMut::resize(
 }
 
 ///|
+/// Append a copy of an initialized sub-range of this buffer.
+pub fn BytesMut::extend_from_within(
+  self : BytesMut,
+  start : Int,
+  end : Int,
+) -> Unit raise BufferError {
+  let original_len = self.len()
+  if start < 0 || end < start || end > original_len {
+    raise BufferError::InvalidRange("source range is outside the buffer")
+  }
+  let count = end - start
+  self.reserve(count)
+  let source_start = self.start + start
+  for i in 0..<count {
+    self.storage.data[self.end + i] = self.storage.data[source_start + i]
+  }
+  self.end += count
+}
+
+///|
 pub fn BytesMut::put_byte(
   self : BytesMut,
   value : Byte,
@@ -178,6 +217,19 @@ pub fn BytesMut::put_slice(
   self.reserve(source.length())
   for i, byte in source {
     self.storage.data[self.end + i] = byte
+  }
+  self.end += source.length()
+}
+
+///|
+/// Append a Core `BytesView` without allocating an intermediate array.
+pub fn BytesMut::put_bytes_view(
+  self : BytesMut,
+  source : BytesView,
+) -> Unit raise BufferError {
+  self.reserve(source.length())
+  for i in 0..<source.length() {
+    self.storage.data[self.end + i] = source[i]
   }
   self.end += source.length()
 }
@@ -485,4 +537,27 @@ pub fn[T] BytesMut::with_spare_capacity(
 ///|
 pub fn BytesMut::copied_bytes(self : BytesMut) -> Int {
   self.storage.copied_bytes
+}
+
+///|
+pub impl Eq for BytesMut with fn equal(self, other) {
+  let left = self.view()
+  let right = other.view()
+  if left.length() != right.length() {
+    return false
+  }
+  for i in 0..<left.length() {
+    if left[i] != right[i] {
+      return false
+    }
+  }
+  true
+}
+
+///|
+pub impl @debug.Debug for BytesMut with fn to_repr(self) {
+  @debug.Repr::opaque_(
+    "BytesMut",
+    @debug.Repr::array(self.view().map(byte => Repr(byte))),
+  )
 }

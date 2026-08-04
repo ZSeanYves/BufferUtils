@@ -24,7 +24,7 @@ fn read_example_file(path : String) -> Bytes raise @io.IoError {
 test "shared buffer and text examples execute" {
   let shared = shared_buffer_example()
   assert_eq(shared.remaining(), 11)
-  assert_eq(parse_lines_example(b"one\ntwo\n"), ["one\n", "two\n"])
+  assert_eq(parse_lines_example(b"one\ntwo\n"), ["one", "two"])
 }
 
 ///|

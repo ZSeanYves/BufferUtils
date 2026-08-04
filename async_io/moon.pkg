@@ -2,12 +2,14 @@ import {
   "ZSeanYves/bufferutils/buffer",
   "ZSeanYves/bufferutils/io" @syncio,
   "moonbitlang/async",
+  "moonbitlang/async/aqueue",
   "moonbitlang/async/fs",
   "moonbitlang/async/io" @runtime_io,
   "moonbitlang/async/os_error",
   "moonbitlang/async/types" @async_types,
   "moonbitlang/async/socket",
   "moonbitlang/core/debug",
+  "moonbitlang/core/encoding/utf8",
 }
 
 import {

@@ -315,8 +315,19 @@ test "NativeTcp performs a loopback roundtrip and closes idempotently" {
   assert_true(port > 0)
   let client = NativeTcpStream::connect("127.0.0.1", port)
   let server = listener.accept()
+  assert_eq(client.read_timeout_ms(), None)
+  assert_eq(client.write_timeout_ms(), None)
   assert_true(client.local_port() > 0)
   assert_eq(client.peer_port(), port)
+  let client_local = client.local_addr()
+  let client_peer = client.peer_addr()
+  let listener_local = listener.local_addr()
+  assert_eq(client_local.family, SocketAddressFamily::Ipv4)
+  assert_eq(client_peer.family, SocketAddressFamily::Ipv4)
+  assert_eq(client_local.host, "127.0.0.1")
+  assert_eq(client_peer.host, "127.0.0.1")
+  assert_eq(client_peer.port, port)
+  assert_eq(listener_local.port, port)
   let empty = FixedArray::make(1, (0).to_byte())
   assert_eq(@io.Read::read(client, empty, 0, 0), 0)
   assert_eq(@io.Write::write(client, b"", 0, 0), 0)
@@ -340,6 +351,8 @@ test "NativeTcp performs a loopback roundtrip and closes idempotently" {
   @io.Read::read_exact(client, response.mut_view())
   assert_eq(response, [b'p', b'o', b'n', b'g'])
   client.set_timeouts(1000, 1000)
+  assert_eq(client.read_timeout_ms(), Some(1000))
+  assert_eq(client.write_timeout_ms(), Some(1000))
   client.shutdown_both()
   server.shutdown_both()
 
@@ -352,10 +365,81 @@ test "NativeTcp performs a loopback roundtrip and closes idempotently" {
     error => error.kind() == @io.Closed
   }
   assert_eq(closed_read, true)
+  let closed_destinations = [@io.IoSliceMut::new(request, 0, 1)]
+  assert_eq(
+    try {
+      ignore(@io.Read::read_vectored(client, closed_destinations[:]))
+      false
+    } catch {
+      error => error.kind() == @io.Closed
+    },
+    true,
+  )
+  let closed_sources = [@io.IoSlice::new(b"x", 0, 1)]
+  assert_eq(
+    try {
+      ignore(@io.Write::write_vectored(client, closed_sources[:]))
+      false
+    } catch {
+      error => error.kind() == @io.Closed
+    },
+    true,
+  )
+  assert_eq(
+    try {
+      ignore(client.local_addr())
+      false
+    } catch {
+      error => error.kind() == @io.Closed
+    },
+    true,
+  )
+  assert_eq(
+    try {
+      ignore(client.read_timeout_ms())
+      false
+    } catch {
+      error => error.kind() == @io.Closed
+    },
+    true,
+  )
+  assert_eq(
+    try {
+      ignore(client.write_timeout_ms())
+      false
+    } catch {
+      error => error.kind() == @io.Closed
+    },
+    true,
+  )
   @io.Close::close(server)
   @io.Close::close(listener)
   assert_eq(@io.Close::is_closed(client), true)
   assert_eq(@io.Close::is_closed(listener), true)
+}
+
+///|
+test "native access-mode and closed mmap branches remain structured" {
+  ensure_native_test_dir()
+  let path = native_test_dir + "/access-mode.bin"
+  let writer = NativeFile::create(path)
+  let destination = FixedArray::make(1, b'-')
+  let destinations = [@io.IoSliceMut::new(destination, 0, 1)]
+  assert_eq(
+    try {
+      ignore(@io.Read::read_vectored(writer, destinations[:]))
+      false
+    } catch {
+      error => error.kind() == @io.InvalidInput
+    },
+    true,
+  )
+  @io.Close::close(writer)
+  @fs.write_bytes_to_file(path, b"abc")
+  let mapped = MappedBytes::open(path)
+  assert_eq(mapped.len(), 3)
+  @io.Close::close(mapped)
+  assert_eq(mapped.len(), 0)
 }
 
 ///|

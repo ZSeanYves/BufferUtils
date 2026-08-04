@@ -36,6 +36,14 @@ pub fn IoError::progress(Self) -> Int
 pub fn IoError::raw_code(Self) -> Int
 
 // Types and methods
+pub struct BufMutWriterAdapter[B] {
+  inner : B
+}
+pub fn[B] BufMutWriterAdapter::get_ref(Self[B]) -> B
+pub fn[B] BufMutWriterAdapter::into_inner(Self[B]) -> B
+pub fn[B] BufMutWriterAdapter::new(B) -> Self[B]
+pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B]
+
 type BufReader[R]
 pub fn[R] BufReader::buffer(Self[R]) -> ArrayView[Byte]
 pub fn[R] BufReader::buffered_len(Self[R]) -> Int
@@ -45,15 +53,24 @@ pub fn[R] BufReader::get_mut(Self[R]) -> R
 pub fn[R] BufReader::get_ref(Self[R]) -> R
 pub fn[R] BufReader::into_inner(Self[R]) -> R
 pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
-pub fn[R : Read] BufReader::lines(Self[R]) -> Array[String] raise IoError
+pub fn[R] BufReader::lines(Self[R]) -> Lines[R]
 pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
 pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
 pub fn[R : Seek] BufReader::seek_relative(Self[R], Int64) -> Unit raise IoError
-pub fn[R : Read] BufReader::split(Self[R], Byte) -> Array[Array[Byte]] raise IoError
+pub fn[R] BufReader::split(Self[R], Byte) -> Split[R]
 pub fn[R] BufReader::underlying_read_calls(Self[R]) -> Int
 pub impl[R : Read] BufRead for BufReader[R]
 pub impl[R : Read] Read for BufReader[R]
 pub impl[R : Seek] Seek for BufReader[R]
+
+pub struct BufReaderAdapter[B] {
+  inner : B
+}
+pub fn[B] BufReaderAdapter::get_ref(Self[B]) -> B
+pub fn[B] BufReaderAdapter::into_inner(Self[B]) -> B
+pub fn[B] BufReaderAdapter::new(B) -> Self[B]
+pub impl[B : @buffer.Buf] BufRead for BufReaderAdapter[B]
+pub impl[B : @buffer.Buf] Read for BufReaderAdapter[B]
 
 pub struct BufStream[R, W] {
   reader : BufReader[R]
@@ -65,6 +82,7 @@ pub impl[R : Read, W] Read for BufStream[R, W]
 pub impl[R, W : Write] Write for BufStream[R, W]
 
 type BufWriter[W]
+pub fn[W] BufWriter::buffer(Self[W]) -> ArrayView[Byte]
 pub fn[W] BufWriter::buffered_len(Self[W]) -> Int
 pub fn[W] BufWriter::bypass_write_calls(Self[W]) -> Int
 pub fn[W] BufWriter::capacity(Self[W]) -> Int
@@ -179,27 +197,21 @@ pub fn[W] LineWriter::into_parts(Self[W]) -> (W, Bytes)
 pub fn[W] LineWriter::new(W) -> Self[W]
 pub impl[W : Write] Write for LineWriter[W]
 
-pub struct MemoryPipe {
+pub struct Lines[R] {
+  reader : BufReader[R]
 }
+pub fn[R] Lines::into_inner(Self[R]) -> BufReader[R]
+pub fn[R : Read] Lines::next(Self[R]) -> String? raise IoError
+
+type MemoryPipe
 pub fn MemoryPipe::new() -> (MemoryPipeReader, MemoryPipeWriter)
 
-pub struct MemoryPipeReader {
-  state : MemoryPipeState
-}
+type MemoryPipeReader
 pub impl BufRead for MemoryPipeReader
 pub impl Close for MemoryPipeReader
 pub impl Read for MemoryPipeReader
 
-pub struct MemoryPipeState {
-  data : Array[Byte]
-  mut position : Int
-  mut writer_closed : Bool
-  mut reader_closed : Bool
-}
-
-pub struct MemoryPipeWriter {
-  state : MemoryPipeState
-}
+type MemoryPipeWriter
 pub impl Close for MemoryPipeWriter
 pub impl Write for MemoryPipeWriter
 
@@ -228,6 +240,13 @@ pub(all) enum SeekFrom {
   End(Int64)
 } derive(Eq, @debug.Debug)
 
+pub struct Split[R] {
+  reader : BufReader[R]
+  delimiter : Byte
+}
+pub fn[R] Split::into_inner(Self[R]) -> BufReader[R]
+pub fn[R : Read] Split::next(Self[R]) -> Bytes? raise IoError
+
 pub struct Take[R] {
   inner : R
   mut remaining : Int64
@@ -243,6 +262,7 @@ pub impl[R : Read] Read for Take[R]
 pub(open) trait BufRead : Read {
   fn fill_buf(Self) -> ArrayView[Byte] raise IoError
   fn consume(Self, Int) -> Unit raise IoError
+  fn has_data_left(Self) -> Bool raise IoError = _
   fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
   fn skip_until(Self, Byte) -> Int raise IoError = _
   fn read_line(Self, StringBuilder) -> Int raise IoError = _

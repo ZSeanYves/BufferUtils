@@ -192,6 +192,22 @@ extern "C" fn native_tcp_local_port_ffi(listener : NativeSocketHandle) -> Int = 
 extern "C" fn native_tcp_peer_port_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_peer_port"
 
 ///|
+#borrow(socket)
+extern "C" fn native_tcp_local_host_ffi(socket : NativeSocketHandle) -> Bytes = "bufferutils_tcp_local_host"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_peer_host_ffi(socket : NativeSocketHandle) -> Bytes = "bufferutils_tcp_peer_host"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_local_family_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_local_family"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_peer_family_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_peer_family"
+
+///|
 #borrow(socket, destination)
 extern "C" fn native_tcp_read_ffi(
   socket : NativeSocketHandle,
@@ -267,6 +283,14 @@ extern "C" fn native_tcp_timeout_ffi(
   read_ms : Int,
   write_ms : Int,
 ) -> Int = "bufferutils_tcp_timeout"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_read_timeout_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_read_timeout"
+
+///|
+#borrow(socket)
+extern "C" fn native_tcp_write_timeout_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_write_timeout"
 
 ///|
 #borrow(socket)

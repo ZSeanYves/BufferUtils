@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output_dir=${1:?usage: scripts/merge_performance_batches OUTPUT_DIR}
+
+for prefix in moonbit moonbit-async rust; do
+  for batch in 1 2 3; do
+    file="$output_dir/$prefix-batch-$batch.csv"
+    [[ -f "$file" ]] || {
+      echo "missing benchmark batch: $file" >&2
+      exit 1
+    }
+  done
+done
+
+head -n 1 "$output_dir/moonbit-batch-1.csv" > "$output_dir/moonbit.csv"
+for batch in 1 2 3; do
+  tail -n +2 "$output_dir/moonbit-batch-$batch.csv" >> "$output_dir/moonbit.csv"
+done
+for batch in 1 2 3; do
+  tail -n +2 "$output_dir/moonbit-async-batch-$batch.csv" \
+    >> "$output_dir/moonbit.csv"
+done
+
+head -n 1 "$output_dir/moonbit-async-batch-1.csv" \
+  > "$output_dir/moonbit-async.csv"
+for batch in 1 2 3; do
+  tail -n +2 "$output_dir/moonbit-async-batch-$batch.csv" \
+    >> "$output_dir/moonbit-async.csv"
+done
+
+head -n 1 "$output_dir/rust-batch-1.csv" > "$output_dir/rust.csv"
+for batch in 1 2 3; do
+  tail -n +2 "$output_dir/rust-batch-$batch.csv" >> "$output_dir/rust.csv"
+done

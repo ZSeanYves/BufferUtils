@@ -1,25 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-output=${1:?usage: build_performance_baseline OUTPUT.csv BATCH1.csv BATCH2.csv BATCH3.csv}
-shift
-[[ $# -eq 3 ]] || { printf 'expected three batch CSV files\n' >&2; exit 1; }
+output=${1:?usage: build_performance_baseline OUTPUT.csv MOONBIT.csv RUST.csv}
+moonbit_csv=${2:?missing MoonBit CSV}
+rust_csv=${3:?missing Rust CSV}
+
+for file in "$moonbit_csv" "$rust_csv"; do
+  [[ -f "$file" ]] || {
+    printf 'benchmark CSV not found: %s\n' "$file" >&2
+    exit 1
+  }
+done
 
 awk -F, '
-FNR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+FNR == 1 { next }
 {
-  key = $(col["name"]) SUBSEP $(col["size"])
-  name[key] = $(col["name"]); size[key] = $(col["size"]); bytes[key] = $(col["bytes"]); temp[key] = $(col["temp_file"])
-  median[key, FILENAME] = $(col["median_us"])
+  implementation = $1
+  if ($2 ~ /^native_/ || $2 ~ /^tcp_loopback/) next
+  key = $2 SUBSEP $3
+  batch = $4 + 0
+  timing[implementation, key, batch] = ($6 + 0) / ($5 + 0)
+  name[key] = $2
+  size[key] = $3
 }
 END {
-  print "name,size,bytes,temp_file,median_us"
+  print "name,size,moonbit_over_rust"
   for (key in name) {
-    a = median[key, ARGV[1]]; b = median[key, ARGV[2]]; c = median[key, ARGV[3]]
+    count = 0
+    for (batch = 1; batch <= 3; batch++) {
+      moon_key = "moonbit" SUBSEP key SUBSEP batch
+      rust_key = "rust" SUBSEP key SUBSEP batch
+      if ((moon_key in timing) && (rust_key in timing)) {
+        values[++count] = timing[moon_key] / timing[rust_key]
+      }
+    }
+    if (count != 3) continue
+    a = values[1]; b = values[2]; c = values[3]
     if (a > b) { t = a; a = b; b = t }
     if (b > c) { t = b; b = c; c = t }
     if (a > b) { t = a; a = b; b = t }
-    print name[key] "," size[key] "," bytes[key] "," temp[key] "," b
+    print name[key] "," size[key] "," b
+    delete values
   }
 }
-' "$@" > "$output"
+' "$moonbit_csv" "$rust_csv" | {
+  IFS= read -r header
+  printf '%s\n' "$header"
+  sort -t, -k1,1 -k2,2n
+} > "$output"

@@ -4,6 +4,7 @@ package "ZSeanYves/bufferutils/async_io"
 import {
   "ZSeanYves/bufferutils/buffer",
   "ZSeanYves/bufferutils/io",
+  "moonbitlang/async/aqueue",
   "moonbitlang/async/fs",
   "moonbitlang/async/socket",
   "moonbitlang/core/debug",
@@ -14,7 +15,11 @@ pub async fn[R : AsyncRead, W : AsyncWrite] copy(R, W, buffer_size? : Int) -> In
 
 pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional(A, B) -> (Int, Int)
 
+pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional_with_sizes(A, B, Int, Int) -> (Int, Int)
+
 pub async fn copy_file(StringView, StringView, buffer_size? : Int, on_progress? : (CopyProgress) -> Unit) -> CopyProgress
+
+pub fn duplex(capacity? : Int) -> (AsyncDuplexStream, AsyncDuplexStream) raise @io.IoError
 
 pub async fn read_file(StringView) -> Bytes
 
@@ -38,10 +43,22 @@ pub fn[R] AsyncBufReader::get_mut(Self[R]) -> R
 pub fn[R] AsyncBufReader::get_ref(Self[R]) -> R
 pub fn[R] AsyncBufReader::into_inner(Self[R]) -> R
 pub fn[R] AsyncBufReader::into_parts(Self[R]) -> (R, Bytes)
+pub fn[R] AsyncBufReader::lines(Self[R]) -> AsyncLines[R]
 pub fn[R] AsyncBufReader::new(R, capacity? : Int) -> Self[R] raise @io.IoError
+pub fn[R] AsyncBufReader::split(Self[R], Byte) -> AsyncSplit[R]
 pub impl[R : AsyncRead] AsyncBufRead for AsyncBufReader[R]
 pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R]
 pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]
+
+pub struct AsyncBufStream[R, W] {
+  reader : AsyncBufReader[R]
+  writer : AsyncBufWriter[W]
+}
+pub fn[R, W] AsyncBufStream::into_parts(Self[R, W]) -> (AsyncBufReader[R], AsyncBufWriter[W])
+pub fn[R, W] AsyncBufStream::new(R, W, capacity? : Int) -> Self[R, W] raise @io.IoError
+pub impl[R : AsyncRead, W] AsyncBufRead for AsyncBufStream[R, W]
+pub impl[R : AsyncRead, W] AsyncRead for AsyncBufStream[R, W]
+pub impl[R, W : AsyncWrite] AsyncWrite for AsyncBufStream[R, W]
 
 pub struct AsyncBufWriter[W] {
   inner : W
@@ -50,14 +67,36 @@ pub struct AsyncBufWriter[W] {
   mut end : Int
   capacity : Int
 }
+pub fn[W] AsyncBufWriter::buffered_len(Self[W]) -> Int
 pub async fn[W : AsyncWrite] AsyncBufWriter::finish(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_mut(Self[W]) -> W
 pub fn[W] AsyncBufWriter::get_ref(Self[W]) -> W
 pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
 pub fn[W] AsyncBufWriter::new(W, capacity? : Int) -> Self[W] raise @io.IoError
-pub fn[W] AsyncBufWriter::pending_len(Self[W]) -> Int
 pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]
 pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W]
+
+pub struct AsyncChain[A, B] {
+  first : A
+  second : B
+  mut first_done : Bool
+}
+pub fn[A, B] AsyncChain::new(A, B) -> Self[A, B]
+pub impl[A : AsyncRead, B : AsyncRead] AsyncRead for AsyncChain[A, B]
+
+pub struct AsyncDuplexStream {
+  incoming : @aqueue.Queue[Bytes]
+  outgoing : @aqueue.Queue[Bytes]
+  capacity : Int
+  mut pending : Bytes
+  mut pending_offset : Int
+  mut read_closed : Bool
+  mut write_closed : Bool
+}
+pub fn AsyncDuplexStream::capacity(Self) -> Int
+pub impl AsyncClose for AsyncDuplexStream
+pub impl AsyncRead for AsyncDuplexStream
+pub impl AsyncWrite for AsyncDuplexStream
 
 pub struct AsyncFile {
   file : @fs.File
@@ -70,6 +109,12 @@ pub impl AsyncClose for AsyncFile
 pub impl AsyncRead for AsyncFile
 pub impl AsyncSeek for AsyncFile
 pub impl AsyncWrite for AsyncFile
+
+pub struct AsyncLines[R] {
+  reader : AsyncBufReader[R]
+}
+pub fn[R] AsyncLines::into_inner(Self[R]) -> AsyncBufReader[R]
+pub async fn[R : AsyncRead] AsyncLines::next(Self[R]) -> String?
 
 pub struct AsyncMemoryReader {
   data : Bytes
@@ -85,8 +130,8 @@ pub struct AsyncMemoryWriter {
   data : Array[Byte]
   mut closed : Bool
 }
-pub fn AsyncMemoryWriter::bytes(Self) -> Bytes
 pub fn AsyncMemoryWriter::new() -> Self
+pub fn AsyncMemoryWriter::to_bytes(Self) -> Bytes
 pub impl AsyncClose for AsyncMemoryWriter
 pub impl AsyncWrite for AsyncMemoryWriter
 
@@ -95,6 +140,21 @@ pub(all) enum AsyncSeekFrom {
   Current(Int64)
   End(Int64)
 } derive(Eq, @debug.Debug)
+
+pub struct AsyncSplit[R] {
+  reader : AsyncBufReader[R]
+  delimiter : Byte
+}
+pub fn[R] AsyncSplit::into_inner(Self[R]) -> AsyncBufReader[R]
+pub async fn[R : AsyncRead] AsyncSplit::next(Self[R]) -> Bytes?
+
+pub struct AsyncTake[R] {
+  inner : R
+  mut remaining : Int64
+}
+pub fn[R] AsyncTake::new(R, Int64) -> Self[R] raise @io.IoError
+pub fn[R] AsyncTake::remaining(Self[R]) -> Int64
+pub impl[R : AsyncRead] AsyncRead for AsyncTake[R]
 
 pub struct AsyncTcpListener {
   server : @socket.TcpServer
@@ -115,7 +175,7 @@ pub impl AsyncRead for AsyncTcpStream
 pub impl AsyncWrite for AsyncTcpStream
 
 pub(all) struct CopyProgress {
-  bytes : Int
+  bytes_copied : Int
   read_calls : Int
   write_calls : Int
 } derive(Eq, @debug.Debug)
@@ -126,6 +186,7 @@ pub(all) struct CopyProgress {
 pub(open) trait AsyncBufRead : AsyncRead {
   async fn fill_buf(Self) -> ArrayView[Byte]
   fn consume(Self, Int) -> Unit raise @io.IoError
+  async fn has_data_left(Self) -> Bool = _
   async fn read_until(Self, Byte) -> Bytes = _
 }
 
@@ -138,6 +199,24 @@ pub(open) trait AsyncRead {
   async fn read(Self, FixedArray[Byte], offset? : Int, max_len? : Int) -> Int
   async fn read_exact(Self, FixedArray[Byte], offset? : Int, len? : Int) -> Unit = _
   async fn read_to_end(Self) -> Bytes = _
+  async fn read_u8(Self) -> Byte = _
+  async fn read_i8(Self) -> Int = _
+  async fn read_u16_be(Self) -> UInt16 = _
+  async fn read_u16_le(Self) -> UInt16 = _
+  async fn read_i16_be(Self) -> Int16 = _
+  async fn read_i16_le(Self) -> Int16 = _
+  async fn read_u32_be(Self) -> UInt = _
+  async fn read_u32_le(Self) -> UInt = _
+  async fn read_i32_be(Self) -> Int = _
+  async fn read_i32_le(Self) -> Int = _
+  async fn read_f32_be(Self) -> Float = _
+  async fn read_f32_le(Self) -> Float = _
+  async fn read_u64_be(Self) -> UInt64 = _
+  async fn read_u64_le(Self) -> UInt64 = _
+  async fn read_i64_be(Self) -> Int64 = _
+  async fn read_i64_le(Self) -> Int64 = _
+  async fn read_f64_be(Self) -> Double = _
+  async fn read_f64_le(Self) -> Double = _
 }
 pub impl AsyncRead for @fs.File
 pub impl AsyncRead for @socket.Tcp
@@ -153,6 +232,24 @@ pub(open) trait AsyncWrite {
   async fn flush(Self) -> Unit
   async fn shutdown(Self) -> Unit = _
   async fn write_all(Self, Bytes, offset? : Int, len? : Int) -> Unit = _
+  async fn write_u8(Self, Byte) -> Unit = _
+  async fn write_i8(Self, Int) -> Unit = _
+  async fn write_u16_be(Self, UInt16) -> Unit = _
+  async fn write_u16_le(Self, UInt16) -> Unit = _
+  async fn write_i16_be(Self, Int16) -> Unit = _
+  async fn write_i16_le(Self, Int16) -> Unit = _
+  async fn write_u32_be(Self, UInt) -> Unit = _
+  async fn write_u32_le(Self, UInt) -> Unit = _
+  async fn write_i32_be(Self, Int) -> Unit = _
+  async fn write_i32_le(Self, Int) -> Unit = _
+  async fn write_f32_be(Self, Float) -> Unit = _
+  async fn write_f32_le(Self, Float) -> Unit = _
+  async fn write_u64_be(Self, UInt64) -> Unit = _
+  async fn write_u64_le(Self, UInt64) -> Unit = _
+  async fn write_i64_be(Self, Int64) -> Unit = _
+  async fn write_i64_le(Self, Int64) -> Unit = _
+  async fn write_f64_be(Self, Double) -> Unit = _
+  async fn write_f64_le(Self, Double) -> Unit = _
 }
 pub impl AsyncWrite for @fs.File
 pub impl AsyncWrite for @socket.Tcp
