@@ -1,8 +1,10 @@
 use bytes::Bytes;
+use std::collections::HashMap;
 use std::fs::{OpenOptions, create_dir_all};
 use std::hint::black_box;
 use std::io::{self, BufReader, BufWriter, IoSlice, Read, Write};
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::task::{Context, Poll};
 use std::time::Instant;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -49,23 +51,52 @@ fn median(samples: &[f64]) -> f64 {
     }
 }
 
-fn measure<S, Setup, Run, Observe>(setup: &Setup, run: &Run, observe: &Observe) -> Stats
+fn forced_iterations(name: &str, size: usize) -> Option<usize> {
+    static ITERATIONS: OnceLock<HashMap<(String, usize), usize>> = OnceLock::new();
+    let map = ITERATIONS.get_or_init(|| {
+        let mut values = HashMap::new();
+        let path = ".tmp/bufferutils-bench/moonbit-iterations.csv";
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            for line in contents.lines().skip(1) {
+                let fields: Vec<_> = line.split(',').collect();
+                if fields.len() == 3 {
+                    if let (Ok(parsed_size), Ok(iterations)) =
+                        (fields[1].parse::<usize>(), fields[2].parse::<usize>())
+                    {
+                        values.insert((fields[0].to_string(), parsed_size), iterations);
+                    }
+                }
+            }
+        }
+        values
+    });
+    map.get(&(name.to_string(), size)).copied()
+}
+
+fn measure<S, Setup, Run, Observe>(
+    setup: &Setup,
+    run: &Run,
+    observe: &Observe,
+    forced: Option<usize>,
+) -> Stats
 where
     Setup: Fn(usize) -> S,
     Run: Fn(&mut S, usize),
     Observe: Fn(&S, usize) -> Counters,
 {
-    let mut iterations = 1;
-    loop {
-        let mut state = setup(iterations);
-        let started = Instant::now();
-        run(&mut state, iterations);
-        let elapsed = elapsed_us(started);
-        black_box(observe(&state, iterations));
-        if elapsed >= MIN_SAMPLE_US || iterations >= MAX_ITERATIONS {
-            break;
+    let mut iterations = forced.unwrap_or(1);
+    if forced.is_none() {
+        loop {
+            let mut state = setup(iterations);
+            let started = Instant::now();
+            run(&mut state, iterations);
+            let elapsed = elapsed_us(started);
+            black_box(observe(&state, iterations));
+            if elapsed >= MIN_SAMPLE_US || iterations >= MAX_ITERATIONS {
+                break;
+            }
+            iterations = (iterations * 2).min(MAX_ITERATIONS);
         }
-        iterations = (iterations * 2).min(MAX_ITERATIONS);
     }
 
     loop {
@@ -86,7 +117,7 @@ where
         }
         samples.sort_by(f64::total_cmp);
         let median_us = median(&samples);
-        if median_us >= MIN_SAMPLE_US || iterations >= MAX_ITERATIONS {
+        if forced.is_some() || median_us >= MIN_SAMPLE_US || iterations >= MAX_ITERATIONS {
             return Stats {
                 iterations,
                 median_us,
@@ -111,7 +142,7 @@ fn print_case<S, Setup, Run, Observe>(
     Run: Fn(&mut S, usize),
     Observe: Fn(&S, usize) -> Counters,
 {
-    let stats = measure(&setup, &run, &observe);
+    let stats = measure(&setup, &run, &observe, forced_iterations(name, size));
     let bytes = size as u64 * stats.iterations as u64;
     let throughput = bytes as f64 / 1_048_576.0 / (stats.median_us / 1_000_000.0);
     println!(
