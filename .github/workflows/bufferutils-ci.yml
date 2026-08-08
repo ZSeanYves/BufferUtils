@@ -238,7 +238,7 @@ jobs:
           {
             tail -n +2 .tmp/bufferutils-bench/moonbit.csv
             tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv
-          } | awk -F, 'BEGIN { print "name,size,iterations" } { key=$2 FS $3; if (!(key in seen)) { print $2 "," $3 "," ($5 * 4); seen[key]=1 } }' \
+          } | awk -F, 'BEGIN { print "name,size,iterations" } { key=$2 FS $3; if (!(key in seen)) { print $2 "," $3 "," ($5 * 16); seen[key]=1 } }' \
             > .tmp/bufferutils-bench/moonbit-iterations.csv
           test "$(head -n 1 .tmp/bufferutils-bench/moonbit-iterations.csv)" = "name,size,iterations"
           for batch in 1 2 3; do
