@@ -11,6 +11,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
+let workload_multiplier = 16
+
+///|
 let bench_output_root = ".tmp"
 
 ///|
@@ -236,6 +239,7 @@ async fn measure_case(
       iterations = Int::min(maximum_iterations, iterations * 2)
     }
   }
+  iterations = Int::min(maximum_iterations, iterations * workload_multiplier)
   while true {
     for _ in 0..<warmup_samples {
       ignore(run_case_once(name, payload, iterations))

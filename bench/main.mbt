@@ -17,6 +17,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
+let workload_multiplier = 16
+
+///|
 let benchmark_keeper : @mbench.Bench = @mbench.Bench()
 
 ///|
@@ -289,7 +292,9 @@ fn measure_until_stable(
 
 ///|
 fn measure(case : BenchmarkCase, initial_iterations : Int) -> BenchStats raise {
-  measure_until_stable(case, calibrate(case, initial_iterations))
+  let calibrated = calibrate(case, initial_iterations)
+  let expanded = Int::min(maximum_iterations, calibrated * workload_multiplier)
+  measure_until_stable(case, expanded)
 }
 
 ///|
