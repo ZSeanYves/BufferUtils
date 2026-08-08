@@ -932,7 +932,7 @@ fn selected_batch() -> Int {
 
 ///|
 fn iteration_multiplier() -> Int {
-  16
+  128
 }
 
 ///|
