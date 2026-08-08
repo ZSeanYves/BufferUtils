@@ -683,7 +683,10 @@ fn main() {
     if arguments.len() > 3 {
         panic!("usage: bufferutils-rust-reference BATCH [CASE]");
     }
-    let selected = arguments.get(2).map(String::as_str);
+    let selected = arguments
+        .get(2)
+        .map(String::as_str)
+        .filter(|value| *value != "__all__");
     create_dir_all(".tmp/bufferutils-bench").unwrap();
     std::fs::write(
         format!(".tmp/bufferutils-bench/rust-raw-batch-{batch}.csv"),

@@ -222,8 +222,12 @@ async fn run_case_once(
 }
 
 ///|
-async fn measure_case(name : String, payload : Array[Byte]) -> AsyncBenchStats {
-  let mut iterations = 1
+async fn measure_case(
+  name : String,
+  payload : Array[Byte],
+  initial_iterations : Int,
+) -> AsyncBenchStats {
+  let mut iterations = initial_iterations
   let mut elapsed = 0.0
   while elapsed < minimum_sample_us && iterations < maximum_iterations {
     let (sample, _) = run_case_once(name, payload, iterations)
@@ -269,9 +273,10 @@ async fn print_case(
   batch : Int,
   raw : StringBuilder,
   evidence : StringBuilder,
+  multiplier : Int,
 ) -> Unit {
   let payload = pattern_bytes(size)
-  let stats = measure_case(name, payload)
+  let stats = measure_case(name, payload, multiplier)
   let bytes = size.to_int64() * stats.iterations.to_int64()
   println(
     "moonbit,\{name},\{size},\{batch},\{stats.iterations},\{stats.median_us},\{stats.p95_us},\{bytes},\{stats.counters.copied_bytes},\{stats.counters.underlying_calls},\{stats.counters.syscalls},\{throughput(bytes, stats.median_us)}",
@@ -294,8 +299,8 @@ async fn print_case(
 ///|
 fn selected_batch() -> Int {
   let args = @env.args()
-  if args.length() < 2 || args.length() > 3 {
-    abort("usage: bench_async BATCH [CASE]")
+  if args.length() < 2 || args.length() > 4 {
+    abort("usage: bench_async BATCH [CASE] [MULTIPLIER]")
   }
   match args[1] {
     "1" => 1
@@ -306,10 +311,20 @@ fn selected_batch() -> Int {
 }
 
 ///|
+fn iteration_multiplier() -> Int {
+  16
+}
+
+///|
 async fn main {
   let batch = selected_batch()
   let args = @env.args()
-  let selected = if args.length() == 3 { Some(args[2]) } else { None }
+  let selected = if args.length() >= 3 && args[2] != "__all__" {
+    Some(args[2])
+  } else {
+    None
+  }
+  let multiplier = iteration_multiplier()
   if !@fs.path_exists(bench_output_root) {
     @fs.create_dir(bench_output_root)
   }
@@ -329,10 +344,10 @@ async fn main {
   )
   for size in [1024, 1024 * 1024] {
     if selected is None || selected == Some("async_copy") {
-      print_case("async_copy", size, batch, raw, evidence)
+      print_case("async_copy", size, batch, raw, evidence, multiplier)
     }
     if selected is None || selected == Some("tcp_loopback") {
-      print_case("tcp_loopback", size, batch, raw, evidence)
+      print_case("tcp_loopback", size, batch, raw, evidence, multiplier)
     }
   }
   write_control_benchmarks(batch, selected)

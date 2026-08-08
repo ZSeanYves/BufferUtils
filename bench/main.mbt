@@ -233,8 +233,8 @@ fn run_prepared(prepared : PreparedRun) -> Double raise {
 }
 
 ///|
-fn calibrate(case : BenchmarkCase) -> Int raise {
-  let mut iterations = 1
+fn calibrate(case : BenchmarkCase, initial_iterations : Int) -> Int raise {
+  let mut iterations = initial_iterations
   let mut elapsed = 0.0
   while elapsed < minimum_sample_us && iterations < maximum_iterations {
     let prepared = (case.prepare)(iterations)
@@ -288,8 +288,8 @@ fn measure_until_stable(
 }
 
 ///|
-fn measure(case : BenchmarkCase) -> BenchStats raise {
-  measure_until_stable(case, calibrate(case))
+fn measure(case : BenchmarkCase, initial_iterations : Int) -> BenchStats raise {
+  measure_until_stable(case, calibrate(case, initial_iterations))
 }
 
 ///|
@@ -919,8 +919,8 @@ fn benchmark_cases() -> Array[BenchmarkCase] raise @io.IoError {
 ///|
 fn selected_batch() -> Int {
   let args = @env.args()
-  if args.length() < 2 || args.length() > 3 {
-    abort("usage: bench BATCH [CASE]")
+  if args.length() < 2 || args.length() > 4 {
+    abort("usage: bench BATCH [CASE] [MULTIPLIER]")
   }
   match args[1] {
     "1" => 1
@@ -931,10 +931,19 @@ fn selected_batch() -> Int {
 }
 
 ///|
+fn iteration_multiplier() -> Int {
+  16
+}
+
+///|
 fn selected_case() -> String? {
   let args = @env.args()
-  if args.length() == 3 {
-    Some(args[2])
+  if args.length() >= 3 {
+    if args[2] == "__all__" {
+      None
+    } else {
+      Some(args[2])
+    }
   } else {
     None
   }
@@ -955,11 +964,12 @@ fn run_benchmarks(batch : Int, selected : String?) -> Unit raise {
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
   let cases = benchmark_cases()
+  let multiplier = iteration_multiplier()
   for case in cases {
     if selected is Some(name) && case.name != name {
       continue
     }
-    let stats = measure(case)
+    let stats = measure(case, multiplier)
     print_result(case, batch, stats)
     append_auxiliary_rows(raw, evidence, case, batch, stats)
   }
