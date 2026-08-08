@@ -15,7 +15,7 @@ description = "Zero-copy shared byte buffers with high-performance synchronous, 
 preferred_target = "native"
 
 import {
-  "moonbitlang/x@0.4.46",
+  "moonbitlang/x@0.4.49",
   "moonbitlang/async@0.20.2",
 }
 
