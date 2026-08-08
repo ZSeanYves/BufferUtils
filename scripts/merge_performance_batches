@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-output_dir=${1:?usage: scripts/merge_performance_batches OUTPUT_DIR}
+moonbit_only=0
+if [[ ${1:-} == "--moonbit-only" ]]; then
+  moonbit_only=1
+  shift
+fi
+output_dir=${1:?usage: scripts/merge_performance_batches [--moonbit-only] OUTPUT_DIR}
 
-for prefix in moonbit moonbit-async rust; do
+prefixes=(moonbit moonbit-async)
+if ((moonbit_only == 0)); then
+  prefixes+=(rust)
+fi
+for prefix in "${prefixes[@]}"; do
   for batch in 1 2 3; do
     file="$output_dir/$prefix-batch-$batch.csv"
     [[ -f "$file" ]] || {
@@ -36,10 +45,12 @@ for batch in 1 2 3; do
     >> "$output_dir/moonbit-async.csv"
 done
 
-head -n 1 "$output_dir/rust-batch-1.csv" > "$output_dir/rust.csv"
-for batch in 1 2 3; do
-  tail -n +2 "$output_dir/rust-batch-$batch.csv" >> "$output_dir/rust.csv"
-done
+if ((moonbit_only == 0)); then
+  head -n 1 "$output_dir/rust-batch-1.csv" > "$output_dir/rust.csv"
+  for batch in 1 2 3; do
+    tail -n +2 "$output_dir/rust-batch-$batch.csv" >> "$output_dir/rust.csv"
+  done
+fi
 
 for kind in raw copy-evidence; do
   head -n 1 "$output_dir/moonbit-$kind-batch-1.csv" \
@@ -51,10 +62,12 @@ for kind in raw copy-evidence; do
       >> "$output_dir/moonbit-$kind.csv"
   done
 
-  head -n 1 "$output_dir/rust-$kind-batch-1.csv" \
-    > "$output_dir/rust-$kind.csv"
-  for batch in 1 2 3; do
-    tail -n +2 "$output_dir/rust-$kind-batch-$batch.csv" \
-      >> "$output_dir/rust-$kind.csv"
-  done
+  if ((moonbit_only == 0)); then
+    head -n 1 "$output_dir/rust-$kind-batch-1.csv" \
+      > "$output_dir/rust-$kind.csv"
+    for batch in 1 2 3; do
+      tail -n +2 "$output_dir/rust-$kind-batch-$batch.csv" \
+        >> "$output_dir/rust-$kind.csv"
+    done
+  fi
 done

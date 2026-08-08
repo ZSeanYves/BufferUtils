@@ -234,7 +234,7 @@ jobs:
             run_checked_batch moonbit "$moon_binary" moonbit moonbit-raw "$batch"
             run_checked_batch moonbit-async "$moon_async_binary" moonbit-async moonbit-async-raw "$batch"
           done
-          scripts/merge_performance_batches .tmp/bufferutils-bench
+          scripts/merge_performance_batches --moonbit-only .tmp/bufferutils-bench
           {
             tail -n +2 .tmp/bufferutils-bench/moonbit.csv
             tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv
