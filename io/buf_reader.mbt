@@ -130,12 +130,7 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
   let resident = self.end - self.position
   if resident > 0 {
     let count = Int::min(length, resident)
-    self.buffer.blit_to(
-      dst,
-      src_offset=self.position,
-      dst_offset=offset,
-      len=count,
-    )
+    FixedArray::unsafe_blit(dst, offset, self.buffer, self.position, count)
     self.position += count
     return count
   }
@@ -149,12 +144,7 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
   }
   let available = BufRead::fill_buf(self)
   let count = Int::min(length, available.length())
-  self.buffer.blit_to(
-    dst,
-    src_offset=self.position,
-    dst_offset=offset,
-    len=count,
-  )
+  FixedArray::unsafe_blit(dst, offset, self.buffer, self.position, count)
   self.position += count
   count
 }

@@ -85,7 +85,7 @@ impl @io.Read for CyclingReader with fn read(self, dst, offset, length) {
     self.position = 0
   }
   let count = Int::min(length, self.data.length() - self.position)
-  self.data.blit_to(dst, src_offset=self.position, dst_offset=offset, len=count)
+  FixedArray::unsafe_blit(dst, offset, self.data, self.position, count)
   self.position += count
   self.calls += 1
   self.bytes += count.to_int64()

@@ -233,11 +233,12 @@ pub fn SharedBytes::copy_to_fixed(
     raise BufferError::InvalidRange("fixed-array destination range is invalid")
   }
   let count = Int::min(self.remaining(), length)
-  self.storage.data.blit_to(
+  FixedArray::unsafe_blit(
     destination,
-    src_offset=self.start,
-    dst_offset=offset,
-    len=count,
+    offset,
+    self.storage.data,
+    self.start,
+    count,
   )
   self.start += count
   count
