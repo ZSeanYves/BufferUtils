@@ -186,6 +186,11 @@ jobs:
           moon_async_binary="$PWD/_build/native/release/build/bench_async/bench_async.exe"
           rust_binary="$PWD/bench/rust-reference/target/release/bufferutils-rust-reference"
           [[ -x "$moon_binary" && -x "$moon_async_binary" && -x "$rust_binary" ]]
+          if command -v taskset >/dev/null 2>&1 && taskset --cpu-list "${BUFFERUTILS_BENCH_CPU:-0}" true 2>/dev/null; then
+            benchmark_prefix=(taskset --cpu-list "${BUFFERUTILS_BENCH_CPU:-0}")
+          else
+            benchmark_prefix=()
+          fi
           mkdir -p .tmp/bufferutils-bench
           {
             uname -a
@@ -196,6 +201,12 @@ jobs:
             cat /proc/self/cgroup
             printf '\nCPU governor\n'
             cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
+            printf '\nBenchmark CPU affinity\n'
+            if ((${#benchmark_prefix[@]} > 0)); then
+              printf '%s\n' "${benchmark_prefix[*]}"
+            else
+              printf 'unavailable\n'
+            fi
           } > .tmp/bufferutils-bench/environment.txt
           run_checked_batch() {
             local label="$1"
@@ -206,7 +217,7 @@ jobs:
             local attempt
             for attempt in 1 2 3; do
               /usr/bin/time -v -o ".tmp/bufferutils-bench/${label}-rss-batch-$batch.txt" \
-                "$binary" "$batch" \
+                "${benchmark_prefix[@]}" "$binary" "$batch" \
                 | tee ".tmp/bufferutils-bench/${timing}-batch-$batch.csv"
               if scripts/check_performance_quality \
                 ".tmp/bufferutils-bench/${timing}-batch-$batch.csv" \
@@ -285,7 +296,7 @@ jobs:
               cd "$rss_dir"
               /usr/bin/time -v \
                 -o "$rss_evidence_dir/$label.txt" \
-                "$binary" 1 "$case_name" \
+                "${benchmark_prefix[@]}" "$binary" 1 "$case_name" \
                 > "$rss_evidence_dir/$label.csv"
             )
           done
@@ -295,7 +306,7 @@ jobs:
             (
               cd "$profile_dir"
               perf record -F 99 -g -o moonbit-bufwriter.perf.data -- \
-                "$moon_binary" 1 sync_bufwriter_small \
+                "${benchmark_prefix[@]}" "$moon_binary" 1 sync_bufwriter_small \
                 > moonbit-bufwriter-profile.csv \
                 2> moonbit-bufwriter-perf.stderr
               perf report --stdio -i moonbit-bufwriter.perf.data \
@@ -317,7 +328,7 @@ jobs:
               cd "$profile_dir"
               valgrind --tool=callgrind --collect-jumps=yes \
                 --callgrind-out-file="$label.callgrind" \
-                "$binary" 1 "$case_name" > "$label-profile.csv" \
+                "${benchmark_prefix[@]}" "$binary" 1 "$case_name" > "$label-profile.csv" \
                 2> "$label-callgrind.stderr"
               callgrind_annotate --inclusive=yes --threshold=0.5 \
                 "$label.callgrind" > "$label-callgrind.txt"
