@@ -11,10 +11,6 @@ on:
 permissions:
   contents: read
 
-env:
-  EXPECTED_MOON_VERSION: "0.1.20260803"
-  EXPECTED_MOONC_VERSION: "v0.10.6+091af3700-dev"
-
 jobs:
   consumer:
     name: consumer (${{ matrix.os }})
@@ -27,13 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install pinned MoonBit (Linux)
+      - name: Install latest MoonBit (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          chmod +x scripts/install_pinned_moonbit_linux
-          scripts/install_pinned_moonbit_linux "$RUNNER_TEMP/moonbit-pinned"
-          echo "$RUNNER_TEMP/moonbit-pinned/bin" >> "$GITHUB_PATH"
+          export MOONBIT_INSTALL_DEV=1
+          export MOONBIT_INSTALL_VERSION=nightly
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Install matching MoonBit nightly (macOS)
         if: runner.os == 'macOS'
@@ -55,12 +52,10 @@ jobs:
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "$env:USERPROFILE\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
-      - name: Verify fixed toolchain identity
+      - name: Record toolchain identity
         shell: bash
         run: |
           moon version --all | tee .moon-version.txt
-          grep -F "moon $EXPECTED_MOON_VERSION" .moon-version.txt
-          grep -F "moonc $EXPECTED_MOONC_VERSION" .moon-version.txt
 
       - name: Install and run clean consumer
         shell: bash

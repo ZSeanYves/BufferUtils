@@ -1,7 +1,7 @@
 # Ubuntu x86_64 Ratio Baseline
 
 The release baseline is generated only from the `ubuntu-24.04` CI runner using
-the pinned MoonBit Linux archive and Rust 1.97.1 lockfile.
+the latest MoonBit nightly available on the CI runner and Rust 1.97.1 lockfile.
 
 ```bash
 scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv

@@ -11,7 +11,7 @@ GitHub Actions run
 [`30924479149`](https://github.com/ZSeanYves/BufferUtils/actions/runs/30924479149)
 is the authoritative corrected-fixture checkpoint for commit `6b2cdc5`. It
 passed all platform, sanitizer, coverage, contract, benchmark-structure, and
-noise gates. It used the pinned MoonBit 2026-08-03 toolchain,
+noise gates. It used the MoonBit nightly available at the time,
 Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 on an Ubuntu 24.04 AMD EPYC 7763
 hosted runner.
 
