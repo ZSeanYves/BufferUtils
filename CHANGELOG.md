@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.40.0-rc.2
+
+### Breaking
+- Made `SharedBytes` an immutable `#valtype` range. It no longer implements
+  `Buf` and no longer exposes consuming methods such as `advance`, `split_to`,
+  typed getters, or `copy_to`.
+- Added `BytesCursor` for independent consumption and migrated adapters and
+  tests to call `bytes.cursor()` explicitly.
+- Changed `SharedBytes::split_at` to return `SharedBytesSplit`; callers that
+  need both ranges can use `prefix`/`suffix` without a tuple allocation, or
+  call `into_parts` at an explicit allocation boundary.
+
+### Performance
+- Native release code now represents clone, slice, and split ranges as value
+  descriptors. The hot split path has no per-operation `moonbit_malloc`.
+- Fused the short-write loop inside `async_io::copy` while keeping each read
+  chunk as one cancellation-protected atomic unit.
+- Concrete reader/writer fast-path APIs were measured and rejected: the local
+  A/B improvement was below the 10% retention threshold, so no benchmark-only
+  public API was added.
+
+### Release policy
+- This RC is not published by CI. A maintainer must review the migration,
+  performance evidence, and consumer builds before manual publication.
+
 ## v0.40.0-rc.1
 
 ### Breaking

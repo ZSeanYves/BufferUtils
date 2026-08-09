@@ -33,6 +33,41 @@ pub fn[B : Buf] BufTake::limit(Self[B]) -> Int
 pub fn[B] BufTake::new(B, Int) -> Self[B] raise BufferError
 pub impl[B : Buf] Buf for BufTake[B]
 
+pub struct BytesCursor {
+  bytes : SharedBytes
+  mut position : Int
+}
+pub fn BytesCursor::advance(Self, Int) -> Unit raise BufferError
+pub fn BytesCursor::copy_to(Self, MutArrayView[Byte]) -> Int
+pub fn BytesCursor::copy_to_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise BufferError
+pub fn BytesCursor::get_f32_be(Self) -> Float raise BufferError
+pub fn BytesCursor::get_f32_le(Self) -> Float raise BufferError
+pub fn BytesCursor::get_f64_be(Self) -> Double raise BufferError
+pub fn BytesCursor::get_f64_le(Self) -> Double raise BufferError
+pub fn BytesCursor::get_i16_be(Self) -> Int16 raise BufferError
+pub fn BytesCursor::get_i16_le(Self) -> Int16 raise BufferError
+pub fn BytesCursor::get_i32_be(Self) -> Int raise BufferError
+pub fn BytesCursor::get_i32_le(Self) -> Int raise BufferError
+pub fn BytesCursor::get_i64_be(Self) -> Int64 raise BufferError
+pub fn BytesCursor::get_i64_le(Self) -> Int64 raise BufferError
+pub fn BytesCursor::get_i8(Self) -> Int raise BufferError
+pub fn BytesCursor::get_u16_be(Self) -> UInt16 raise BufferError
+pub fn BytesCursor::get_u16_le(Self) -> UInt16 raise BufferError
+pub fn BytesCursor::get_u32_be(Self) -> UInt raise BufferError
+pub fn BytesCursor::get_u32_le(Self) -> UInt raise BufferError
+pub fn BytesCursor::get_u64_be(Self) -> UInt64 raise BufferError
+pub fn BytesCursor::get_u64_le(Self) -> UInt64 raise BufferError
+pub fn BytesCursor::get_u8(Self) -> Byte raise BufferError
+pub fn BytesCursor::get_utf8(Self, Int) -> String raise BufferError
+pub fn BytesCursor::into_remaining(Self) -> SharedBytes
+pub fn BytesCursor::is_empty(Self) -> Bool
+pub fn BytesCursor::new(SharedBytes) -> Self
+pub fn BytesCursor::position(Self) -> Int
+pub fn BytesCursor::remaining(Self) -> Int
+pub fn BytesCursor::remaining_bytes(Self) -> SharedBytes
+pub fn BytesCursor::split_to(Self, Int) -> SharedBytes raise BufferError
+pub impl Buf for BytesCursor
+
 pub struct BytesMut {
   mut storage : SharedStorage
   mut start : Int
@@ -91,55 +126,40 @@ pub impl @debug.Debug for BytesMut
 
 pub struct SharedBytes {
   storage : SharedStorage
-  mut start : Int
-  mut end : Int
+  start : Int
+  end : Int
 }
-pub fn SharedBytes::advance(Self, Int) -> Unit raise BufferError
 pub fn SharedBytes::as_bytes_view(Self) -> BytesView
-pub fn SharedBytes::chunk(Self) -> Self
-pub fn SharedBytes::clear(Self) -> Unit
 pub fn SharedBytes::clone(Self) -> Self
 pub fn SharedBytes::copied_bytes(Self) -> Int
-pub fn SharedBytes::copy_to(Self, MutArrayView[Byte]) -> Int
-pub fn SharedBytes::copy_to_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise BufferError
+pub fn SharedBytes::cursor(Self) -> BytesCursor
 pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
 pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
-pub fn SharedBytes::get_f32_be(Self) -> Float raise BufferError
-pub fn SharedBytes::get_f32_le(Self) -> Float raise BufferError
-pub fn SharedBytes::get_f64_be(Self) -> Double raise BufferError
-pub fn SharedBytes::get_f64_le(Self) -> Double raise BufferError
-pub fn SharedBytes::get_i16_be(Self) -> Int16 raise BufferError
-pub fn SharedBytes::get_i16_le(Self) -> Int16 raise BufferError
-pub fn SharedBytes::get_i32_be(Self) -> Int raise BufferError
-pub fn SharedBytes::get_i32_le(Self) -> Int raise BufferError
-pub fn SharedBytes::get_i64_be(Self) -> Int64 raise BufferError
-pub fn SharedBytes::get_i64_le(Self) -> Int64 raise BufferError
-pub fn SharedBytes::get_i8(Self) -> Int raise BufferError
-pub fn SharedBytes::get_u16_be(Self) -> UInt16 raise BufferError
-pub fn SharedBytes::get_u16_le(Self) -> UInt16 raise BufferError
-pub fn SharedBytes::get_u32_be(Self) -> UInt raise BufferError
-pub fn SharedBytes::get_u32_le(Self) -> UInt raise BufferError
-pub fn SharedBytes::get_u64_be(Self) -> UInt64 raise BufferError
-pub fn SharedBytes::get_u64_le(Self) -> UInt64 raise BufferError
-pub fn SharedBytes::get_u8(Self) -> Byte raise BufferError
-pub fn SharedBytes::get_utf8(Self, Int) -> String raise BufferError
 pub fn SharedBytes::is_empty(Self) -> Bool
 pub fn SharedBytes::len(Self) -> Int
 pub fn SharedBytes::new() -> Self
-pub fn SharedBytes::remaining(Self) -> Int
+pub fn SharedBytes::prefix(Self, Int) -> Self raise BufferError
 pub fn SharedBytes::slice(Self, Int, Int) -> Self raise BufferError
-pub fn SharedBytes::split_off(Self, Int) -> Self raise BufferError
-pub fn SharedBytes::split_to(Self, Int) -> Self raise BufferError
+pub fn SharedBytes::split_at(Self, Int) -> SharedBytesSplit raise BufferError
+pub fn SharedBytes::suffix(Self, Int) -> Self raise BufferError
 pub fn SharedBytes::to_array(Self) -> Array[Byte]
 pub fn SharedBytes::to_bytes(Self) -> Bytes
-pub fn SharedBytes::truncate(Self, Int) -> Unit raise BufferError
 pub fn SharedBytes::unsafe_adopt_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
 pub fn SharedBytes::view(Self) -> ArrayView[Byte]
-pub impl Buf for SharedBytes
 pub impl Compare for SharedBytes
 pub impl Eq for SharedBytes
 pub impl Hash for SharedBytes
 pub impl @debug.Debug for SharedBytes
+
+pub struct SharedBytesSplit {
+  storage : SharedStorage
+  start : Int
+  middle : Int
+  end : Int
+}
+pub fn SharedBytesSplit::into_parts(Self) -> (SharedBytes, SharedBytes)
+pub fn SharedBytesSplit::prefix(Self) -> SharedBytes
+pub fn SharedBytesSplit::suffix(Self) -> SharedBytes
 
 type SharedStorage
 

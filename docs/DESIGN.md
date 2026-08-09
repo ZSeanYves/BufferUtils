@@ -11,11 +11,13 @@ BufferUtils 0.40 has four ownership and capability boundaries:
 
 ## Zero-copy boundary
 
-`SharedBytes` stores a fixed backing allocation plus logical start/end ranges.
-Clone, slice, split, freeze, and buffered pending tails move handles and ranges;
-they do not copy payload bytes. A write through an aliased range detaches the
-smallest necessary mutable range (COW). `as_bytes_view()` borrows the same
-storage. `to_array`, `to_bytes`, `read_array`, `write_array`, and mmap
+`SharedBytes` is a `#valtype` containing a shared backing value and logical
+start/end ranges. Clone, slice, prefix, suffix, split, freeze, and buffered
+pending tails move ranges; they do not copy payload bytes or allocate a second
+range object on the native hot path. `BytesCursor` is the separate mutable
+consumption state. A write through an aliased range detaches the smallest
+necessary mutable range (COW). `as_bytes_view()` borrows the same storage.
+`to_array`, `to_bytes`, `read_array`, `write_array`, and mmap
 `copy_range` are explicit materialization points.
 
 The API does not claim zero-copy where MoonBit cannot express the required

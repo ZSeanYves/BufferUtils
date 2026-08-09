@@ -4,7 +4,7 @@ BufferUtils 是面向 MoonBit 的 pre-1.0 字节缓冲区与 I/O 工具库，覆
 字节存储、同步 I/O、异步 I/O 和原生 I/O。0.40 有意直接破坏 0.37 源码 API，
 不提供弃用兼容层。
 
-当前源码版本为 `0.40.0-rc.1`。本仓库不会自动执行发布、打 tag 或创建
+当前源码版本为 `0.40.0-rc.2`。本仓库不会自动执行发布、打 tag 或创建
 GitHub Release。
 
 ## 包职责
@@ -27,11 +27,15 @@ mutable.put_u16_be(0x1234U.to_uint16())
 mutable.put_utf8("MoonBit")
 let bytes = mutable.freeze()
 let prefix = bytes.slice(0, 2)
+let cursor = bytes.cursor()
+let value = cursor.get_u16_be()
 ```
 
 `SharedBytes::from_fixed_array` 会复制指定范围。只有调用者独占 backing 且
 能保证后续不再修改源数组时，才可使用不安全的
-`unsafe_adopt_fixed_array`。`clone`、`slice`、`split`、`freeze` 共享存储，
+`unsafe_adopt_fixed_array`。`SharedBytes` 本身不可变；`clone`、`slice`、
+`split_at` 和 `freeze` 共享存储，消费式读取请显式调用 `bytes.cursor()`。
+`SharedBytesSplit::prefix` 和 `suffix` 返回分割范围，不会为了返回二元组而分配。
 可变别名写入时通过 COW 分离。
 
 同步 `BufReader::lines` 和 `split` 是惰性游标：
@@ -78,7 +82,8 @@ CI 还要求总体覆盖率至少 95%，四个核心包各至少 90%，并执行
 MoonBit 吞吐绝对追平 Rust。
 
 请先阅读 [`docs/API_SURFACE.md`](docs/API_SURFACE.md) 了解公开边界，升级时阅读
-[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md)，发布前按
+[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) 和
+[`docs/MIGRATION_0.40_RC1_TO_RC2.md`](docs/MIGRATION_0.40_RC1_TO_RC2.md)，发布前按
 [`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) 手工审查和验证 consumer。
 
 详细语义与验证证据见 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)、

@@ -133,6 +133,24 @@ raw quality checks pass. The downloadable artifact is the source of truth for
 raw rows and per-batch peak RSS; the baseline contains only median per-case
 ratios used by the regression gate.
 
+When a performance change affects only known workloads, update those rows with
+the selective tool instead of rebuilding the whole baseline:
+
+```bash
+scripts/update_performance_baseline_cases \
+  bench/baselines/ubuntu-x86_64-ratios.csv \
+  .tmp/bufferutils-bench/ubuntu-x86_64-ratios-rc2.csv \
+  .tmp/bufferutils-bench/moonbit.csv \
+  .tmp/bufferutils-bench/rust.csv \
+  bench/baselines/rc2-candidate-cases.csv
+```
+
+The case file is an explicit `name,size` allowlist. The tool fails if any
+selected case is absent from the candidate CSV and preserves every unselected
+baseline row byte-for-byte apart from final sorting. A candidate baseline must
+come from three structurally valid batches; it must not be produced by widening
+the noise threshold or by copying ratios from a different workload.
+
 The pre-correction upper-envelope baseline was discarded because it mixed
 ArrayView byte loops, build-process RSS, and inferred copy multipliers with the
 library measurements. It is not valid evidence for the corrected workloads.

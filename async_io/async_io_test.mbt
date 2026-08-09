@@ -568,6 +568,26 @@ impl AsyncWrite for ShutdownFailWriter with fn shutdown(_self) {
 }
 
 ///|
+struct ShortAsyncWriter {
+  output : Array[Byte]
+  max_chunk : Int
+}
+
+///|
+impl AsyncWrite for ShortAsyncWriter with fn write(self, source, offset~, len~) {
+  let count = Int::min(self.max_chunk, len)
+  for i in 0..<count {
+    self.output.push(source[offset + i])
+  }
+  count
+}
+
+///|
+impl AsyncWrite for ShortAsyncWriter with fn flush(_self) {
+  ()
+}
+
+///|
 async test "buffered shutdown flushes pending bytes before the inner shutdown" {
   let probe : ShutdownProbe = { events: [] }
   let writer = AsyncBufWriter::new(probe, capacity=8)
@@ -609,6 +629,44 @@ async test "copy and copy_bidirectional report committed bytes" {
   let empty_left : TestDuplex = { incoming: b"", position: 0, outgoing: [] }
   let empty_right : TestDuplex = { incoming: b"", position: 0, outgoing: [] }
   assert_eq(copy_bidirectional(empty_left, empty_right), (0, 0))
+}
+
+///|
+async test "copy fused write loop preserves short progress and errors" {
+  let short : ShortAsyncWriter = { output: [], max_chunk: 2 }
+  assert_eq(copy(AsyncMemoryReader::new(b"abcdef"[:]), short, buffer_size=4), 6)
+  assert_eq(Bytes::from_array(short.output), b"abcdef")
+
+  assert_eq(
+    try {
+      ignore(
+        copy(
+          AsyncMemoryReader::new(b"x"[:]),
+          AlwaysZeroAsyncWriter::Zero,
+          buffer_size=1,
+        ),
+      )
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.WriteZero)
+    },
+    true,
+  )
+  assert_eq(
+    try {
+      ignore(
+        copy(
+          AsyncMemoryReader::new(b"x"[:]),
+          InvalidAsyncWriter::InvalidAsyncWriter,
+          buffer_size=1,
+        ),
+      )
+      false
+    } catch {
+      error => async_error_has_kind(error, @syncio.ContractViolation)
+    },
+    true,
+  )
 }
 
 ///|

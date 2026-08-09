@@ -8,43 +8,66 @@ fn[T] capture_buffer_result(
 }
 
 ///|
-test "immutable bytes slices share storage and keep independent cursors" {
+test "immutable bytes slices share storage and cursors advance independently" {
   let bytes = SharedBytes::from_array([b'a', b'b', b'c', b'd', b'e', b'f'][:])
   let cloned = bytes.clone()
-  let prefix = bytes.split_to(3)
+  let split = bytes.split_at(3)
+  let prefix = split.prefix()
+  let suffix = split.suffix()
   assert_eq(prefix.view(), [b'a', b'b', b'c'])
-  assert_eq(bytes.view(), [b'd', b'e', b'f'])
-  prefix.advance(1)
-  assert_eq(prefix.view(), [b'b', b'c'])
-  assert_eq(bytes.view(), [b'd', b'e', b'f'])
+  assert_eq(suffix.view(), [b'd', b'e', b'f'])
+  let cursor = prefix.cursor()
+  cursor.advance(1)
+  assert_eq(cursor.remaining_bytes().view(), [b'b', b'c'])
+  assert_eq(prefix.view(), [b'a', b'b', b'c'])
   assert_eq(cloned.view(), [b'a', b'b', b'c', b'd', b'e', b'f'])
   assert_eq(cloned.copied_bytes(), 0)
 }
 
 ///|
+test "SharedBytes ranges and cursor ownership remain independent" {
+  let bytes = SharedBytes::from_array([b'a', b'b', b'c', b'd'][:])
+  assert_eq(bytes.slice(0, bytes.len()), bytes)
+  assert_eq(bytes.prefix(0).to_bytes(), b"")
+  assert_eq(bytes.suffix(bytes.len()).to_bytes(), b"")
+  assert_eq(bytes.slice(1, 3).slice(1, 2).to_bytes(), b"c")
+
+  let first = bytes.cursor()
+  let second = bytes.cursor()
+  assert_eq(first.position(), 0)
+  assert_eq(first.split_to(2).to_bytes(), b"ab")
+  assert_eq(first.position(), 2)
+  assert_eq(first.into_remaining().to_bytes(), b"cd")
+  assert_eq(second.remaining_bytes(), bytes)
+}
+
+///|
 test "bytes copy_to writes into a caller-owned subview" {
   let bytes = SharedBytes::from_array([b'a', b'b', b'c'][:])
+  let cursor = bytes.cursor()
   let dst = Array::make(5, b'-')
-  assert_eq(bytes.copy_to(dst.mut_view(start=1, end=3)), 2)
+  assert_eq(cursor.copy_to(dst.mut_view(start=1, end=3)), 2)
   assert_eq(dst, [b'-', b'a', b'b', b'-', b'-'])
-  assert_eq(bytes.view(), [b'c'])
+  assert_eq(cursor.remaining_bytes().view(), [b'c'])
+  assert_eq(bytes.view(), [b'a', b'b', b'c'])
 }
 
 ///|
 test "bytes copy_to_fixed uses a bounded bulk destination" {
   let bytes = SharedBytes::from_array([b'a', b'b', b'c'][:])
+  let cursor = bytes.cursor()
   let destination = FixedArray::make(5, b'-')
-  assert_eq(bytes.copy_to_fixed(destination, 1, 2), 2)
+  assert_eq(cursor.copy_to_fixed(destination, 1, 2), 2)
   assert_eq(destination.unsafe_reinterpret_as_bytes(), b"-ab--")
-  assert_eq(bytes.view(), [b'c'])
+  assert_eq(cursor.remaining_bytes().view(), [b'c'])
   assert_eq(
-    capture_buffer_result(() => bytes.copy_to_fixed(destination, 5, 1))
+    capture_buffer_result(() => cursor.copy_to_fixed(destination, 5, 1))
     is Err(BufferError::InvalidRange(_)),
     true,
   )
-  assert_eq(bytes.view(), [b'c'])
+  assert_eq(cursor.remaining_bytes().view(), [b'c'])
   assert_eq(
-    capture_buffer_result(() => bytes.get_u16_be())
+    capture_buffer_result(() => cursor.get_u16_be())
     is Err(BufferError::Underflow(_, _)),
     true,
   )
@@ -59,30 +82,30 @@ test "typed integer helpers round trip both endian orders" {
   mutable.put_u32_le(0x01234567U)
   mutable.put_u64_be(0x0123456789ABCDEFUL)
   mutable.put_u64_le(0xFEDCBA9876543210UL)
-  let bytes = mutable.freeze()
-  assert_eq(bytes.get_u16_be(), 0x1234U.to_uint16())
-  assert_eq(bytes.get_u16_le(), 0x5678U.to_uint16())
-  assert_eq(bytes.get_u32_be(), 0x89ABCDEFU)
-  assert_eq(bytes.get_u32_le(), 0x01234567U)
-  assert_eq(bytes.get_u64_be(), 0x0123456789ABCDEFUL)
-  assert_eq(bytes.get_u64_le(), 0xFEDCBA9876543210UL)
-  assert_eq(bytes.remaining(), 0)
+  let cursor = mutable.freeze().cursor()
+  assert_eq(cursor.get_u16_be(), 0x1234U.to_uint16())
+  assert_eq(cursor.get_u16_le(), 0x5678U.to_uint16())
+  assert_eq(cursor.get_u32_be(), 0x89ABCDEFU)
+  assert_eq(cursor.get_u32_le(), 0x01234567U)
+  assert_eq(cursor.get_u64_be(), 0x0123456789ABCDEFUL)
+  assert_eq(cursor.get_u64_le(), 0xFEDCBA9876543210UL)
+  assert_eq(cursor.remaining(), 0)
 }
 
 ///|
 test "invalid UTF-8 does not advance the cursor" {
-  let bytes = SharedBytes::from_array([(255).to_byte(), b'a'][:])
-  let result = capture_buffer_result(() => bytes.get_utf8(1))
+  let cursor = SharedBytes::from_array([(255).to_byte(), b'a'][:]).cursor()
+  let result = capture_buffer_result(() => cursor.get_utf8(1))
   assert_eq(result is Err(BufferError::InvalidUtf8), true)
-  assert_eq(bytes.remaining(), 2)
+  assert_eq(cursor.remaining(), 2)
 }
 
 ///|
 test "UTF-8 append and decode use exact byte boundaries" {
   let mutable = BytesMut::new(capacity=1)
   mutable.put_utf8("MoonBit 月")
-  let bytes = mutable.freeze()
-  inspect(bytes.get_utf8(bytes.remaining()), content="MoonBit 月")
+  let cursor = mutable.freeze().cursor()
+  inspect(cursor.get_utf8(cursor.remaining()), content="MoonBit 月")
 }
 
 ///|
@@ -192,7 +215,7 @@ fn shared_bytes_model_holds(seed : UInt, steps : Int) -> Bool {
     for i in 0..<initial.length() {
       initial[i] = ((i * 37 + 11) % 256).to_byte()
     }
-    let bytes = SharedBytes::from_array(initial[:])
+    let mut bytes = SharedBytes::from_array(initial[:])
     let model = initial.copy()
     let mut state = seed
     for _ in 0..<steps {
@@ -205,7 +228,7 @@ fn shared_bytes_model_holds(seed : UInt, steps : Int) -> Bool {
       }
       match state % 6 {
         0 => {
-          bytes.advance(at)
+          bytes = bytes.suffix(at)
           let remaining = length - at
           for i in 0..<remaining {
             model[i] = model[i + at]
@@ -213,21 +236,27 @@ fn shared_bytes_model_holds(seed : UInt, steps : Int) -> Bool {
           model.resize(remaining, (0).to_byte())
         }
         1 => {
-          bytes.truncate(at)
+          bytes = bytes.prefix(at)
           model.truncate(at)
         }
         2 => {
-          let suffix = bytes.split_off(at)
+          let split = bytes.split_at(at)
+          let prefix = split.prefix()
+          let suffix = split.suffix()
           if suffix.view() != model[at:] {
             return false
           }
+          bytes = prefix
           model.truncate(at)
         }
         3 => {
-          let prefix = bytes.split_to(at)
+          let split = bytes.split_at(at)
+          let prefix = split.prefix()
+          let suffix = split.suffix()
           if prefix.view() != model[0:at] {
             return false
           }
+          bytes = suffix
           let remaining = length - at
           for i in 0..<remaining {
             model[i] = model[i + at]
@@ -242,7 +271,7 @@ fn shared_bytes_model_holds(seed : UInt, steps : Int) -> Bool {
           }
         }
         _ => {
-          bytes.clear()
+          bytes = bytes.prefix(0)
           model.truncate(0)
         }
       }
@@ -281,27 +310,30 @@ test "SharedBytes basic helpers and bounds errors are stable" {
   assert_eq(empty.len(), 0)
   assert_eq(empty.is_empty(), true)
   assert_eq(empty.to_array(), [])
+  let empty_cursor = empty.cursor()
   assert_eq(
-    capture_buffer_result(() => empty.get_u8()) is Err(Underflow(_, _)),
+    capture_buffer_result(() => empty_cursor.get_u8()) is Err(Underflow(_, _)),
     true,
   )
 
   let bytes = SharedBytes::from_array([b'a', b'b', b'c'][:])
-  assert_eq(bytes.chunk().view(), [b'a', b'b', b'c'])
+  assert_eq(bytes.prefix(3).view(), [b'a', b'b', b'c'])
   assert_eq(
     capture_buffer_result(() => bytes.slice(-1, 1)) is Err(InvalidRange(_)),
     true,
   )
   assert_eq(
-    capture_buffer_result(() => bytes.split_to(4)) is Err(Underflow(_, _)),
+    capture_buffer_result(() => bytes.split_at(4)) is Err(InvalidRange(_)),
     true,
   )
   assert_eq(
-    capture_buffer_result(() => bytes.advance(4)) is Err(Underflow(_, _)),
+    capture_buffer_result(() => bytes.cursor().advance(4))
+    is Err(Underflow(_, _)),
     true,
   )
   assert_eq(
-    capture_buffer_result(() => bytes.get_utf8(4)) is Err(Underflow(_, _)),
+    capture_buffer_result(() => bytes.cursor().get_utf8(4))
+    is Err(Underflow(_, _)),
     true,
   )
 }
@@ -343,15 +375,14 @@ test "SharedBytes unsafe adoption and visible content traits are explicit" {
   assert_eq(adopted.compare(SharedBytes::from_array([b'z', b'c'][:])), -1)
   assert_eq(adopted.compare(same), 0)
   assert_eq(adopted.compare(SharedBytes::from_array([b'y'][:])), 1)
-  assert_eq(adopted.slice(0, adopted.remaining()), same)
+  assert_eq(adopted.slice(0, adopted.len()), same)
   inspect(Repr(adopted), content="<SharedBytes: [0x7a, 0x62, 0x63]>")
-  let suffix = adopted.split_off(1)
-  assert_eq(adopted.to_bytes(), b"z")
+  let split = adopted.split_at(1)
+  let (prefix, suffix) = split.into_parts()
+  assert_eq(prefix.to_bytes(), b"z")
   assert_eq(suffix.to_bytes(), b"bc")
-  suffix.truncate(1)
-  assert_eq(suffix.to_bytes(), b"b")
-  suffix.clear()
-  assert_true(suffix.is_empty())
+  assert_eq(suffix.prefix(1).to_bytes(), b"b")
+  assert_true(suffix.prefix(0).is_empty())
 }
 
 ///|
@@ -424,13 +455,13 @@ test "typed signed float and spare-capacity APIs preserve ranges" {
   mutable.put_i64_be(-987654321L)
   mutable.put_f32_le(1.5)
   mutable.put_f64_be(-2.25)
-  let bytes = mutable.freeze()
-  assert_eq(bytes.get_i8(), -1)
-  assert_eq(bytes.get_i16_be(), Int16::from_int(-1234))
-  assert_eq(bytes.get_i32_le(), -123456)
-  assert_eq(bytes.get_i64_be(), -987654321L)
-  assert_eq(bytes.get_f32_le(), 1.5)
-  assert_eq(bytes.get_f64_be(), -2.25)
+  let cursor = mutable.freeze().cursor()
+  assert_eq(cursor.get_i8(), -1)
+  assert_eq(cursor.get_i16_be(), Int16::from_int(-1234))
+  assert_eq(cursor.get_i32_le(), -123456)
+  assert_eq(cursor.get_i64_be(), -987654321L)
+  assert_eq(cursor.get_f32_le(), 1.5)
+  assert_eq(cursor.get_f64_be(), -2.25)
 
   let spare = BytesMut::new(capacity=4)
   let committed = spare.with_spare_capacity(2, view => {
@@ -485,12 +516,12 @@ test "buffer invalid branches and remaining typed directions" {
   mutable.put_i64_le(-9L)
   mutable.put_f32_be(3.5)
   mutable.put_f64_le(4.5)
-  let bytes = mutable.freeze()
-  assert_eq(bytes.get_i16_le(), Int16::from_int(-7))
-  assert_eq(bytes.get_i32_be(), -8)
-  assert_eq(bytes.get_i64_le(), -9L)
-  assert_eq(bytes.get_f32_be(), 3.5)
-  assert_eq(bytes.get_f64_le(), 4.5)
+  let cursor = mutable.freeze().cursor()
+  assert_eq(cursor.get_i16_le(), Int16::from_int(-7))
+  assert_eq(cursor.get_i32_be(), -8)
+  assert_eq(cursor.get_i64_le(), -9L)
+  assert_eq(cursor.get_f32_be(), 3.5)
+  assert_eq(cursor.get_f64_le(), 4.5)
 
   let left = BytesMut::from_array([b'a', b'b'][:])
   let right = BytesMut::from_array([b'c'][:])
@@ -517,13 +548,15 @@ test "Buf and BufMut trait dispatch covers the public forwarding surface" {
   BufMut::put_bytes(mutable, extra)
   BufMut::put_bytes_view(mutable, b"Z"[:])
   let bytes = BufMut::freeze(mutable)
-  assert_eq(Buf::remaining(bytes), 7)
-  assert_eq(Buf::chunk(bytes).len(), 7)
-  assert_eq(Buf::get_u8(bytes), b'X')
-  assert_eq(Buf::get_u32_be(bytes), 0x01020304U)
+  let cursor = bytes.cursor()
+  assert_eq(Buf::remaining(cursor), 7)
+  assert_eq(Buf::chunk(cursor).len(), 7)
+  assert_eq(Buf::get_u8(cursor), b'X')
+  assert_eq(Buf::get_u32_be(cursor), 0x01020304U)
   let target = Array::make(2, (0).to_byte())
-  assert_eq(Buf::copy_to(bytes, target.mut_view()), 2)
+  assert_eq(Buf::copy_to(cursor, target.mut_view()), 2)
   assert_eq(target, [b'Y', b'Z'])
+  assert_eq(bytes.to_bytes(), b"X\x01\x02\x03\x04YZ")
 
   let typed = BytesMut::new()
   typed.put_u16_be(0x1234U.to_uint16())
@@ -531,7 +564,7 @@ test "Buf and BufMut trait dispatch covers the public forwarding surface" {
   typed.put_u32_le(0x89ABCDEFU)
   typed.put_u64_be(0x0123456789ABCDEFUL)
   typed.put_u64_le(0xFEDCBA9876543210UL)
-  let cursor = typed.freeze()
+  let cursor = typed.freeze().cursor()
   assert_eq(Buf::get_u16_be(cursor), 0x1234U.to_uint16())
   assert_eq(Buf::get_u16_le(cursor), 0x5678U.to_uint16())
   assert_eq(Buf::get_u32_le(cursor), 0x89ABCDEFU)
@@ -584,8 +617,8 @@ test "BufMut BytesView default avoids an intermediate array contract" {
 
 ///|
 test "Buf defaults cross chain boundaries and take enforces its limit" {
-  let left = SharedBytes::from_array([b'\x01', b'\x02', b'\x03'][:])
-  let right = SharedBytes::from_array([b'\x04', b'\xFF'][:])
+  let left = SharedBytes::from_array([b'\x01', b'\x02', b'\x03'][:]).cursor()
+  let right = SharedBytes::from_array([b'\x04', b'\xFF'][:]).cursor()
   let chain = BufChain::new(left, right)
   assert_eq(Buf::get_u32_be(chain), 0x01020304U)
   assert_eq(Buf::get_i8(chain), -1)
@@ -594,14 +627,14 @@ test "Buf defaults cross chain boundaries and take enforces its limit" {
   let output = BytesMut::new()
   BufMut::put_i16_le(output, Int16::from_int(-2))
   BufMut::put_f32_be(output, 1.5)
-  let cursor = BufTake::new(BufMut::freeze(output), 2)
+  let cursor = BufTake::new(BufMut::freeze(output).cursor(), 2)
   assert_eq(Buf::get_i16_le(cursor), Int16::from_int(-2))
   assert_eq(Buf::remaining(cursor), 0)
   assert_eq(capture_buffer_result(() => Buf::get_u8(cursor)) is Err(_), true)
 
   let short = BufChain::new(
-    SharedBytes::from_array([b'\x01'][:]),
-    SharedBytes::new(),
+    SharedBytes::from_array([b'\x01'][:]).cursor(),
+    SharedBytes::new().cursor(),
   )
   assert_eq(capture_buffer_result(() => Buf::get_u16_be(short)) is Err(_), true)
   assert_eq(Buf::remaining(short), 1)
@@ -618,8 +651,11 @@ test "Buf defaults cross chain boundaries and take enforces its limit" {
 ///|
 fn default_cursor(
   bytes : ArrayView[Byte],
-) -> BufChain[SharedBytes, SharedBytes] {
-  BufChain::new(SharedBytes::new(), SharedBytes::from_array(bytes))
+) -> BufChain[BytesCursor, BytesCursor] {
+  BufChain::new(
+    SharedBytes::new().cursor(),
+    SharedBytes::from_array(bytes).cursor(),
+  )
 }
 
 ///|
@@ -670,8 +706,8 @@ test "Buf and BufMut typed defaults cover every portable scalar direction" {
 ///|
 test "BufChain and BufTake copy chunk and invalid paths preserve bounds" {
   let chain = BufChain::new(
-    SharedBytes::from_array([b'a'][:]),
-    SharedBytes::from_array([b'b', b'c'][:]),
+    SharedBytes::from_array([b'a'][:]).cursor(),
+    SharedBytes::from_array([b'b', b'c'][:]).cursor(),
   )
   assert_eq(chain.chunk().to_bytes(), b"a")
   let destination = Array::make(3, b'-')
@@ -682,7 +718,7 @@ test "BufChain and BufTake copy chunk and invalid paths preserve bounds" {
   assert_true(second.is_empty())
 
   let source = SharedBytes::from_array([b'x', b'y', b'z'][:])
-  let take = BufTake::new(source, 2)
+  let take = BufTake::new(source.cursor(), 2)
   assert_eq(take.chunk().to_bytes(), b"xy")
   let copied = Array::make(4, b'-')
   assert_eq(Buf::copy_to(take, copied.mut_view()), 2)
@@ -690,12 +726,12 @@ test "BufChain and BufTake copy chunk and invalid paths preserve bounds" {
   assert_eq(take.limit(), 0)
   assert_true(take.into_inner().remaining() == 1)
   assert_eq(
-    capture_buffer_result(() => BufTake::new(source, -1)) is Err(_),
+    capture_buffer_result(() => BufTake::new(source.cursor(), -1)) is Err(_),
     true,
   )
   let first_only = BufChain::new(
-    SharedBytes::from_array([b'a', b'b'][:]),
-    SharedBytes::from_array([b'c'][:]),
+    SharedBytes::from_array([b'a', b'b'][:]).cursor(),
+    SharedBytes::from_array([b'c'][:]).cursor(),
   )
   let one = Array::make(1, b'-')
   assert_eq(Buf::copy_to(first_only, one.mut_view()), 1)
@@ -704,7 +740,10 @@ test "BufChain and BufTake copy chunk and invalid paths preserve bounds" {
     capture_buffer_result(() => Buf::advance(first_only, 9)) is Err(_),
     true,
   )
-  let invalid_take = BufTake::new(SharedBytes::from_array([b'x'][:]), 1)
+  let invalid_take = BufTake::new(
+    SharedBytes::from_array([b'x'][:]).cursor(),
+    1,
+  )
   assert_eq(
     capture_buffer_result(() => Buf::advance(invalid_take, 2)) is Err(_),
     true,
@@ -722,9 +761,9 @@ test "visible value errors equality ordering and hashing cover both outcomes" {
     true,
   )
   let value = SharedBytes::from_array([b'a', b'b'][:])
-  assert_eq(capture_buffer_result(() => value.truncate(3)) is Err(_), true)
-  assert_eq(capture_buffer_result(() => value.split_off(-1)) is Err(_), true)
-  assert_eq(SharedBytes::from_array([b'\x7F'][:]).get_i8(), 127)
+  assert_eq(capture_buffer_result(() => value.prefix(3)) is Err(_), true)
+  assert_eq(capture_buffer_result(() => value.split_at(-1)) is Err(_), true)
+  assert_eq(SharedBytes::from_array([b'\x7F'][:]).cursor().get_i8(), 127)
   assert_eq(value == SharedBytes::from_array([b'a'][:]), false)
   assert_eq(value == SharedBytes::from_array([b'a', b'c'][:]), false)
   assert_true(value.compare(SharedBytes::from_array([b'a', b'b', b'c'][:])) < 0)

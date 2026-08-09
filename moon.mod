@@ -1,6 +1,6 @@
 name = "ZSeanYves/bufferutils"
 
-version = "0.40.0-rc.1"
+version = "0.40.0-rc.2"
 
 readme = "README.md"
 

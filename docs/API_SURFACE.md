@@ -32,8 +32,11 @@ state, durability guarantees, or a promise about throughput.
 
 ## Ownership boundaries
 
-`SharedBytes` is immutable and shareable. `BytesMut` is mutable and detaches
-with copy-on-write when its storage is aliased. `from_fixed_array` copies;
+`SharedBytes` is an immutable `#valtype` and is shareable by value. It does not
+implement `Buf` and has no consuming or mutating methods. `BytesCursor` owns
+the mutable read position and implements `Buf`; create one with
+`SharedBytes::cursor`. `BytesMut` is mutable and detaches with copy-on-write
+when its storage is aliased. `from_fixed_array` copies;
 `unsafe_adopt_fixed_array` is the only public adoption boundary and carries an
 explicit no-mutation safety contract. `into_parts` returns pending bytes only
 after the wrapper has stopped using its backing storage.

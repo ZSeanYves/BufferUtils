@@ -10,9 +10,13 @@ cursor. A backend-reported count outside the requested range is a
 `UnexpectedEof` with cumulative progress. `write_all` retries short writes and
 `Interrupted`, and reports `WriteZero` with cumulative progress.
 
-Shared buffer mutations detach before writing whenever a frozen or aliased
-range is reachable. `as_bytes_view`, `BytesMut::freeze`, split, and buffered
-pending tails do not copy; `to_array`, `to_bytes`, and `read_array`/
+`SharedBytes` is an immutable range value. `clone`, `slice`, `prefix`, `suffix`,
+and `split_at` do not advance or mutate the source. `SharedBytesSplit::into_parts`
+is an explicit tuple allocation boundary; its `prefix` and `suffix` accessors
+remain range-only. Consumption is represented by `BytesCursor`, which owns an
+independent position. `BytesMut` mutations detach before writing whenever a
+frozen or aliased range is reachable. `as_bytes_view`, `BytesMut::freeze`, split,
+and buffered pending tails do not copy; `to_array`, `to_bytes`, and `read_array`/
 `write_array` are explicit copy boundaries.
 
 `SharedBytes::from_fixed_array` validates and copies the selected range, so

@@ -24,7 +24,29 @@ pub async fn[R : AsyncRead, W : AsyncWrite] copy(
           progress=total,
         )
       }
-      AsyncWrite::write_all(writer, bytes, offset=0, len=count)
+      for progress = 0; progress < count; {
+        let written = AsyncWrite::write(
+          writer,
+          bytes,
+          offset=progress,
+          len=count - progress,
+        )
+        if written == 0 {
+          raise @syncio.io_error(
+            @syncio.WriteZero,
+            "async write_all",
+            progress~,
+          )
+        }
+        if written < 0 || written > count - progress {
+          raise @syncio.io_error(
+            @syncio.ContractViolation,
+            "async write_all",
+            progress~,
+          )
+        }
+        continue progress + written
+      }
       total += count
     })
   }

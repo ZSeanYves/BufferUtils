@@ -2,8 +2,8 @@
 /// Internal storage shared by immutable and mutable handles.
 ///
 /// `immutable` is a conservative copy-on-write marker. Once a storage is
-/// exposed through `SharedBytes` or split into siblings, a later mutable operation
-/// detaches before writing.
+/// exposed through `SharedBytes` or split into siblings, a later mutable
+/// operation detaches before writing.
 struct SharedStorage {
   data : FixedArray[Byte]
   mut immutable : Bool
@@ -11,11 +11,30 @@ struct SharedStorage {
 }
 
 ///|
-/// Immutable shared byte storage with an independent cursor.
+/// Immutable shared byte storage represented by a backing allocation and a
+/// visible range.
+///
+/// Copying, cloning, and slicing this value share the backing allocation. Use
+/// `cursor` when an operation must consume bytes.
+#valtype
 pub struct SharedBytes {
   storage : SharedStorage
-  mut start : Int
-  mut end : Int
+  start : Int
+  end : Int
+}
+
+///|
+/// A zero-allocation split descriptor for two ranges in one shared backing.
+///
+/// Access either side independently through `prefix` or `suffix`. Converting
+/// both sides to a tuple with `into_parts` is an explicit allocation boundary
+/// on current MoonBit native backends.
+#valtype
+pub struct SharedBytesSplit {
+  storage : SharedStorage
+  start : Int
+  middle : Int
+  end : Int
 }
 
 ///|
@@ -77,171 +96,122 @@ pub fn SharedBytes::new() -> SharedBytes {
 }
 
 ///|
-/// Number of unread bytes.
+/// Return the number of visible bytes.
 #inline
-pub fn SharedBytes::remaining(self : SharedBytes) -> Int {
-  self.end - self.start
-}
-
-///|
-/// Alias for `remaining` when the value is used as a byte sequence.
 pub fn SharedBytes::len(self : SharedBytes) -> Int {
-  self.remaining()
+  self.end - self.start
 }
 
 ///|
 /// Test whether the visible range is empty.
 pub fn SharedBytes::is_empty(self : SharedBytes) -> Bool {
-  self.remaining() == 0
+  self.len() == 0
 }
 
 ///|
-/// Remove all visible bytes while retaining the shared allocation.
-pub fn SharedBytes::clear(self : SharedBytes) -> Unit {
-  self.start = self.end
-}
-
-///|
-/// Shorten the visible range to `length` bytes.
-pub fn SharedBytes::truncate(
-  self : SharedBytes,
-  length : Int,
-) -> Unit raise BufferError {
-  if length < 0 || length > self.remaining() {
-    raise BufferError::InvalidRange("truncate length is outside the bytes")
-  }
-  self.end = self.start + length
-}
-
-///|
-/// Split at an index relative to the current cursor, returning the suffix.
-pub fn SharedBytes::split_off(
-  self : SharedBytes,
-  at : Int,
-) -> SharedBytes raise BufferError {
-  if at < 0 || at > self.remaining() {
-    raise BufferError::InvalidRange("split index is outside the bytes")
-  }
-  let suffix = { storage: self.storage, start: self.start + at, end: self.end }
-  self.end = self.start + at
-  suffix
-}
-
-///|
-/// Return a read-only view over the current range without copying.
+/// Return a read-only view over the visible range without copying.
 pub fn SharedBytes::view(self : SharedBytes) -> ArrayView[Byte] {
   self.storage.data.view(start=self.start, end=self.end)
 }
 
 ///|
-/// Return a zero-copy Core Bytes view over the current shared range.
+/// Return a zero-copy Core Bytes view over the shared range.
 ///
-/// The backing storage is immutable for as long as this handle is reachable;
-/// mutable siblings detach through copy-on-write before modifying it.
+/// The backing storage is immutable while this value is reachable; mutable
+/// siblings detach through copy-on-write before modifying it.
 pub fn SharedBytes::as_bytes_view(self : SharedBytes) -> BytesView {
   self.storage.data.unsafe_reinterpret_as_bytes()[self.start:self.end]
 }
 
 ///|
-/// Return a shared cursor over the current range.
-#inline
-pub fn SharedBytes::chunk(self : SharedBytes) -> SharedBytes {
-  { storage: self.storage, start: self.start, end: self.end }
-}
-
-///|
-/// Clone the current range in O(1) with an independent cursor.
+/// Clone the visible range in O(1).
 #inline
 pub fn SharedBytes::clone(self : SharedBytes) -> SharedBytes {
-  { storage: self.storage, start: self.start, end: self.end }
+  self
 }
 
 ///|
-/// Return a shared sub-range. The range is relative to the current cursor.
+/// Return a shared sub-range. Indices are relative to the visible range.
 #inline
 pub fn SharedBytes::slice(
   self : SharedBytes,
   start : Int,
   end : Int,
 ) -> SharedBytes raise BufferError {
-  let remaining = self.remaining()
-  if start == 0 && end == remaining {
-    return { storage: self.storage, start: self.start, end: self.end }
+  let length = self.len()
+  if start < 0 || end < start || end > length {
+    raise BufferError::InvalidRange("bytes slice is outside the visible range")
   }
-  if start < 0 || end < start || end > remaining {
-    raise BufferError::InvalidRange("bytes slice is outside the current range")
+  if start == 0 && end == length {
+    self
+  } else {
+    { storage: self.storage, start: self.start + start, end: self.start + end }
   }
-  { storage: self.storage, start: self.start + start, end: self.start + end }
 }
 
 ///|
-/// Return the next `count` bytes and advance this cursor.
-pub fn SharedBytes::split_to(
+/// Return the first `length` visible bytes.
+#inline
+pub fn SharedBytes::prefix(
   self : SharedBytes,
-  count : Int,
+  length : Int,
 ) -> SharedBytes raise BufferError {
-  if count < 0 || count > self.remaining() {
-    raise BufferError::Underflow(count, self.remaining())
+  self.slice(0, length)
+}
+
+///|
+/// Return the visible bytes beginning at `offset`.
+#inline
+pub fn SharedBytes::suffix(
+  self : SharedBytes,
+  offset : Int,
+) -> SharedBytes raise BufferError {
+  self.slice(offset, self.len())
+}
+
+///|
+/// Split the visible range at `index` without modifying this value.
+pub fn SharedBytes::split_at(
+  self : SharedBytes,
+  index : Int,
+) -> SharedBytesSplit raise BufferError {
+  if index < 0 || index > self.len() {
+    raise BufferError::InvalidRange("split index is outside the visible range")
   }
-  let result = {
+  {
     storage: self.storage,
     start: self.start,
-    end: self.start + count,
+    middle: self.start + index,
+    end: self.end,
   }
-  self.start += count
-  result
 }
 
 ///|
-pub fn SharedBytes::advance(
-  self : SharedBytes,
-  count : Int,
-) -> Unit raise BufferError {
-  if count < 0 || count > self.remaining() {
-    raise BufferError::Underflow(count, self.remaining())
-  }
-  self.start += count
+/// Return the range before the split point without allocating.
+#inline
+pub fn SharedBytesSplit::prefix(self : SharedBytesSplit) -> SharedBytes {
+  { storage: self.storage, start: self.start, end: self.middle }
 }
 
 ///|
-/// Copy unread bytes into caller-owned storage and advance by the copied count.
-pub fn SharedBytes::copy_to(
-  self : SharedBytes,
-  dst : MutArrayView[Byte],
-) -> Int {
-  let count = Int::min(self.remaining(), dst.length())
-  let source = self.view()
-  for i in 0..<count {
-    dst[i] = source[i]
-  }
-  self.start += count
-  count
+/// Return the range after the split point without allocating.
+#inline
+pub fn SharedBytesSplit::suffix(self : SharedBytesSplit) -> SharedBytes {
+  { storage: self.storage, start: self.middle, end: self.end }
 }
 
 ///|
-/// Copy unread bytes into a fixed-array range with one bulk operation.
-///
-/// This is the zero-allocation destination path. `copy_to` remains the safe
-/// adapter for ordinary mutable arrays.
-pub fn SharedBytes::copy_to_fixed(
-  self : SharedBytes,
-  destination : FixedArray[Byte],
-  offset : Int,
-  length : Int,
-) -> Int raise BufferError {
-  if offset < 0 || length < 0 || offset > destination.length() - length {
-    raise BufferError::InvalidRange("fixed-array destination range is invalid")
-  }
-  let count = Int::min(self.remaining(), length)
-  FixedArray::unsafe_blit(
-    destination,
-    offset,
-    self.storage.data,
-    self.start,
-    count,
-  )
-  self.start += count
-  count
+/// Materialize both split ranges as a tuple.
+pub fn SharedBytesSplit::into_parts(
+  self : SharedBytesSplit,
+) -> (SharedBytes, SharedBytes) {
+  (self.prefix(), self.suffix())
+}
+
+///|
+/// Create an independent consuming cursor over this value.
+pub fn SharedBytes::cursor(self : SharedBytes) -> BytesCursor {
+  BytesCursor::new(self)
 }
 
 ///|
@@ -251,141 +221,9 @@ pub fn SharedBytes::to_array(self : SharedBytes) -> Array[Byte] {
 }
 
 ///|
-/// Materialize the current range as an owned Core Bytes value.
+/// Materialize the visible range as an owned Core Bytes value.
 pub fn SharedBytes::to_bytes(self : SharedBytes) -> Bytes {
   self.as_bytes_view().to_owned()
-}
-
-///|
-/// Read one byte.
-pub fn SharedBytes::get_u8(self : SharedBytes) -> Byte raise BufferError {
-  if self.is_empty() {
-    raise BufferError::Underflow(1, 0)
-  }
-  let result = self.storage.data[self.start]
-  self.start += 1
-  result
-}
-
-///|
-/// Read a signed 8-bit integer and advance the cursor.
-pub fn SharedBytes::get_i8(self : SharedBytes) -> Int raise BufferError {
-  let value = self.get_u8().to_int()
-  if value < 128 {
-    value
-  } else {
-    value - 256
-  }
-}
-
-///|
-fn SharedBytes::take_bytes_view(
-  self : SharedBytes,
-  width : Int,
-) -> BytesView raise BufferError {
-  let remaining = self.remaining()
-  if width > remaining {
-    raise BufferError::Underflow(width, remaining)
-  }
-  let start = self.start
-  self.start += width
-  self.storage.data.unsafe_reinterpret_as_bytes()[start:start + width]
-}
-
-///|
-pub fn SharedBytes::get_u16_be(self : SharedBytes) -> UInt16 raise BufferError {
-  self.take_bytes_view(2).unsafe_read_uint16_be(0)
-}
-
-///|
-pub fn SharedBytes::get_u16_le(self : SharedBytes) -> UInt16 raise BufferError {
-  self.take_bytes_view(2).unsafe_read_uint16_le(0)
-}
-
-///|
-pub fn SharedBytes::get_u32_be(self : SharedBytes) -> UInt raise BufferError {
-  self.take_bytes_view(4).unsafe_read_uint32_be(0)
-}
-
-///|
-pub fn SharedBytes::get_u32_le(self : SharedBytes) -> UInt raise BufferError {
-  self.take_bytes_view(4).unsafe_read_uint32_le(0)
-}
-
-///|
-pub fn SharedBytes::get_u64_be(self : SharedBytes) -> UInt64 raise BufferError {
-  self.take_bytes_view(8).unsafe_read_uint64_be(0)
-}
-
-///|
-pub fn SharedBytes::get_u64_le(self : SharedBytes) -> UInt64 raise BufferError {
-  self.take_bytes_view(8).unsafe_read_uint64_le(0)
-}
-
-///|
-pub fn SharedBytes::get_i16_be(self : SharedBytes) -> Int16 raise BufferError {
-  Int16::reinterpret_from_uint16(self.get_u16_be())
-}
-
-///|
-pub fn SharedBytes::get_i16_le(self : SharedBytes) -> Int16 raise BufferError {
-  Int16::reinterpret_from_uint16(self.get_u16_le())
-}
-
-///|
-pub fn SharedBytes::get_i32_be(self : SharedBytes) -> Int raise BufferError {
-  self.get_u32_be().reinterpret_as_int()
-}
-
-///|
-pub fn SharedBytes::get_i32_le(self : SharedBytes) -> Int raise BufferError {
-  self.get_u32_le().reinterpret_as_int()
-}
-
-///|
-pub fn SharedBytes::get_i64_be(self : SharedBytes) -> Int64 raise BufferError {
-  self.get_u64_be().reinterpret_as_int64()
-}
-
-///|
-pub fn SharedBytes::get_i64_le(self : SharedBytes) -> Int64 raise BufferError {
-  self.get_u64_le().reinterpret_as_int64()
-}
-
-///|
-pub fn SharedBytes::get_f32_be(self : SharedBytes) -> Float raise BufferError {
-  Float::reinterpret_from_uint(self.get_u32_be())
-}
-
-///|
-pub fn SharedBytes::get_f32_le(self : SharedBytes) -> Float raise BufferError {
-  Float::reinterpret_from_uint(self.get_u32_le())
-}
-
-///|
-pub fn SharedBytes::get_f64_be(self : SharedBytes) -> Double raise BufferError {
-  self.get_u64_be().reinterpret_as_double()
-}
-
-///|
-pub fn SharedBytes::get_f64_le(self : SharedBytes) -> Double raise BufferError {
-  self.get_u64_le().reinterpret_as_double()
-}
-
-///|
-pub fn SharedBytes::get_utf8(
-  self : SharedBytes,
-  count : Int,
-) -> String raise BufferError {
-  if count < 0 || count > self.remaining() {
-    raise BufferError::Underflow(count, self.remaining())
-  }
-  let bytes = self.as_bytes_view()[0:count]
-  let decoded = @utf8.decode(bytes) catch {
-    _ => raise BufferError::InvalidUtf8
-  }
-  self.start += count
-  decoded
 }
 
 ///|

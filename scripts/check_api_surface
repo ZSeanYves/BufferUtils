@@ -11,11 +11,13 @@ done
 
 required=(
   "buffer/pkg.generated.mbti|pub struct SharedBytes"
+  "buffer/pkg.generated.mbti|pub struct SharedBytesSplit"
+  "buffer/pkg.generated.mbti|pub struct BytesCursor"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::clone"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::as_bytes_view"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::from_fixed_array"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::unsafe_adopt_fixed_array"
-  "buffer/pkg.generated.mbti|pub fn SharedBytes::split_off"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::split_at"
   "buffer/pkg.generated.mbti|pub struct BytesMut"
   "buffer/pkg.generated.mbti|pub fn BytesMut::zeroed"
   "buffer/pkg.generated.mbti|pub fn BytesMut::put_bytes_view"
@@ -86,6 +88,15 @@ for requirement in "${required[@]}"; do
 done
 
 forbidden=(
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::advance"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::clear"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::copy_to"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::get_u8"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::remaining"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::split_off"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::split_to"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::truncate"
+  "buffer/pkg.generated.mbti|pub impl Buf for SharedBytes"
   "io/pkg.generated.mbti|MemoryPipeState"
   "io/pkg.generated.mbti|pub struct MemoryPipe"
   "io/pkg.generated.mbti|pub struct MemoryPipeReader"

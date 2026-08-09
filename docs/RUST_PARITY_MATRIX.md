@@ -5,7 +5,7 @@ Reference versions are Rust 1.97.1 `std::io`, `bytes` 1.12.1, and Tokio
 
 | Reference area | Status | BufferUtils surface | Evidence |
 | --- | --- | --- | --- |
-| `bytes::Bytes` clone, slice, split, truncate, clear | implemented | `SharedBytes` | buffer state-model and zero-copy tests; benchmark copy counters |
+| `bytes::Bytes` clone, slice, split, visible range | implemented | immutable `SharedBytes` plus `BytesCursor` for consumption | buffer state-model, cursor, COW, and zero-copy tests; benchmark copy counters |
 | Safe construction from mutable storage | implemented | `from_fixed_array` copies; `unsafe_adopt_fixed_array` is explicit | alias mutation tests |
 | Visible-byte equality, ordering, hash, debug | implemented | `SharedBytes` trait implementations | cross-range tests and generated docs |
 | `bytes::BytesMut` zeroed, reserve, extend-within, freeze | implemented | `BytesMut` | buffer package tests and COW/growth structural benchmarks |

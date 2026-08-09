@@ -4,7 +4,7 @@ BufferUtils is a pre-1.0 MoonBit library for shared byte storage and
 synchronous, asynchronous, and native I/O. The 0.40 release intentionally
 breaks the 0.37 source API and does not provide a deprecation layer.
 
-The current source version is `0.40.0-rc.1`. This repository does not publish
+The current source version is `0.40.0-rc.2`. This repository does not publish
 packages or create releases automatically.
 
 ## Packages
@@ -27,13 +27,17 @@ mutable.put_u16_be(0x1234U.to_uint16())
 mutable.put_utf8("MoonBit")
 let bytes = mutable.freeze()
 let prefix = bytes.slice(0, 2)
+let cursor = bytes.cursor()
+let value = cursor.get_u16_be()
 ```
 
 `SharedBytes::from_fixed_array` copies the selected range. The unsafe
 `unsafe_adopt_fixed_array` constructor is only for an allocation exclusively
 owned by the caller; the source array must not be mutated while any derived
-value is reachable. `clone`, `slice`, `split`, and `freeze` share storage, and
-mutable aliases detach with copy-on-write.
+value is reachable. `SharedBytes` is immutable: `clone`, `slice`, `split_at`,
+and `freeze` share storage. Use `bytes.cursor()` for consuming reads;
+`SharedBytesSplit::prefix` and `suffix` expose split ranges without a tuple
+allocation. Mutable aliases detach with copy-on-write.
 
 Synchronous `BufReader::lines` and `split` are lazy cursors:
 
@@ -85,7 +89,8 @@ MoonBit throughput must equal Rust throughput.
 
 Read [`docs/API_SURFACE.md`](docs/API_SURFACE.md) for the public API boundary,
 [`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) when
-upgrading, and [`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the manual
+upgrading, [`docs/MIGRATION_0.40_RC1_TO_RC2.md`](docs/MIGRATION_0.40_RC1_TO_RC2.md)
+for the cursor migration, and [`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the manual
 review and consumer-install procedure.
 
 Detailed semantics and evidence are in

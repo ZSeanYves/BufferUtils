@@ -426,7 +426,7 @@ fn shared_clone_case(size : Int) -> BenchmarkCase {
           }
         },
         observe: () => {
-          benchmark_keeper.keep(sink.val.remaining())
+          benchmark_keeper.keep(sink.val.len())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),
@@ -447,11 +447,11 @@ fn shared_slice_case(size : Int) -> BenchmarkCase {
       {
         run: () => {
           for _ in 0..<iterations {
-            sink.val = source.slice(0, source.remaining())
+            sink.val = source.slice(0, source.len())
           }
         },
         observe: () => {
-          benchmark_keeper.keep(sink.val.remaining())
+          benchmark_keeper.keep(sink.val.len())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),
@@ -472,12 +472,11 @@ fn shared_split_case(size : Int) -> BenchmarkCase {
       {
         run: () => {
           for _ in 0..<iterations {
-            let cursor = source.clone()
-            sink.val = cursor.split_to(size / 2)
+            sink.val = source.split_at(size / 2).prefix()
           }
         },
         observe: () => {
-          benchmark_keeper.keep(sink.val.remaining())
+          benchmark_keeper.keep(sink.val.len())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),
@@ -500,7 +499,7 @@ fn freeze_case(size : Int) -> BenchmarkCase {
         run: () => {
           let mut checksum = 0
           for _ in 0..<iterations {
-            checksum += buffer.freeze().remaining()
+            checksum += buffer.freeze().len()
           }
           sink.val = checksum
         },

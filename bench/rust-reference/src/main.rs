@@ -432,8 +432,7 @@ fn buffer_cases(size: usize, batch: usize, selected: Option<&str>) {
             |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
             |state, iterations| {
                 for _ in 0..iterations {
-                    let mut cursor = state.0.clone();
-                    state.1 = cursor.split_to(size / 2);
+                    state.1 = state.0.slice(0..size / 2);
                     black_box(&state.1);
                 }
             },

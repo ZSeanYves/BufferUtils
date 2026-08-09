@@ -92,7 +92,7 @@ pub impl[B : Buf] Buf for BufTake[B] with fn chunk(self) {
   {
     storage: chunk.storage,
     start: chunk.start,
-    end: chunk.start + Int::min(chunk.remaining(), self.limit()),
+    end: chunk.start + Int::min(chunk.len(), self.limit()),
   }
 }
 

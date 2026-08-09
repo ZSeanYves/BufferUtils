@@ -1,5 +1,5 @@
 ///|
-/// In-memory cursor operations shared by immutable byte values.
+/// In-memory cursor operations over immutable byte values.
 pub(open) trait Buf {
   fn remaining(Self) -> Int
   fn chunk(Self) -> SharedBytes
@@ -161,57 +161,57 @@ impl Buf with fn get_f64_le(self) {
 }
 
 ///|
-pub impl Buf for SharedBytes with fn remaining(self) {
+pub impl Buf for BytesCursor with fn remaining(self) {
   self.remaining()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn chunk(self) {
-  self.chunk()
+pub impl Buf for BytesCursor with fn chunk(self) {
+  self.remaining_bytes()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn advance(self, count) {
+pub impl Buf for BytesCursor with fn advance(self, count) {
   self.advance(count)
 }
 
 ///|
-pub impl Buf for SharedBytes with fn copy_to(self, dst) {
+pub impl Buf for BytesCursor with fn copy_to(self, dst) {
   self.copy_to(dst)
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u8(self) {
+pub impl Buf for BytesCursor with fn get_u8(self) {
   self.get_u8()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u16_be(self) {
+pub impl Buf for BytesCursor with fn get_u16_be(self) {
   self.get_u16_be()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u16_le(self) {
+pub impl Buf for BytesCursor with fn get_u16_le(self) {
   self.get_u16_le()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u32_be(self) {
+pub impl Buf for BytesCursor with fn get_u32_be(self) {
   self.get_u32_be()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u32_le(self) {
+pub impl Buf for BytesCursor with fn get_u32_le(self) {
   self.get_u32_le()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u64_be(self) {
+pub impl Buf for BytesCursor with fn get_u64_be(self) {
   self.get_u64_be()
 }
 
 ///|
-pub impl Buf for SharedBytes with fn get_u64_le(self) {
+pub impl Buf for BytesCursor with fn get_u64_le(self) {
   self.get_u64_le()
 }
 

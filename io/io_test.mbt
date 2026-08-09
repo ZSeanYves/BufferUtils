@@ -824,8 +824,8 @@ test "lazy cursors and buffer adapters preserve progress" {
   assert_eq(lines.next(), None)
 
   let source = @buffer.BufChain::new(
-    @buffer.SharedBytes::from_array([b'a', b'b'][:]),
-    @buffer.SharedBytes::from_array([b'c'][:]),
+    @buffer.SharedBytes::from_array([b'a', b'b'][:]).cursor(),
+    @buffer.SharedBytes::from_array([b'c'][:]).cursor(),
   )
   let adapted = BufReaderAdapter::new(source)
   let destination = Array::make(3, (0).to_byte())
@@ -850,7 +850,7 @@ fn error_is_interrupted() -> Bool {
 
 ///|
 test "sync failure matrix covers adapters pipes and exact progress contracts" {
-  let source = @buffer.SharedBytes::from_array([b'a'][:])
+  let source = @buffer.SharedBytes::from_array([b'a'][:]).cursor()
   let reader = BufReaderAdapter::new(source)
   assert_eq(reader.get_ref().remaining(), 1)
   assert_eq(

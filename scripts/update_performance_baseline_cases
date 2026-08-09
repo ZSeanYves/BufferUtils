@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf 'usage: %s EXISTING.csv OUTPUT.csv MOONBIT.csv RUST.csv CASES.csv\n' "$0" >&2
+  exit 2
+}
+
+[[ $# -eq 5 ]] || usage
+existing=$1
+output=$2
+moonbit_csv=$3
+rust_csv=$4
+cases=$5
+
+for file in "$existing" "$moonbit_csv" "$rust_csv" "$cases"; do
+  [[ -f "$file" ]] || {
+    printf 'performance input not found: %s\n' "$file" >&2
+    exit 1
+  }
+done
+
+script_dir=$(cd "$(dirname "$0")" && pwd)
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/bufferutils-baseline.XXXXXX")
+trap 'rm -rf "$work_dir"' EXIT
+
+candidate=$work_dir/candidate.csv
+merged=$work_dir/merged.csv
+"$script_dir/build_performance_baseline" "$candidate" "$moonbit_csv" "$rust_csv"
+
+awk -F, -v candidate_file="$candidate" -v cases_file="$cases" '
+BEGIN {
+  while ((getline line < cases_file) > 0) {
+    if (line == "" || line ~ /^[[:space:]]*#/) continue
+    split(line, fields, ",")
+    if (fields[1] == "name") continue
+    key = fields[1] SUBSEP fields[2]
+    selected[key] = 1
+  }
+  close(cases_file)
+}
+FILENAME == candidate_file {
+  if (FNR == 1) next
+  key = $1 SUBSEP $2
+  if (key in selected) {
+    replacement[key] = $0
+    found[key] = 1
+  }
+  next
+}
+FILENAME != candidate_file {
+  if (FNR == 1) {
+    if ($1 != "name" || $2 != "size" || $3 != "moonbit_over_rust") {
+      print "invalid ratio baseline header" > "/dev/stderr"
+      failed = 1
+    }
+    next
+  }
+  key = $1 SUBSEP $2
+  existing_row[key] = $0
+  next
+}
+END {
+  for (key in selected) {
+    if (!(key in found)) {
+      print "selected case is missing from candidate: " key > "/dev/stderr"
+      failed = 1
+    }
+  }
+  if (failed) exit 1
+  print "name,size,moonbit_over_rust"
+  for (key in existing_row) {
+    if (key in selected) {
+      print replacement[key]
+    } else {
+      print existing_row[key]
+    }
+  }
+}
+' "$candidate" "$existing" | {
+  IFS= read -r header
+  printf '%s\n' "$header"
+  sort -t, -k1,1 -k2,2n
+} > "$merged"
+
+mv "$merged" "$output"
+printf 'updated selected performance baseline cases in %s\n' "$output"
