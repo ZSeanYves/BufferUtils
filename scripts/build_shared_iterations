@@ -45,8 +45,17 @@ END {
   for (key in maximum) {
     iterations = int((maximum[key] * 5 + 3) / 4)
     limit = 16777216
+    # Zero-copy microcases can hit the generic cap before reaching the
+    # quality gate minimum of 10 ms on faster runners. Give only these cases
+    # enough work to remain measurable; all other workloads keep the cap.
+    if (names[key] == "buffer_shared_clone" || names[key] == "buffer_freeze") {
+      limit = 67108864
+    }
     if (names[key] == "async_copy") limit = int(2147483647 / sizes[key])
     if (iterations > limit) iterations = limit
+    if (names[key] == "buffer_shared_clone" || names[key] == "buffer_freeze") {
+      if (iterations < 33554432) iterations = 33554432
+    }
     print names[key] "," sizes[key] "," iterations
   }
 }
