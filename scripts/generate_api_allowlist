@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=${1:-docs/API_ALLOWLIST.txt}
+mkdir -p "$(dirname "$output")"
+temporary=$(mktemp)
+trap 'rm -f "$temporary"' EXIT
+
+{
+  printf '%s\n' '# Generated public API declarations. Regenerate only after an intentional API review.'
+  printf '%s\n' '# Format: package|generated declaration or public member line'
+  for file in \
+    src/buffer/pkg.generated.mbti \
+    src/io/pkg.generated.mbti \
+    src/async_io/pkg.generated.mbti \
+    src/native/pkg.generated.mbti; do
+    package=${file#src/}
+    package=${package%/pkg.generated.mbti}
+    awk -v package="$package" '
+      function emit(line) {
+        print package "|" line
+      }
+      /^pub\(open\) trait / {
+        emit($0)
+        in_trait = 1
+        next
+      }
+      /^pub\(all\) (struct|enum) / {
+        emit($0)
+        in_public_block = 1
+        next
+      }
+      /^pub (suberror|struct|enum|fn|async fn|impl)/ {
+        emit($0)
+        in_trait = 0
+        in_public_block = 0
+        next
+      }
+      in_trait && /^  fn / {
+        emit($0)
+        next
+      }
+      in_public_block {
+        emit($0)
+        if ($0 ~ /^}/) in_public_block = 0
+      }
+    ' "$file"
+  done
+} > "$temporary"
+
+mv "$temporary" "$output"
+trap - EXIT

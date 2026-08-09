@@ -1,0 +1,531 @@
+# Generated public API declarations. Regenerate only after an intentional API review.
+# Format: package|generated declaration or public member line
+buffer|pub suberror BufferError {
+buffer|pub struct BufChain[A, B] {
+buffer|pub fn[A, B] BufChain::into_parts(Self[A, B]) -> (A, B)
+buffer|pub fn[A, B] BufChain::new(A, B) -> Self[A, B]
+buffer|pub impl[A : Buf, B : Buf] Buf for BufChain[A, B]
+buffer|pub struct BufTake[B] {
+buffer|pub fn[B] BufTake::into_inner(Self[B]) -> B
+buffer|pub fn[B : Buf] BufTake::limit(Self[B]) -> Int
+buffer|pub fn[B] BufTake::new(B, Int) -> Self[B] raise BufferError
+buffer|pub impl[B : Buf] Buf for BufTake[B]
+buffer|pub struct BytesCursor {
+buffer|pub fn BytesCursor::advance(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesCursor::copy_to(Self, MutArrayView[Byte]) -> Int
+buffer|pub fn BytesCursor::copy_to_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise BufferError
+buffer|pub fn BytesCursor::get_f32_be(Self) -> Float raise BufferError
+buffer|pub fn BytesCursor::get_f32_le(Self) -> Float raise BufferError
+buffer|pub fn BytesCursor::get_f64_be(Self) -> Double raise BufferError
+buffer|pub fn BytesCursor::get_f64_le(Self) -> Double raise BufferError
+buffer|pub fn BytesCursor::get_i16_be(Self) -> Int16 raise BufferError
+buffer|pub fn BytesCursor::get_i16_le(Self) -> Int16 raise BufferError
+buffer|pub fn BytesCursor::get_i32_be(Self) -> Int raise BufferError
+buffer|pub fn BytesCursor::get_i32_le(Self) -> Int raise BufferError
+buffer|pub fn BytesCursor::get_i64_be(Self) -> Int64 raise BufferError
+buffer|pub fn BytesCursor::get_i64_le(Self) -> Int64 raise BufferError
+buffer|pub fn BytesCursor::get_i8(Self) -> Int raise BufferError
+buffer|pub fn BytesCursor::get_u16_be(Self) -> UInt16 raise BufferError
+buffer|pub fn BytesCursor::get_u16_le(Self) -> UInt16 raise BufferError
+buffer|pub fn BytesCursor::get_u32_be(Self) -> UInt raise BufferError
+buffer|pub fn BytesCursor::get_u32_le(Self) -> UInt raise BufferError
+buffer|pub fn BytesCursor::get_u64_be(Self) -> UInt64 raise BufferError
+buffer|pub fn BytesCursor::get_u64_le(Self) -> UInt64 raise BufferError
+buffer|pub fn BytesCursor::get_u8(Self) -> Byte raise BufferError
+buffer|pub fn BytesCursor::get_utf8(Self, Int) -> String raise BufferError
+buffer|pub fn BytesCursor::into_remaining(Self) -> SharedBytes
+buffer|pub fn BytesCursor::is_empty(Self) -> Bool
+buffer|pub fn BytesCursor::new(SharedBytes) -> Self
+buffer|pub fn BytesCursor::position(Self) -> Int
+buffer|pub fn BytesCursor::remaining(Self) -> Int
+buffer|pub fn BytesCursor::remaining_bytes(Self) -> SharedBytes
+buffer|pub fn BytesCursor::split_to(Self, Int) -> SharedBytes raise BufferError
+buffer|pub impl Buf for BytesCursor
+buffer|pub struct BytesMut {
+buffer|pub fn BytesMut::capacity(Self) -> Int
+buffer|pub fn BytesMut::clear(Self) -> Unit
+buffer|pub fn BytesMut::copied_bytes(Self) -> Int
+buffer|pub fn BytesMut::extend_from_within(Self, Int, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::freeze(Self) -> SharedBytes
+buffer|pub fn BytesMut::from_array(ArrayView[Byte], max_capacity? : Int) -> Self raise BufferError
+buffer|pub fn BytesMut::has_remaining_mut(Self) -> Bool
+buffer|pub fn BytesMut::is_empty(Self) -> Bool
+buffer|pub fn BytesMut::len(Self) -> Int
+buffer|pub fn BytesMut::new(capacity? : Int, max_capacity? : Int) -> Self raise BufferError
+buffer|pub fn BytesMut::put_byte(Self, Byte) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_bytes(Self, SharedBytes) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_bytes_view(Self, BytesView) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_f32_be(Self, Float) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_f32_le(Self, Float) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_f64_be(Self, Double) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_f64_le(Self, Double) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i16_be(Self, Int16) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i16_le(Self, Int16) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i32_be(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i32_le(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i64_be(Self, Int64) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i64_le(Self, Int64) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_i8(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_slice(Self, ArrayView[Byte]) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u16_be(Self, UInt16) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u16_le(Self, UInt16) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u32_be(Self, UInt) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u32_le(Self, UInt) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u64_be(Self, UInt64) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_u64_le(Self, UInt64) -> Unit raise BufferError
+buffer|pub fn BytesMut::put_utf8(Self, StringView) -> Unit raise BufferError
+buffer|pub fn BytesMut::remaining_mut(Self) -> Int
+buffer|pub fn BytesMut::reserve(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::resize(Self, Int, value? : Byte) -> Unit raise BufferError
+buffer|pub fn BytesMut::split(Self) -> Self raise BufferError
+buffer|pub fn BytesMut::split_off(Self, Int) -> Self raise BufferError
+buffer|pub fn BytesMut::split_to(Self, Int) -> Self raise BufferError
+buffer|pub fn BytesMut::truncate(Self, Int) -> Unit raise BufferError
+buffer|pub fn BytesMut::try_reclaim(Self, Int) -> Bool raise BufferError
+buffer|pub fn BytesMut::try_unsplit(Self, Self) -> Bool
+buffer|pub fn BytesMut::unsplit(Self, Self) -> Unit raise BufferError
+buffer|pub fn BytesMut::view(Self) -> ArrayView[Byte]
+buffer|pub fn[T] BytesMut::with_spare_capacity(Self, Int, (MutArrayView[Byte]) -> (Int, T)) -> T raise BufferError
+buffer|pub fn[T] BytesMut::with_writable(Self, (MutArrayView[Byte]) -> T) -> T
+buffer|pub fn BytesMut::zeroed(Int, max_capacity? : Int) -> Self raise BufferError
+buffer|pub impl BufMut for BytesMut
+buffer|pub impl Eq for BytesMut
+buffer|pub impl @debug.Debug for BytesMut
+buffer|pub struct SharedBytes {
+buffer|pub fn SharedBytes::as_bytes_view(Self) -> BytesView
+buffer|pub fn SharedBytes::clone(Self) -> Self
+buffer|pub fn SharedBytes::copied_bytes(Self) -> Int
+buffer|pub fn SharedBytes::cursor(Self) -> BytesCursor
+buffer|pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
+buffer|pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
+buffer|pub fn SharedBytes::is_empty(Self) -> Bool
+buffer|pub fn SharedBytes::len(Self) -> Int
+buffer|pub fn SharedBytes::new() -> Self
+buffer|pub fn SharedBytes::prefix(Self, Int) -> Self raise BufferError
+buffer|pub fn SharedBytes::slice(Self, Int, Int) -> Self raise BufferError
+buffer|pub fn SharedBytes::split_at(Self, Int) -> SharedBytesSplit raise BufferError
+buffer|pub fn SharedBytes::suffix(Self, Int) -> Self raise BufferError
+buffer|pub fn SharedBytes::to_array(Self) -> Array[Byte]
+buffer|pub fn SharedBytes::to_bytes(Self) -> Bytes
+buffer|pub fn SharedBytes::unsafe_adopt_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError
+buffer|pub fn SharedBytes::view(Self) -> ArrayView[Byte]
+buffer|pub impl Compare for SharedBytes
+buffer|pub impl Eq for SharedBytes
+buffer|pub impl Hash for SharedBytes
+buffer|pub impl @debug.Debug for SharedBytes
+buffer|pub struct SharedBytesSplit {
+buffer|pub fn SharedBytesSplit::into_parts(Self) -> (SharedBytes, SharedBytes)
+buffer|pub fn SharedBytesSplit::prefix(Self) -> SharedBytes
+buffer|pub fn SharedBytesSplit::suffix(Self) -> SharedBytes
+buffer|pub(open) trait Buf {
+buffer|  fn remaining(Self) -> Int
+buffer|  fn chunk(Self) -> SharedBytes
+buffer|  fn advance(Self, Int) -> Unit raise BufferError
+buffer|  fn copy_to(Self, MutArrayView[Byte]) -> Int
+buffer|  fn get_u8(Self) -> Byte raise BufferError = _
+buffer|  fn get_i8(Self) -> Int raise BufferError = _
+buffer|  fn get_u16_be(Self) -> UInt16 raise BufferError = _
+buffer|  fn get_u16_le(Self) -> UInt16 raise BufferError = _
+buffer|  fn get_i16_be(Self) -> Int16 raise BufferError = _
+buffer|  fn get_i16_le(Self) -> Int16 raise BufferError = _
+buffer|  fn get_u32_be(Self) -> UInt raise BufferError = _
+buffer|  fn get_u32_le(Self) -> UInt raise BufferError = _
+buffer|  fn get_i32_be(Self) -> Int raise BufferError = _
+buffer|  fn get_i32_le(Self) -> Int raise BufferError = _
+buffer|  fn get_f32_be(Self) -> Float raise BufferError = _
+buffer|  fn get_f32_le(Self) -> Float raise BufferError = _
+buffer|  fn get_u64_be(Self) -> UInt64 raise BufferError = _
+buffer|  fn get_u64_le(Self) -> UInt64 raise BufferError = _
+buffer|  fn get_i64_be(Self) -> Int64 raise BufferError = _
+buffer|  fn get_i64_le(Self) -> Int64 raise BufferError = _
+buffer|  fn get_f64_be(Self) -> Double raise BufferError = _
+buffer|  fn get_f64_le(Self) -> Double raise BufferError = _
+buffer|pub(open) trait BufMut {
+buffer|  fn remaining_mut(Self) -> Int
+buffer|  fn has_remaining_mut(Self) -> Bool = _
+buffer|  fn reserve(Self, Int) -> Unit raise BufferError
+buffer|  fn put_byte(Self, Byte) -> Unit raise BufferError
+buffer|  fn put_slice(Self, ArrayView[Byte]) -> Unit raise BufferError
+buffer|  fn put_bytes_view(Self, BytesView) -> Unit raise BufferError = _
+buffer|  fn put_bytes(Self, SharedBytes) -> Unit raise BufferError
+buffer|  fn put_i8(Self, Int) -> Unit raise BufferError = _
+buffer|  fn put_u16_be(Self, UInt16) -> Unit raise BufferError = _
+buffer|  fn put_u16_le(Self, UInt16) -> Unit raise BufferError = _
+buffer|  fn put_i16_be(Self, Int16) -> Unit raise BufferError = _
+buffer|  fn put_i16_le(Self, Int16) -> Unit raise BufferError = _
+buffer|  fn put_u32_be(Self, UInt) -> Unit raise BufferError = _
+buffer|  fn put_u32_le(Self, UInt) -> Unit raise BufferError = _
+buffer|  fn put_i32_be(Self, Int) -> Unit raise BufferError = _
+buffer|  fn put_i32_le(Self, Int) -> Unit raise BufferError = _
+buffer|  fn put_f32_be(Self, Float) -> Unit raise BufferError = _
+buffer|  fn put_f32_le(Self, Float) -> Unit raise BufferError = _
+buffer|  fn put_u64_be(Self, UInt64) -> Unit raise BufferError = _
+buffer|  fn put_u64_le(Self, UInt64) -> Unit raise BufferError = _
+buffer|  fn put_i64_be(Self, Int64) -> Unit raise BufferError = _
+buffer|  fn put_i64_le(Self, Int64) -> Unit raise BufferError = _
+buffer|  fn put_f64_be(Self, Double) -> Unit raise BufferError = _
+buffer|  fn put_f64_le(Self, Double) -> Unit raise BufferError = _
+buffer|  fn freeze(Self) -> SharedBytes
+io|pub fn io_error(IoErrorKind, String, context? : String, path? : String, raw_code? : Int, progress? : Int, message? : String) -> IoError
+io|pub fn[R : Read] read_exact_fixed(R, FixedArray[Byte], Int, Int) -> Unit raise IoError
+io|pub fn[R : Read] read_exact_vectored(R, ArrayView[MutArrayView[Byte]]) -> Unit raise IoError
+io|pub fn[R : Read] read_to_end(R, Array[Byte]) -> Int raise IoError
+io|pub fn[R : Read] read_to_string(R) -> String raise IoError
+io|pub fn[W : Write] write_all_bytes(W, Bytes, offset? : Int, len? : Int) -> Unit raise IoError
+io|pub fn[W : Write] write_all_vectored(W, ArrayView[ArrayView[Byte]]) -> Unit raise IoError
+io|pub suberror IoError {
+io|pub fn IoError::add_progress(Self, Int) -> Self
+io|pub fn IoError::context(Self) -> String
+io|pub fn IoError::is_interrupted(Self) -> Bool
+io|pub fn IoError::kind(Self) -> IoErrorKind
+io|pub fn IoError::message(Self) -> String
+io|pub fn IoError::operation(Self) -> String
+io|pub fn IoError::path(Self) -> String
+io|pub fn IoError::progress(Self) -> Int
+io|pub fn IoError::raw_code(Self) -> Int
+io|pub struct BufMutWriterAdapter[B] {
+io|pub fn[B] BufMutWriterAdapter::get_ref(Self[B]) -> B
+io|pub fn[B] BufMutWriterAdapter::into_inner(Self[B]) -> B
+io|pub fn[B] BufMutWriterAdapter::new(B) -> Self[B]
+io|pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B]
+io|pub fn[R] BufReader::buffer(Self[R]) -> ArrayView[Byte]
+io|pub fn[R] BufReader::buffered_len(Self[R]) -> Int
+io|pub fn[R] BufReader::bypass_read_calls(Self[R]) -> Int
+io|pub fn[R] BufReader::capacity(Self[R]) -> Int
+io|pub fn[R] BufReader::get_mut(Self[R]) -> R
+io|pub fn[R] BufReader::get_ref(Self[R]) -> R
+io|pub fn[R] BufReader::into_inner(Self[R]) -> R
+io|pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
+io|pub fn[R] BufReader::lines(Self[R]) -> Lines[R]
+io|pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
+io|pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
+io|pub fn[R : Seek] BufReader::seek_relative(Self[R], Int64) -> Unit raise IoError
+io|pub fn[R] BufReader::split(Self[R], Byte) -> Split[R]
+io|pub fn[R] BufReader::underlying_read_calls(Self[R]) -> Int
+io|pub impl[R : Read] BufRead for BufReader[R]
+io|pub impl[R : Read] Read for BufReader[R]
+io|pub impl[R : Seek] Seek for BufReader[R]
+io|pub struct BufReaderAdapter[B] {
+io|pub fn[B] BufReaderAdapter::get_ref(Self[B]) -> B
+io|pub fn[B] BufReaderAdapter::into_inner(Self[B]) -> B
+io|pub fn[B] BufReaderAdapter::new(B) -> Self[B]
+io|pub impl[B : @buffer.Buf] BufRead for BufReaderAdapter[B]
+io|pub impl[B : @buffer.Buf] Read for BufReaderAdapter[B]
+io|pub struct BufStream[R, W] {
+io|pub fn[R, W] BufStream::new(R, W, capacity? : Int) -> Self[R, W] raise IoError
+io|pub impl[R : Read, W : Write] BufRead for BufStream[R, W]
+io|pub impl[R : Read, W] Read for BufStream[R, W]
+io|pub impl[R, W : Write] Write for BufStream[R, W]
+io|pub fn[W] BufWriter::buffer(Self[W]) -> ArrayView[Byte]
+io|pub fn[W] BufWriter::buffered_len(Self[W]) -> Int
+io|pub fn[W] BufWriter::bypass_write_calls(Self[W]) -> Int
+io|pub fn[W] BufWriter::capacity(Self[W]) -> Int
+io|pub fn[W : Write] BufWriter::finish(Self[W]) -> Result[W, BufWriterFinishError[W]]
+io|pub fn[W] BufWriter::get_mut(Self[W]) -> W
+io|pub fn[W] BufWriter::get_ref(Self[W]) -> W
+io|pub fn[W] BufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
+io|pub fn[W] BufWriter::new(W, capacity? : Int) -> Self[W] raise IoError
+io|pub fn[W] BufWriter::underlying_write_calls(Self[W]) -> Int
+io|pub impl[W : Write + Seek] Seek for BufWriter[W]
+io|pub impl[W : Write] Sink for BufWriter[W]
+io|pub impl[W : Write] Write for BufWriter[W]
+io|pub struct BufWriterFinishError[W] {
+io|pub fn[W] BufWriterFinishError::error(Self[W]) -> IoError
+io|pub fn[W] BufWriterFinishError::into_inner(Self[W]) -> BufWriter[W]
+io|pub struct Chain[A, B] {
+io|pub fn[A, B] Chain::new(A, B) -> Self[A, B]
+io|pub impl[A : Read, B : Read] Read for Chain[A, B]
+io|pub struct Cursor {
+io|pub fn Cursor::len(Self) -> Int
+io|pub fn Cursor::new(ArrayView[Byte]) -> Self
+io|pub fn Cursor::position(Self) -> Int64
+io|pub fn Cursor::to_bytes(Self) -> Bytes
+io|pub impl BufRead for Cursor
+io|pub impl Read for Cursor
+io|pub impl Seek for Cursor
+io|pub impl Write for Cursor
+io|pub struct Empty {
+io|pub fn Empty::new() -> Self
+io|pub impl BufRead for Empty
+io|pub impl Read for Empty
+io|pub(all) enum IoErrorKind {
+io|  InvalidInput
+io|  InvalidData
+io|  NotFound
+io|  PermissionDenied
+io|  WouldBlock
+io|  TimedOut
+io|  ConnectionReset
+io|  ConnectionRefused
+io|  BrokenPipe
+io|  NotConnected
+io|  AddressInUse
+io|  AddressNotAvailable
+io|  UnexpectedEof
+io|  WriteZero
+io|  Interrupted
+io|  Closed
+io|  NotSeekable
+io|  StorageFull
+io|  OutOfMemory
+io|  Unsupported
+io|  Backend
+io|  ContractViolation
+io|} derive(Eq, @debug.Debug)
+io|pub(all) struct IoFailure {
+io|  kind : IoErrorKind
+io|  operation : String
+io|  context : String
+io|  path : String
+io|  raw_code : Int
+io|  progress : Int
+io|  message : String
+io|} derive(Eq, @debug.Debug)
+io|pub struct IoSlice {
+io|pub fn IoSlice::data(Self) -> Bytes
+io|pub fn IoSlice::is_empty(Self) -> Bool
+io|pub fn IoSlice::len(Self) -> Int
+io|pub fn IoSlice::new(Bytes, Int, Int) -> Self raise IoError
+io|pub fn IoSlice::offset(Self) -> Int
+io|pub struct IoSliceMut {
+io|pub fn IoSliceMut::data(Self) -> FixedArray[Byte]
+io|pub fn IoSliceMut::is_empty(Self) -> Bool
+io|pub fn IoSliceMut::len(Self) -> Int
+io|pub fn IoSliceMut::new(FixedArray[Byte], Int, Int) -> Self raise IoError
+io|pub fn IoSliceMut::offset(Self) -> Int
+io|pub struct LineWriter[W] {
+io|pub fn[W] LineWriter::into_parts(Self[W]) -> (W, Bytes)
+io|pub fn[W] LineWriter::new(W) -> Self[W]
+io|pub impl[W : Write] Write for LineWriter[W]
+io|pub struct Lines[R] {
+io|pub fn[R] Lines::into_inner(Self[R]) -> BufReader[R]
+io|pub fn[R : Read] Lines::next(Self[R]) -> String? raise IoError
+io|pub fn MemoryPipe::new() -> (MemoryPipeReader, MemoryPipeWriter)
+io|pub impl BufRead for MemoryPipeReader
+io|pub impl Close for MemoryPipeReader
+io|pub impl Read for MemoryPipeReader
+io|pub impl Close for MemoryPipeWriter
+io|pub impl Write for MemoryPipeWriter
+io|pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
+io|pub fn MemoryReader::read_calls(Self) -> Int
+io|pub fn MemoryReader::remaining(Self) -> Int
+io|pub impl Read for MemoryReader
+io|pub fn MemoryWriter::flush_calls(Self) -> Int
+io|pub fn MemoryWriter::new(max_chunk? : Int) -> Self raise IoError
+io|pub fn MemoryWriter::to_bytes(Self) -> Bytes
+io|pub fn MemoryWriter::write_calls(Self) -> Int
+io|pub impl Write for MemoryWriter
+io|pub struct Repeat {
+io|pub fn Repeat::new(Byte) -> Self
+io|pub impl Read for Repeat
+io|pub(all) enum SeekFrom {
+io|  Start(Int64)
+io|  Current(Int64)
+io|  End(Int64)
+io|} derive(Eq, @debug.Debug)
+io|pub struct Split[R] {
+io|pub fn[R] Split::into_inner(Self[R]) -> BufReader[R]
+io|pub fn[R : Read] Split::next(Self[R]) -> Bytes? raise IoError
+io|pub struct Take[R] {
+io|pub fn[R] Take::into_inner(Self[R]) -> R
+io|pub fn[R] Take::new(R, Int64) -> Self[R] raise IoError
+io|pub fn[R] Take::remaining(Self[R]) -> Int64
+io|pub impl[R : Read] Read for Take[R]
+io|pub(open) trait BufRead : Read {
+io|  fn fill_buf(Self) -> ArrayView[Byte] raise IoError
+io|  fn consume(Self, Int) -> Unit raise IoError
+io|  fn has_data_left(Self) -> Bool raise IoError = _
+io|  fn read_until(Self, Byte, Array[Byte]) -> Int raise IoError = _
+io|  fn skip_until(Self, Byte) -> Int raise IoError = _
+io|  fn read_line(Self, StringBuilder) -> Int raise IoError = _
+io|pub(open) trait Close {
+io|  fn close(Self) -> Unit raise IoError
+io|  fn is_closed(Self) -> Bool
+io|pub(open) trait Read {
+io|  fn read(Self, FixedArray[Byte], Int, Int) -> Int raise IoError
+io|  fn read_array(Self, MutArrayView[Byte]) -> Int raise IoError = _
+io|  fn read_fixed(Self, FixedArray[Byte], Int, Int) -> Int raise IoError = _
+io|  fn read_vectored(Self, ArrayView[IoSliceMut]) -> Int raise IoError = _
+io|  fn read_exact(Self, MutArrayView[Byte]) -> Unit raise IoError = _
+io|  fn is_read_vectored(Self) -> Bool = _
+io|pub(open) trait Seek {
+io|  fn seek(Self, SeekFrom) -> Int64 raise IoError
+io|  fn stream_position(Self) -> Int64 raise IoError
+io|  fn rewind(Self) -> Unit raise IoError = _
+io|pub(open) trait Sink {
+io|  fn send(Self, Bytes, Int, Int) -> Unit raise IoError
+io|  fn close(Self) -> Unit raise IoError
+io|pub(open) trait Write {
+io|  fn write(Self, Bytes, Int, Int) -> Int raise IoError
+io|  fn write_array(Self, ArrayView[Byte]) -> Int raise IoError = _
+io|  fn write_vectored(Self, ArrayView[IoSlice]) -> Int raise IoError = _
+io|  fn flush(Self) -> Unit raise IoError
+io|  fn write_all(Self, ArrayView[Byte]) -> Unit raise IoError = _
+io|  fn is_write_vectored(Self) -> Bool = _
+async_io|pub async fn[R : AsyncRead, W : AsyncWrite] copy(R, W, buffer_size? : Int) -> Int
+async_io|pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional(A, B) -> (Int, Int)
+async_io|pub async fn[A : AsyncRead + AsyncWrite, B : AsyncRead + AsyncWrite] copy_bidirectional_with_sizes(A, B, Int, Int) -> (Int, Int)
+async_io|pub async fn copy_file(StringView, StringView, buffer_size? : Int, on_progress? : (CopyProgress) -> Unit) -> CopyProgress
+async_io|pub fn duplex(capacity? : Int) -> (AsyncDuplexStream, AsyncDuplexStream) raise @io.IoError
+async_io|pub async fn read_file(StringView) -> Bytes
+async_io|pub async fn[R : AsyncRead] read_to_end(R) -> Bytes
+async_io|pub async fn[W : AsyncWrite] write_all(W, Bytes) -> Unit
+async_io|pub async fn write_file(StringView, BytesView) -> Unit
+async_io|pub struct AsyncBufReader[R] {
+async_io|pub fn[R] AsyncBufReader::buffered_len(Self[R]) -> Int
+async_io|pub fn[R] AsyncBufReader::get_mut(Self[R]) -> R
+async_io|pub fn[R] AsyncBufReader::get_ref(Self[R]) -> R
+async_io|pub fn[R] AsyncBufReader::into_inner(Self[R]) -> R
+async_io|pub fn[R] AsyncBufReader::into_parts(Self[R]) -> (R, Bytes)
+async_io|pub fn[R] AsyncBufReader::lines(Self[R]) -> AsyncLines[R]
+async_io|pub fn[R] AsyncBufReader::new(R, capacity? : Int) -> Self[R] raise @io.IoError
+async_io|pub fn[R] AsyncBufReader::split(Self[R], Byte) -> AsyncSplit[R]
+async_io|pub impl[R : AsyncRead] AsyncBufRead for AsyncBufReader[R]
+async_io|pub impl[R : AsyncRead] AsyncRead for AsyncBufReader[R]
+async_io|pub impl[R : AsyncSeek] AsyncSeek for AsyncBufReader[R]
+async_io|pub struct AsyncBufStream[R, W] {
+async_io|pub fn[R, W] AsyncBufStream::into_parts(Self[R, W]) -> (AsyncBufReader[R], AsyncBufWriter[W])
+async_io|pub fn[R, W] AsyncBufStream::new(R, W, capacity? : Int) -> Self[R, W] raise @io.IoError
+async_io|pub impl[R : AsyncRead, W] AsyncBufRead for AsyncBufStream[R, W]
+async_io|pub impl[R : AsyncRead, W] AsyncRead for AsyncBufStream[R, W]
+async_io|pub impl[R, W : AsyncWrite] AsyncWrite for AsyncBufStream[R, W]
+async_io|pub struct AsyncBufWriter[W] {
+async_io|pub fn[W] AsyncBufWriter::buffered_len(Self[W]) -> Int
+async_io|pub async fn[W : AsyncWrite] AsyncBufWriter::finish(Self[W]) -> W
+async_io|pub fn[W] AsyncBufWriter::get_mut(Self[W]) -> W
+async_io|pub fn[W] AsyncBufWriter::get_ref(Self[W]) -> W
+async_io|pub fn[W] AsyncBufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
+async_io|pub fn[W] AsyncBufWriter::new(W, capacity? : Int) -> Self[W] raise @io.IoError
+async_io|pub impl[W : AsyncWrite + AsyncSeek] AsyncSeek for AsyncBufWriter[W]
+async_io|pub impl[W : AsyncWrite] AsyncWrite for AsyncBufWriter[W]
+async_io|pub struct AsyncChain[A, B] {
+async_io|pub fn[A, B] AsyncChain::new(A, B) -> Self[A, B]
+async_io|pub impl[A : AsyncRead, B : AsyncRead] AsyncRead for AsyncChain[A, B]
+async_io|pub struct AsyncDuplexStream {
+async_io|pub fn AsyncDuplexStream::capacity(Self) -> Int
+async_io|pub impl AsyncClose for AsyncDuplexStream
+async_io|pub impl AsyncRead for AsyncDuplexStream
+async_io|pub impl AsyncWrite for AsyncDuplexStream
+async_io|pub struct AsyncFile {
+async_io|pub async fn AsyncFile::create(StringView) -> Self
+async_io|pub async fn AsyncFile::open_read(StringView) -> Self
+async_io|pub impl AsyncClose for AsyncFile
+async_io|pub impl AsyncRead for AsyncFile
+async_io|pub impl AsyncSeek for AsyncFile
+async_io|pub impl AsyncWrite for AsyncFile
+async_io|pub struct AsyncLines[R] {
+async_io|pub fn[R] AsyncLines::into_inner(Self[R]) -> AsyncBufReader[R]
+async_io|pub async fn[R : AsyncRead] AsyncLines::next(Self[R]) -> String?
+async_io|pub struct AsyncMemoryReader {
+async_io|pub fn AsyncMemoryReader::new(BytesView) -> Self
+async_io|pub impl AsyncClose for AsyncMemoryReader
+async_io|pub impl AsyncRead for AsyncMemoryReader
+async_io|pub impl AsyncSeek for AsyncMemoryReader
+async_io|pub struct AsyncMemoryWriter {
+async_io|pub fn AsyncMemoryWriter::new() -> Self
+async_io|pub fn AsyncMemoryWriter::to_bytes(Self) -> Bytes
+async_io|pub impl AsyncClose for AsyncMemoryWriter
+async_io|pub impl AsyncWrite for AsyncMemoryWriter
+async_io|pub(all) enum AsyncSeekFrom {
+async_io|  Start(Int64)
+async_io|  Current(Int64)
+async_io|  End(Int64)
+async_io|} derive(Eq, @debug.Debug)
+async_io|pub struct AsyncSplit[R] {
+async_io|pub fn[R] AsyncSplit::into_inner(Self[R]) -> AsyncBufReader[R]
+async_io|pub async fn[R : AsyncRead] AsyncSplit::next(Self[R]) -> Bytes?
+async_io|pub struct AsyncTake[R] {
+async_io|pub fn[R] AsyncTake::new(R, Int64) -> Self[R] raise @io.IoError
+async_io|pub fn[R] AsyncTake::remaining(Self[R]) -> Int64
+async_io|pub impl[R : AsyncRead] AsyncRead for AsyncTake[R]
+async_io|pub struct AsyncTcpListener {
+async_io|pub async fn AsyncTcpListener::accept(Self) -> AsyncTcpStream
+async_io|pub async fn AsyncTcpListener::bind(String) -> Self
+async_io|pub fn AsyncTcpListener::local_port(Self) -> Int
+async_io|pub impl AsyncClose for AsyncTcpListener
+async_io|pub struct AsyncTcpStream {
+async_io|pub async fn AsyncTcpStream::connect(StringView, Int) -> Self
+async_io|pub impl AsyncClose for AsyncTcpStream
+async_io|pub impl AsyncRead for AsyncTcpStream
+async_io|pub impl AsyncWrite for AsyncTcpStream
+async_io|pub(all) struct CopyProgress {
+async_io|  bytes_copied : Int
+async_io|  read_calls : Int
+async_io|  write_calls : Int
+async_io|} derive(Eq, @debug.Debug)
+async_io|pub(open) trait AsyncBufRead : AsyncRead {
+async_io|  fn consume(Self, Int) -> Unit raise @io.IoError
+async_io|pub(open) trait AsyncClose {
+async_io|  fn is_closed(Self) -> Bool
+async_io|pub(open) trait AsyncRead {
+async_io|pub impl AsyncRead for @fs.File
+async_io|pub impl AsyncRead for @socket.Tcp
+async_io|pub(open) trait AsyncSeek {
+async_io|pub(open) trait AsyncWrite {
+async_io|pub impl AsyncWrite for @fs.File
+async_io|pub impl AsyncWrite for @socket.Tcp
+native|pub struct MappedBytes {
+native|pub fn MappedBytes::copy_range(Self, Int, Int) -> Bytes raise @io.IoError
+native|pub fn MappedBytes::find_byte(Self, Byte) -> Int raise @io.IoError
+native|pub fn MappedBytes::len(Self) -> Int
+native|pub fn MappedBytes::open(String) -> Self raise @io.IoError
+native|pub fn MappedBytes::read_byte_at(Self, Int) -> Byte raise @io.IoError
+native|pub fn MappedBytes::remaining(Self) -> Int
+native|pub fn MappedBytes::slice(Self, Int, Int) -> Self raise @io.IoError
+native|pub impl @io.Close for MappedBytes
+native|pub impl @io.Read for MappedBytes
+native|pub impl @io.Seek for MappedBytes
+native|pub struct NativeFile {
+native|pub fn NativeFile::append(String) -> Self raise @io.IoError
+native|pub fn NativeFile::create(String) -> Self raise @io.IoError
+native|pub fn NativeFile::open(String, NativeOpenOptions) -> Self raise @io.IoError
+native|pub fn NativeFile::open_read(String) -> Self raise @io.IoError
+native|pub fn NativeFile::path(Self) -> String
+native|pub fn NativeFile::read_syscalls(Self) -> Int
+native|pub fn NativeFile::sync_all(Self) -> Unit raise @io.IoError
+native|pub fn NativeFile::sync_data(Self) -> Unit raise @io.IoError
+native|pub fn NativeFile::write_syscalls(Self) -> Int
+native|pub impl @io.Close for NativeFile
+native|pub impl @io.Read for NativeFile
+native|pub impl @io.Seek for NativeFile
+native|pub impl @io.Write for NativeFile
+native|pub struct NativeOpenOptions {
+native|pub fn NativeOpenOptions::new() -> Self
+native|pub fn NativeOpenOptions::read() -> Self
+native|pub fn NativeOpenOptions::read_write() -> Self
+native|pub fn NativeOpenOptions::write() -> Self
+native|pub fn NativeOpenOptions::write_append() -> Self
+native|pub fn NativeOpenOptions::write_create_new() -> Self
+native|pub fn NativeOpenOptions::write_truncate() -> Self
+native|pub struct NativeTcpListener {
+native|pub fn NativeTcpListener::accept(Self) -> NativeTcpStream raise @io.IoError
+native|pub fn NativeTcpListener::bind(String, Int) -> Self raise @io.IoError
+native|pub fn NativeTcpListener::local_addr(Self) -> SocketAddress raise @io.IoError
+native|pub fn NativeTcpListener::local_port(Self) -> Int raise @io.IoError
+native|pub impl @io.Close for NativeTcpListener
+native|pub struct NativeTcpStream {
+native|pub fn NativeTcpStream::connect(String, Int) -> Self raise @io.IoError
+native|pub fn NativeTcpStream::local_addr(Self) -> SocketAddress raise @io.IoError
+native|pub fn NativeTcpStream::local_port(Self) -> Int raise @io.IoError
+native|pub fn NativeTcpStream::peer_addr(Self) -> SocketAddress raise @io.IoError
+native|pub fn NativeTcpStream::peer_port(Self) -> Int raise @io.IoError
+native|pub fn NativeTcpStream::read_syscalls(Self) -> Int
+native|pub fn NativeTcpStream::read_timeout_ms(Self) -> Int? raise @io.IoError
+native|pub fn NativeTcpStream::set_timeouts(Self, Int, Int) -> Unit raise @io.IoError
+native|pub fn NativeTcpStream::shutdown_both(Self) -> Unit raise @io.IoError
+native|pub fn NativeTcpStream::shutdown_read(Self) -> Unit raise @io.IoError
+native|pub fn NativeTcpStream::shutdown_write(Self) -> Unit raise @io.IoError
+native|pub fn NativeTcpStream::write_syscalls(Self) -> Int
+native|pub fn NativeTcpStream::write_timeout_ms(Self) -> Int? raise @io.IoError
+native|pub impl @io.Close for NativeTcpStream
+native|pub impl @io.Read for NativeTcpStream
+native|pub impl @io.Write for NativeTcpStream
+native|pub(all) struct SocketAddress {
+native|  family : SocketAddressFamily
+native|  host : String
+native|  port : Int
+native|} derive(Eq, @debug.Debug)
+native|pub(all) enum SocketAddressFamily {
+native|  Ipv4
+native|  Ipv6
+native|} derive(Eq, @debug.Debug)

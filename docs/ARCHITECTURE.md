@@ -71,6 +71,42 @@ typed `get_*` helpers.
 The public API must not call a path zero-copy when it crosses one of these
 explicit materialization boundaries.
 
+## Borrowed-view inventory
+
+Borrowed values are valid only for the lifetime stated in this table. They are
+not ownership transfers and must not be stored for later use unless the caller
+materializes them explicitly.
+
+| API | Borrowed value | Valid until |
+| --- | --- | --- |
+| `SharedBytes::view` | `ArrayView[Byte]` | The backing `SharedBytes` remains reachable; the view is read-only |
+| `SharedBytes::as_bytes_view` | `BytesView` | The backing `SharedBytes` remains reachable; the view is read-only |
+| `BytesMut::view` | `ArrayView[Byte]` | The next mutation that may detach or rebase the buffer |
+| `BufRead::fill_buf` | `ArrayView[Byte]` | The next operation on the same reader |
+| `BufReader::buffer` / `BufWriter::buffer` | `ArrayView[Byte]` | The next operation that changes the wrapper buffer |
+| `AsyncBufRead::fill_buf` | `ArrayView[Byte]` | The next operation on the same async reader; never across an async suspension |
+
+Use `to_array`, `to_bytes`, or `SharedBytes::clone` when a value must outlive
+the stated boundary. A borrowed view must never be used to infer ownership or
+to mutate the source.
+
+## Materialization inventory
+
+Every payload copy is explicit in the API and evidence:
+
+| Boundary | Result | Reason |
+| --- | --- | --- |
+| `SharedBytes::from_array` / `from_fixed_array` | owned immutable backing | safe construction copies caller-owned data |
+| `SharedBytes::to_array` / `to_bytes` | owned mutable/Core bytes | caller requested materialization |
+| `BufReader::into_parts` / `AsyncBufReader::into_parts` | owned `Bytes` remainder | wrapper storage must leave the reader |
+| `BufWriter::into_parts` / `AsyncBufWriter::into_parts` | owned `SharedBytes` remainder | wrapper storage must leave the writer |
+| `MappedBytes::copy_range` | owned `Bytes` | mmap lifetime must not escape the native owner |
+| `BytesMut` detach or growth | new mutable backing | COW protects immutable snapshots and aliases |
+
+Benchmark copy evidence distinguishes `fixture-observed`, `unavailable`, and
+native syscall counters. It must never convert a payload size into a claimed
+internal copy count.
+
 ## Synchronous and asynchronous I/O
 
 `Read` and `Write` classify invalid ranges, short progress, `Interrupted`, EOF,
@@ -102,6 +138,19 @@ remain diagnostic. Callers must close resources on success, error, and
 cancellation. ASan/UBSan and TSan validate the same C layer used by release
 builds.
 
+## External resource lifetime inventory
+
+| Resource | Owner | Child/lifetime rule | Close contract |
+| --- | --- | --- | --- |
+| `NativeFile` | `NativeFile` handle | no byte view borrows the file after close | idempotent `Close`; close on success, error, and cancellation |
+| `NativeTcpStream` | stream handle | local and peer addresses are snapshots, not handle aliases | shutdown and close are independent, idempotent operations |
+| `NativeTcpListener` | listener handle | accepted streams own their handles independently | closing the listener does not close accepted streams |
+| `MappedBytes` | mmap owner/view | slices retain the owner; a child keeps its mapping alive | parent and child closes are idempotent |
+| async native wrappers | wrapped native resource | wrapper close delegates exactly once to the underlying resource | pending or cancelled operations must still release the resource |
+
+No public shared-byte type owns an OS handle. Native resources and immutable
+byte ranges remain separate ownership domains.
+
 ## API and naming rules
 
 - Types and error variants use PascalCase.
@@ -116,6 +165,12 @@ builds.
 
 Generated interfaces are the public API source of truth. Public counters and
 benchmark fixtures should not become permanent compatibility obligations.
+
+`docs/API_ALLOWLIST.txt` is the reviewed public-surface allowlist generated
+from the four compatibility-package interfaces. `scripts/check_api_surface`
+regenerates it in memory and fails on any undeclared public declaration. An
+intentional API change must update the implementation, generated interfaces,
+allowlist, migration note, and focused tests in the same PR.
 
 ## Rust parity inventory
 
