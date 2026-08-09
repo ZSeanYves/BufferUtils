@@ -8,8 +8,8 @@ committed baseline. It does not mean that BufferUtils equals Rust.
 ## Evidence checkpoint
 
 GitHub Actions run
-[`30924479149`](https://github.com/ZSeanYves/BufferUtils/actions/runs/30924479149)
-is the authoritative corrected-fixture checkpoint for commit `6b2cdc5`. It
+[`31295804121`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31295804121)
+is the authoritative corrected-fixture checkpoint for commit `6c0484a`. It
 passed all platform, sanitizer, coverage, contract, benchmark-structure, and
 noise gates. It used the MoonBit nightly available at the time,
 Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 on an Ubuntu 24.04 AMD EPYC 7763
@@ -17,15 +17,15 @@ hosted runner.
 
 | Workload | MoonBit/Rust median ratio | Interpretation |
 | --- | ---: | --- |
-| `SharedBytes` clone/slice/split | 3.44 / 3.84-3.86 / 3.65-3.70 | O(1), but each returned handle still allocates |
-| raw read, 1 KiB / 1 MiB | 1.37 / 0.90 | bulk copy is competitive once call cost is amortized |
-| buffered read, 1 KiB / 1 MiB | 1.94 / 0.71 | resident bulk copy wins at scale; small calls do not |
-| buffered bypass read/write | 0.93 / 0.92 | bypass paths are competitive |
-| buffered write, 1 KiB / 1 MiB | 2.69 / 2.49 | checked blit and call boundaries remain |
-| raw small write | 2.55-2.57 | fixture and trait boundary are call-dominated |
-| short write | 2.43 | progress checks and repeated result boundaries dominate |
-| vectored fallback / bulk | 1.81 / 7.46 | equal counters, but descriptor iteration and dispatch remain expensive |
-| async copy, 1 KiB / 1 MiB | 10.60 / 2.25 | scheduler/continuation cost dominates small transfers |
+| `SharedBytes` clone/slice/split | 1.44-1.46 / 1.67-1.71 / 2.12-2.14 | O(1), but each retained handle still allocates |
+| raw read, 1 KiB / 1 MiB | 1.16 / 0.96 | bulk copy is competitive once call cost is amortized |
+| buffered read, 1 KiB / 1 MiB | 1.59 / 0.60 | resident bulk copy wins at scale; small calls do not |
+| buffered bypass read/write | 0.97 / 0.98 | bypass paths are aligned and slightly faster |
+| buffered write, 1 KiB / 1 MiB | 2.59 / 2.33 | checked blit and call boundaries remain |
+| raw small write | 2.54-2.64 | fixture and trait boundary are call-dominated |
+| short write | 2.47 | progress checks and repeated result boundaries dominate |
+| vectored fallback / bulk | 1.94 / 3.19 | equal counters, but descriptor iteration and dispatch remain expensive |
+| async copy, 1 KiB / 1 MiB | 11.97 / 2.28 | scheduler/continuation cost dominates small transfers |
 
 These values are medians of the three per-batch, per-iteration ratios. They are
 the committed regression baseline, not a parity claim. Any row whose median is
@@ -33,9 +33,9 @@ already above 1.05 necessarily fails the parity target regardless of its
 confidence interval. The current evidence therefore proves that BufferUtils
 0.40 has not reached overall Rust performance parity.
 
-Independent-process peak RSS was about 29,000 KiB for ordinary synchronous
-cases and 8,920 KiB for async copy. Growth reached 55,624 KiB and the COW stress
-case reached 368,200 KiB. The high COW figure is workload-specific retained
+Independent-process peak RSS was 4,428-8,532 KiB for ordinary synchronous
+cases and 8,920 KiB for async copy. Growth reached 207,188 KiB and the COW stress
+case reached 350,544 KiB. The high COW figure is workload-specific retained
 state, not the steady-state footprint of a single buffer operation, and remains
 visible rather than being normalized away.
 
@@ -81,14 +81,15 @@ preferred options are a fixed-array bulk primitive in the core contract or
 specialized concrete adapters, with ArrayView kept as an explicit copy
 boundary. Adding benchmark-only public APIs is not acceptable.
 
-Callgrind confirms the boundary counts on the final source. The selected
-`SharedBytes::slice` profile invoked the slice function and allocator 688,126
-times. The small buffered-write profile invoked `blit_from_bytes` 2,058,335
-times while issuing only 26,751 writes to the sink. The async-copy profile
-entered the copy continuation and `write_all` state machine 42,879 times. The
-bulk-vectored fixture entered its write implementation 344,063 times. These
-profiles also include benchmark-case construction, so instruction percentages
-for the complete process are not treated as hot-path percentages.
+Selected-case profiling now constructs only the requested fixture. Callgrind
+attributes 92.52% of bulk-vectored instructions to the concrete
+`CountingWriter` vectored implementation. The buffered-write profile contains
+the `BufWriter::write`, `CountingWriter::write`, checked
+`FixedArray::blit_from_bytes`, and `memcpy` path. The shared-slice profile keeps
+96.09% of instructions inside measurement after fixture isolation. Async copy
+spends 94.25% inside the generic `async_io::copy` body; its raw call graph also
+contains `write_all`, `protect_from_cancel`, coroutine suspension/rescheduling,
+and both bulk blits. These are measured call stacks, not inferred costs.
 
 ### COW capacity amplification
 
