@@ -20,13 +20,12 @@ evaluated. Its artifact must include timing CSVs, raw samples, copy evidence,
 peak-RSS reports, exact toolchain identities, and passing structural and noise
 checks.
 
-The current baseline was regenerated from the structurally valid, corrected
-shared-calibration artifact of GitHub Actions run
-[`31298367169`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31298367169)
-at commit `023650b`. Its performance job was rejected only because the prior
-pre-shared-calibration baseline reported a runner-variant regression; all timing,
-raw-sample, copy-evidence, async-control, and noise checks passed. The committed
-ratios detect later regressions; they do not assert Rust parity.
+The sequential implementation-wide baseline was retired when consecutive
+structurally valid runs still changed stable per-case ratios by 20%-50%. Final
+timings now execute as adjacent MoonBit/Rust case pairs with alternating order.
+The next successful paired run is the only valid source for the replacement
+baseline; until it is committed, CI writes a candidate into its performance
+artifact instead of comparing incompatible protocols.
 
 The superseded nightly runs `30900917785`, `30904761627`, and `30905145550`
 remain historical diagnostics only. Their non-overlapping regressions exposed

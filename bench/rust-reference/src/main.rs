@@ -378,108 +378,122 @@ impl Write for CountingWriter {
     }
 }
 
-fn buffer_cases(size: usize, batch: usize) {
-    let payload = pattern_bytes(size);
-    print_case(
-        "buffer_shared_clone",
-        size,
-        batch,
-        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
-        |state, iterations| {
-            for _ in 0..iterations {
-                state.1 = state.0.clone();
-                black_box(&state.1);
-            }
-        },
-        |state, _| {
-            black_box(state.1.len());
-            Counters::default()
-        },
-    );
-
-    let payload = pattern_bytes(size);
-    print_case(
-        "buffer_shared_slice",
-        size,
-        batch,
-        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
-        |state, iterations| {
-            for _ in 0..iterations {
-                state.1 = state.0.slice(0..state.0.len());
-                black_box(&state.1);
-            }
-        },
-        |state, _| {
-            black_box(state.1.len());
-            Counters::default()
-        },
-    );
-
-    let payload = pattern_bytes(size);
-    print_case(
-        "buffer_shared_split",
-        size,
-        batch,
-        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
-        |state, iterations| {
-            for _ in 0..iterations {
-                let mut cursor = state.0.clone();
-                state.1 = cursor.split_to(size / 2);
-                black_box(&state.1);
-            }
-        },
-        |state, _| {
-            black_box(state.1.len());
-            Counters::default()
-        },
-    );
+fn selected_case(selected: Option<&str>, name: &str) -> bool {
+    selected.is_none() || selected == Some(name)
 }
 
-fn read_cases(size: usize, batch: usize) {
-    let payload = pattern_bytes(size);
-    print_case(
-        "sync_raw_read",
-        size,
-        batch,
-        |_| (CyclingReader::new(payload.clone()), vec![0; size]),
-        |state, iterations| {
-            for _ in 0..iterations {
-                state.0.read_exact(&mut state.1).unwrap();
-            }
-        },
-        |state, _| Counters {
-            copied_bytes: state.0.bytes,
-            underlying_calls: state.0.calls,
-            syscalls: 0,
-        },
-    );
-
-    let payload = pattern_bytes(size);
-    print_case(
-        "sync_bufreader_small",
-        size,
-        batch,
-        |_| {
-            (
-                BufReader::with_capacity(8192, CyclingReader::new(payload.clone())),
-                vec![0; size],
-            )
-        },
-        |state, iterations| {
-            for _ in 0..iterations {
-                for chunk in state.1.chunks_mut(32) {
-                    state.0.read_exact(chunk).unwrap();
+fn buffer_cases(size: usize, batch: usize, selected: Option<&str>) {
+    if selected_case(selected, "buffer_shared_clone") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "buffer_shared_clone",
+            size,
+            batch,
+            |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+            |state, iterations| {
+                for _ in 0..iterations {
+                    state.1 = state.0.clone();
+                    black_box(&state.1);
                 }
-            }
-        },
-        |state, _| Counters {
-            copied_bytes: state.0.get_ref().bytes,
-            underlying_calls: state.0.get_ref().calls,
-            syscalls: 0,
-        },
-    );
+            },
+            |state, _| {
+                black_box(state.1.len());
+                Counters::default()
+            },
+        );
+    }
 
-    if size >= 8192 {
+    if selected_case(selected, "buffer_shared_slice") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "buffer_shared_slice",
+            size,
+            batch,
+            |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+            |state, iterations| {
+                for _ in 0..iterations {
+                    state.1 = state.0.slice(0..state.0.len());
+                    black_box(&state.1);
+                }
+            },
+            |state, _| {
+                black_box(state.1.len());
+                Counters::default()
+            },
+        );
+    }
+
+    if selected_case(selected, "buffer_shared_split") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "buffer_shared_split",
+            size,
+            batch,
+            |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+            |state, iterations| {
+                for _ in 0..iterations {
+                    let mut cursor = state.0.clone();
+                    state.1 = cursor.split_to(size / 2);
+                    black_box(&state.1);
+                }
+            },
+            |state, _| {
+                black_box(state.1.len());
+                Counters::default()
+            },
+        );
+    }
+}
+
+fn read_cases(size: usize, batch: usize, selected: Option<&str>) {
+    if selected_case(selected, "sync_raw_read") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "sync_raw_read",
+            size,
+            batch,
+            |_| (CyclingReader::new(payload.clone()), vec![0; size]),
+            |state, iterations| {
+                for _ in 0..iterations {
+                    state.0.read_exact(&mut state.1).unwrap();
+                }
+            },
+            |state, _| Counters {
+                copied_bytes: state.0.bytes,
+                underlying_calls: state.0.calls,
+                syscalls: 0,
+            },
+        );
+    }
+
+    if selected_case(selected, "sync_bufreader_small") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "sync_bufreader_small",
+            size,
+            batch,
+            |_| {
+                (
+                    BufReader::with_capacity(8192, CyclingReader::new(payload.clone())),
+                    vec![0; size],
+                )
+            },
+            |state, iterations| {
+                for _ in 0..iterations {
+                    for chunk in state.1.chunks_mut(32) {
+                        state.0.read_exact(chunk).unwrap();
+                    }
+                }
+            },
+            |state, _| Counters {
+                copied_bytes: state.0.get_ref().bytes,
+                underlying_calls: state.0.get_ref().calls,
+                syscalls: 0,
+            },
+        );
+    }
+
+    if size >= 8192 && selected_case(selected, "sync_bufreader_bypass") {
         let payload = pattern_bytes(size);
         print_case(
             "sync_bufreader_bypass",
@@ -505,55 +519,59 @@ fn read_cases(size: usize, batch: usize) {
     }
 }
 
-fn write_cases(size: usize, batch: usize) {
-    let payload = pattern_bytes(size);
-    print_case(
-        "sync_raw_small_write",
-        size,
-        batch,
-        |_| CountingWriter::new(usize::MAX, 32),
-        |writer, iterations| {
-            for _ in 0..iterations {
-                for chunk in payload.chunks(32) {
-                    assert_eq!(writer.write(chunk).unwrap(), chunk.len());
+fn write_cases(size: usize, batch: usize, selected: Option<&str>) {
+    if selected_case(selected, "sync_raw_small_write") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "sync_raw_small_write",
+            size,
+            batch,
+            |_| CountingWriter::new(usize::MAX, 32),
+            |writer, iterations| {
+                for _ in 0..iterations {
+                    for chunk in payload.chunks(32) {
+                        assert_eq!(writer.write(chunk).unwrap(), chunk.len());
+                    }
                 }
-            }
-        },
-        |writer, _| {
-            black_box(writer.checksum);
-            Counters {
-                copied_bytes: writer.bytes,
-                underlying_calls: writer.calls,
-                syscalls: 0,
-            }
-        },
-    );
-
-    let payload = pattern_bytes(size);
-    print_case(
-        "sync_bufwriter_small",
-        size,
-        batch,
-        |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, 8192)),
-        |writer, iterations| {
-            for _ in 0..iterations {
-                for chunk in payload.chunks(32) {
-                    assert_eq!(writer.write(chunk).unwrap(), chunk.len());
+            },
+            |writer, _| {
+                black_box(writer.checksum);
+                Counters {
+                    copied_bytes: writer.bytes,
+                    underlying_calls: writer.calls,
+                    syscalls: 0,
                 }
-                writer.flush().unwrap();
-            }
-        },
-        |writer, _| {
-            black_box(writer.get_ref().checksum);
-            Counters {
-                copied_bytes: writer.get_ref().bytes,
-                underlying_calls: writer.get_ref().calls,
-                syscalls: 0,
-            }
-        },
-    );
+            },
+        );
+    }
 
-    if size >= 8192 {
+    if selected_case(selected, "sync_bufwriter_small") {
+        let payload = pattern_bytes(size);
+        print_case(
+            "sync_bufwriter_small",
+            size,
+            batch,
+            |_| BufWriter::with_capacity(8192, CountingWriter::new(usize::MAX, 8192)),
+            |writer, iterations| {
+                for _ in 0..iterations {
+                    for chunk in payload.chunks(32) {
+                        assert_eq!(writer.write(chunk).unwrap(), chunk.len());
+                    }
+                    writer.flush().unwrap();
+                }
+            },
+            |writer, _| {
+                black_box(writer.get_ref().checksum);
+                Counters {
+                    copied_bytes: writer.get_ref().bytes,
+                    underlying_calls: writer.get_ref().calls,
+                    syscalls: 0,
+                }
+            },
+        );
+    }
+
+    if size >= 8192 && selected_case(selected, "sync_bufwriter_bypass") {
         let payload = pattern_bytes(size);
         print_case(
             "sync_bufwriter_bypass",
@@ -577,7 +595,7 @@ fn write_cases(size: usize, batch: usize) {
         );
     }
 
-    if size == 1024 {
+    if size == 1024 && selected_case(selected, "sync_short_write_16") {
         let payload = pattern_bytes(size);
         print_case(
             "sync_short_write_16",
@@ -601,53 +619,57 @@ fn write_cases(size: usize, batch: usize) {
     }
 }
 
-fn vectored_case(batch: usize) {
-    let sources: [&[u8]; 2] = [b"vec", b"tored"];
-    print_case(
-        "sync_vectored_fallback",
-        8,
-        batch,
-        |_| CountingWriter::new(usize::MAX, 8),
-        |writer, iterations| {
-            for _ in 0..iterations {
-                for source in sources {
-                    let adapted = source.to_vec();
-                    writer.write_all(&adapted).unwrap();
+fn vectored_case(batch: usize, selected: Option<&str>) {
+    if selected_case(selected, "sync_vectored_fallback") {
+        let sources: [&[u8]; 2] = [b"vec", b"tored"];
+        print_case(
+            "sync_vectored_fallback",
+            8,
+            batch,
+            |_| CountingWriter::new(usize::MAX, 8),
+            |writer, iterations| {
+                for _ in 0..iterations {
+                    for source in sources {
+                        let adapted = source.to_vec();
+                        writer.write_all(&adapted).unwrap();
+                    }
                 }
-            }
-        },
-        |writer, _| {
-            black_box(writer.checksum);
-            Counters {
-                copied_bytes: writer.bytes,
-                underlying_calls: writer.calls,
-                syscalls: 0,
-            }
-        },
-    );
+            },
+            |writer, _| {
+                black_box(writer.checksum);
+                Counters {
+                    copied_bytes: writer.bytes,
+                    underlying_calls: writer.calls,
+                    syscalls: 0,
+                }
+            },
+        );
+    }
 
-    let first = b"vec";
-    let second = b"tored";
-    let sources = [IoSlice::new(first), IoSlice::new(second)];
-    print_case(
-        "sync_vectored_bulk",
-        8,
-        batch,
-        |_| CountingWriter::new(usize::MAX, 8),
-        |writer, iterations| {
-            for _ in 0..iterations {
-                assert_eq!(writer.write_vectored(&sources).unwrap(), 8);
-            }
-        },
-        |writer, _| {
-            black_box(writer.checksum);
-            Counters {
-                copied_bytes: writer.bytes,
-                underlying_calls: writer.calls,
-                syscalls: 0,
-            }
-        },
-    );
+    if selected_case(selected, "sync_vectored_bulk") {
+        let first = b"vec";
+        let second = b"tored";
+        let sources = [IoSlice::new(first), IoSlice::new(second)];
+        print_case(
+            "sync_vectored_bulk",
+            8,
+            batch,
+            |_| CountingWriter::new(usize::MAX, 8),
+            |writer, iterations| {
+                for _ in 0..iterations {
+                    assert_eq!(writer.write_vectored(&sources).unwrap(), 8);
+                }
+            },
+            |writer, _| {
+                black_box(writer.checksum);
+                Counters {
+                    copied_bytes: writer.bytes,
+                    underlying_calls: writer.calls,
+                    syscalls: 0,
+                }
+            },
+        );
+    }
 }
 
 fn async_copy_case(size: usize, batch: usize) {
@@ -728,23 +750,23 @@ fn main() {
         || selected == Some("sync_vectored_fallback")
         || selected == Some("sync_vectored_bulk")
     {
-        vectored_case(batch);
+        vectored_case(batch, selected);
     }
     for size in [1024, 1024 * 1024] {
         if selected.is_none() || selected.is_some_and(|name| name.starts_with("buffer_")) {
-            buffer_cases(size, batch);
+            buffer_cases(size, batch, selected);
         }
         if selected.is_none()
             || selected.is_some_and(|name| name.starts_with("sync_") && name.contains("read"))
         {
-            read_cases(size, batch);
+            read_cases(size, batch, selected);
         }
         if selected.is_none()
             || selected.is_some_and(|name| {
                 name.starts_with("sync_") && (name.contains("write") || name.contains("vectored"))
             })
         {
-            write_cases(size, batch);
+            write_cases(size, batch, selected);
         }
         if selected.is_none() || selected == Some("async_copy") {
             async_copy_case(size, batch);

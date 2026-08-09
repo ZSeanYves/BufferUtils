@@ -7,12 +7,17 @@ committed baseline. It does not mean that BufferUtils equals Rust.
 
 ## Evidence checkpoint
 
-GitHub Actions run
+GitHub Actions runs
 [`31298367169`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31298367169)
-is the authoritative shared-calibration checkpoint for commit `023650b`. Its
-platform, sanitizer, coverage, contract, benchmark-structure, copy-evidence,
-async-control, and noise checks passed; the old baseline-only regression was
-replaced after this structurally valid run. It used the MoonBit nightly available at the time,
+and
+[`31299153133`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31299153133)
+were structurally valid shared-iteration checkpoints. Their platform,
+sanitizer, coverage, contract, copy-evidence, async-control, and noise checks
+passed, but stable individual samples still produced 20%-50% cross-run ratio
+changes because all MoonBit batches preceded all Rust batches. That sequential
+protocol and its baseline are retired. The table below records the first run
+only as a root-cause diagnostic while an adjacent-pair baseline is established.
+The runs used the MoonBit nightly available at the time,
 Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 on an Ubuntu 24.04 AMD EPYC 7763
 hosted runner.
 

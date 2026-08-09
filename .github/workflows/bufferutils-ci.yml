@@ -208,27 +208,46 @@ jobs:
               printf 'unavailable\n'
             fi
           } > .tmp/bufferutils-bench/environment.txt
-          run_checked_batch() {
+          run_checked_case() {
             local label="$1"
             local binary="$2"
-            local timing="$3"
-            local raw="$4"
+            local source_prefix="$3"
+            local aggregate_prefix="$4"
             local batch="$5"
+            local case_name="$6"
+            local timing=".tmp/bufferutils-bench/case-${label}-${case_name}-batch-$batch.csv"
+            local raw=".tmp/bufferutils-bench/${source_prefix}-raw-batch-$batch.csv"
+            local evidence=".tmp/bufferutils-bench/${source_prefix}-copy-evidence-batch-$batch.csv"
             local attempt
             for attempt in 1 2 3; do
-              /usr/bin/time -v -o ".tmp/bufferutils-bench/${label}-rss-batch-$batch.txt" \
-                "${benchmark_prefix[@]}" "$binary" "$batch" __all__ \
-                | tee ".tmp/bufferutils-bench/${timing}-batch-$batch.csv"
+              "${benchmark_prefix[@]}" "$binary" "$batch" "$case_name" \
+                | tee "$timing"
               if scripts/check_performance_quality \
-                ".tmp/bufferutils-bench/${timing}-batch-$batch.csv" \
-                ".tmp/bufferutils-bench/${raw}-batch-$batch.csv" \
-                0.25 1.75 > ".tmp/bufferutils-bench/${label}-quality-batch-$batch.txt"; then
+                "$timing" "$raw" 0.25 1.75 \
+                >> ".tmp/bufferutils-bench/${aggregate_prefix}-quality-batch-$batch.txt"; then
+                tail -n +2 "$timing" \
+                  >> ".tmp/bufferutils-bench/aggregate-${aggregate_prefix}-batch-$batch.csv"
+                tail -n +2 "$raw" \
+                  >> ".tmp/bufferutils-bench/aggregate-${aggregate_prefix}-raw-batch-$batch.csv"
+                tail -n +2 "$evidence" \
+                  >> ".tmp/bufferutils-bench/aggregate-${aggregate_prefix}-copy-evidence-batch-$batch.csv"
                 return 0
               fi
-              echo "noisy $label batch $batch, rerunning attempt $((attempt + 1))" >&2
+              echo "noisy $label/$case_name batch $batch, rerunning attempt $((attempt + 1))" >&2
             done
-            echo "benchmark batch remained noisy after three attempts: $label/$batch" >&2
+            echo "benchmark case remained noisy after three attempts: $label/$case_name/$batch" >&2
             return 1
+          }
+          initialize_aggregate() {
+            local prefix="$1"
+            local batch="$2"
+            printf '%s\n' 'implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s' \
+              > ".tmp/bufferutils-bench/aggregate-${prefix}-batch-$batch.csv"
+            printf '%s\n' 'implementation,name,size,batch,sample,iterations,elapsed_us' \
+              > ".tmp/bufferutils-bench/aggregate-${prefix}-raw-batch-$batch.csv"
+            printf '%s\n' 'implementation,name,size,batch,iterations,observed_copied_bytes,underlying_calls,syscalls,copy_scope' \
+              > ".tmp/bufferutils-bench/aggregate-${prefix}-copy-evidence-batch-$batch.csv"
+            : > ".tmp/bufferutils-bench/${prefix}-quality-batch-$batch.txt"
           }
           run_pilot() {
             local binary="$1"
@@ -244,12 +263,80 @@ jobs:
             .tmp/bufferutils-bench/pilot-moonbit.csv \
             .tmp/bufferutils-bench/pilot-moonbit-async.csv \
             .tmp/bufferutils-bench/pilot-rust.csv
+          comparison_cases=(
+            "buffer_shared_clone:$moon_binary:moonbit"
+            "buffer_shared_slice:$moon_binary:moonbit"
+            "buffer_shared_split:$moon_binary:moonbit"
+            "sync_raw_read:$moon_binary:moonbit"
+            "sync_bufreader_small:$moon_binary:moonbit"
+            "sync_bufreader_bypass:$moon_binary:moonbit"
+            "sync_raw_small_write:$moon_binary:moonbit"
+            "sync_bufwriter_small:$moon_binary:moonbit"
+            "sync_bufwriter_bypass:$moon_binary:moonbit"
+            "sync_short_write_16:$moon_binary:moonbit"
+            "sync_vectored_fallback:$moon_binary:moonbit"
+            "sync_vectored_bulk:$moon_binary:moonbit"
+            "async_copy:$moon_async_binary:moonbit-async"
+          )
+          diagnostic_cases=(
+            "buffer_freeze:$moon_binary:moonbit"
+            "buffer_cow_mutation:$moon_binary:moonbit"
+            "buffer_growth:$moon_binary:moonbit"
+            "native_file_write:$moon_binary:moonbit"
+            "native_file_read:$moon_binary:moonbit"
+            "native_mmap_scan:$moon_binary:moonbit"
+            "tcp_loopback:$moon_async_binary:moonbit-async"
+          )
+          control_cases=(
+            async_ready_read async_pending_read async_short_progress
+            async_cancel async_shutdown_failure async_typed_u64_read
+            async_typed_u64_write async_lines_large
+            async_split_no_delimiter_eof
+          )
           for batch in 1 2 3; do
-            run_checked_batch moonbit "$moon_binary" moonbit moonbit-raw "$batch"
-            run_checked_batch moonbit-async "$moon_async_binary" moonbit-async moonbit-async-raw "$batch"
-          done
-          for batch in 1 2 3; do
-            run_checked_batch rust "$rust_binary" rust rust-raw "$batch"
+            initialize_aggregate moonbit "$batch"
+            initialize_aggregate moonbit-async "$batch"
+            initialize_aggregate rust "$batch"
+            printf '%s\n' 'implementation,name,size,batch,iterations,median_us,p95_us,operations,bytes,copied_bytes,await_points,failures' \
+              > ".tmp/bufferutils-bench/aggregate-moonbit-async-control-batch-$batch.csv"
+            printf '%s\n' 'implementation,name,size,batch,sample,iterations,elapsed_us' \
+              > ".tmp/bufferutils-bench/aggregate-moonbit-async-control-raw-batch-$batch.csv"
+            case_index=0
+            for entry in "${comparison_cases[@]}"; do
+              IFS=: read -r case_name case_binary moon_prefix <<< "$entry"
+              if (((batch + case_index) % 2 == 0)); then
+                run_checked_case "$moon_prefix" "$case_binary" "$moon_prefix" "$moon_prefix" "$batch" "$case_name"
+                run_checked_case rust "$rust_binary" rust rust "$batch" "$case_name"
+              else
+                run_checked_case rust "$rust_binary" rust rust "$batch" "$case_name"
+                run_checked_case "$moon_prefix" "$case_binary" "$moon_prefix" "$moon_prefix" "$batch" "$case_name"
+              fi
+              case_index=$((case_index + 1))
+            done
+            for entry in "${diagnostic_cases[@]}"; do
+              IFS=: read -r case_name case_binary moon_prefix <<< "$entry"
+              run_checked_case "$moon_prefix" "$case_binary" "$moon_prefix" "$moon_prefix" "$batch" "$case_name"
+            done
+            for case_name in "${control_cases[@]}"; do
+              "$moon_async_binary" "$batch" "$case_name" \
+                > ".tmp/bufferutils-bench/case-control-${case_name}-batch-$batch.csv"
+              tail -n +2 ".tmp/bufferutils-bench/moonbit-async-control-batch-$batch.csv" \
+                >> ".tmp/bufferutils-bench/aggregate-moonbit-async-control-batch-$batch.csv"
+              tail -n +2 ".tmp/bufferutils-bench/moonbit-async-control-raw-batch-$batch.csv" \
+                >> ".tmp/bufferutils-bench/aggregate-moonbit-async-control-raw-batch-$batch.csv"
+            done
+            for prefix in moonbit moonbit-async rust; do
+              mv ".tmp/bufferutils-bench/aggregate-${prefix}-batch-$batch.csv" \
+                ".tmp/bufferutils-bench/${prefix}-batch-$batch.csv"
+              mv ".tmp/bufferutils-bench/aggregate-${prefix}-raw-batch-$batch.csv" \
+                ".tmp/bufferutils-bench/${prefix}-raw-batch-$batch.csv"
+              mv ".tmp/bufferutils-bench/aggregate-${prefix}-copy-evidence-batch-$batch.csv" \
+                ".tmp/bufferutils-bench/${prefix}-copy-evidence-batch-$batch.csv"
+            done
+            mv ".tmp/bufferutils-bench/aggregate-moonbit-async-control-batch-$batch.csv" \
+              ".tmp/bufferutils-bench/moonbit-async-control-batch-$batch.csv"
+            mv ".tmp/bufferutils-bench/aggregate-moonbit-async-control-raw-batch-$batch.csv" \
+              ".tmp/bufferutils-bench/moonbit-async-control-raw-batch-$batch.csv"
           done
           scripts/merge_performance_batches .tmp/bufferutils-bench
           scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
@@ -300,7 +387,7 @@ jobs:
             "async-copy:$moon_async_binary:async_copy"; do
             IFS=: read -r label binary case_name <<< "$entry"
             (
-              cd "$rss_dir"
+              cd "$rss_dir" || exit
               /usr/bin/time -v \
                 -o "$rss_evidence_dir/$label.txt" \
                 "${benchmark_prefix[@]}" "$binary" 1 "$case_name" \
@@ -311,7 +398,7 @@ jobs:
           mkdir -p "$profile_dir/.tmp/bufferutils-bench"
           if command -v perf >/dev/null 2>&1; then
             (
-              cd "$profile_dir"
+              cd "$profile_dir" || exit
               perf record -F 99 -g -o moonbit-bufwriter.perf.data -- \
                 "$moon_binary" 1 sync_bufwriter_small \
                 > moonbit-bufwriter-profile.csv \
@@ -332,7 +419,7 @@ jobs:
             "async-copy:$moon_async_binary:async_copy"; do
             IFS=: read -r label binary case_name <<< "$entry"
             (
-              cd "$profile_dir"
+              cd "$profile_dir" || exit
               if valgrind --tool=callgrind --collect-jumps=yes \
                 --callgrind-out-file="$label.callgrind" \
                 "$binary" 1 "$case_name" > "$label-profile.csv" \

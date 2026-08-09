@@ -27,12 +27,12 @@ scripts/build_shared_iterations \
   .tmp/bufferutils-bench/pilot-moonbit-async.csv \
   .tmp/bufferutils-bench/pilot-rust.csv
 for batch in 1 2 3; do
-  _build/native/release/build/bench/bench.exe "$batch" \
-    > ".tmp/bufferutils-bench/moonbit-batch-$batch.csv"
-  _build/native/release/build/bench_async/bench_async.exe "$batch" \
-    > ".tmp/bufferutils-bench/moonbit-async-batch-$batch.csv"
-  bench/rust-reference/target/release/bufferutils-rust-reference "$batch" \
-    > ".tmp/bufferutils-bench/rust-batch-$batch.csv"
+  # CI runs each selected MoonBit/Rust case as an adjacent pair, alternates
+  # which implementation runs first, and aggregates timing/raw/evidence rows.
+  # The workflow contains the complete executable loop.
+  _build/native/release/build/bench/bench.exe "$batch" sync_raw_read
+  bench/rust-reference/target/release/bufferutils-rust-reference \
+    "$batch" sync_raw_read
 done
 scripts/merge_performance_batches .tmp/bufferutils-bench
 scripts/check_performance_budget .tmp/bufferutils-bench/moonbit.csv
@@ -63,11 +63,14 @@ inside the timer, and reads counters after timing stops. A pilot for each
 runtime doubles iterations until its measured median is at least 10ms. CI then
 takes the larger MoonBit/Rust pilot count for each comparable case, adds a 25%
 margin, and writes `shared-iterations.csv`. All three final MoonBit and Rust
-batches execute that exact count. The regression gate rejects any count that
-differs across implementations or batches. Each final invocation performs 10
-warmups and 30 measured samples. Case-class amplification remains part of pilot
-calibration for operations whose sub-10ms signal would otherwise be too small;
-it does not permit the final workloads to diverge.
+batches execute that exact count. Each comparable case is run as an adjacent
+MoonBit/Rust process pair, and the first implementation alternates across cases
+and batches to prevent runner phase from systematically favoring one side. The
+regression gate rejects any count that differs across implementations or
+batches. Each final invocation performs 10 warmups and 30 measured samples.
+Case-class amplification remains part of pilot calibration for operations whose
+sub-10ms signal would otherwise be too small; it does not permit the final
+workloads to diverge.
 
 Fake writers copy every accepted byte into a fixture allocated before timing,
 account exact accepted bytes and calls, and sample the scratch buffer's first
