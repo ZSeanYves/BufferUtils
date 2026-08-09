@@ -76,7 +76,6 @@ pub struct BytesMut {
 }
 pub fn BytesMut::capacity(Self) -> Int
 pub fn BytesMut::clear(Self) -> Unit
-pub fn BytesMut::copied_bytes(Self) -> Int
 pub fn BytesMut::extend_from_within(Self, Int, Int) -> Unit raise BufferError
 pub fn BytesMut::freeze(Self) -> SharedBytes
 pub fn BytesMut::from_array(ArrayView[Byte], max_capacity? : Int) -> Self raise BufferError
@@ -131,7 +130,6 @@ pub struct SharedBytes {
 }
 pub fn SharedBytes::as_bytes_view(Self) -> BytesView
 pub fn SharedBytes::clone(Self) -> Self
-pub fn SharedBytes::copied_bytes(Self) -> Int
 pub fn SharedBytes::cursor(Self) -> BytesCursor
 pub fn SharedBytes::from_array(ArrayView[Byte]) -> Self
 pub fn SharedBytes::from_fixed_array(FixedArray[Byte], Int, Int) -> Self raise BufferError

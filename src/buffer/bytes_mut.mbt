@@ -20,7 +20,6 @@ pub fn BytesMut::new(
     storage: {
       data: FixedArray::make(capacity, (0).to_byte()),
       immutable: false,
-      copied_bytes: 0,
     },
     start: 0,
     end: 0,
@@ -85,22 +84,17 @@ pub fn BytesMut::view(self : BytesMut) -> ArrayView[Byte] {
 ///|
 fn BytesMut::ensure_unique(self : BytesMut) -> Unit {
   if self.storage.immutable {
-    let copied = self.len()
-    let data = FixedArray::make(copied, (0).to_byte())
-    self.storage.data.blit_to(
-      data,
-      src_offset=self.start,
-      dst_offset=0,
-      len=copied,
-    )
-    self.storage = {
-      data,
-      immutable: false,
-      copied_bytes: self.storage.copied_bytes + copied,
-    }
-    self.start = 0
-    self.end = copied
+    self.detach_to(self.capacity())
   }
+}
+
+///|
+/// Detach the visible range into one fresh mutable backing.
+fn BytesMut::detach_to(self : BytesMut, capacity : Int) -> Unit {
+  let length = self.len()
+  self.storage = self.storage.copy_range(self.start, self.end, capacity)
+  self.start = 0
+  self.end = length
 }
 
 ///|
@@ -127,21 +121,7 @@ pub fn BytesMut::reserve(
   } else {
     Int::min(self.max_capacity, Int::max(required_len, doubled))
   }
-  let data = FixedArray::make(target, (0).to_byte())
-  let length = self.len()
-  self.storage.data.blit_to(
-    data,
-    src_offset=self.start,
-    dst_offset=0,
-    len=length,
-  )
-  self.storage = {
-    data,
-    immutable: false,
-    copied_bytes: self.storage.copied_bytes + length,
-  }
-  self.start = 0
-  self.end = length
+  self.detach_to(target)
 }
 
 ///|
@@ -440,7 +420,7 @@ pub fn BytesMut::split_to(
   if count < 0 || count > self.len() {
     raise BufferError::Underflow(count, self.len())
   }
-  self.storage.immutable = true
+  self.storage.mark_shared()
   let result = {
     storage: self.storage,
     start: self.start,
@@ -459,7 +439,7 @@ pub fn BytesMut::split_off(
   if at < 0 || at > self.len() {
     raise BufferError::InvalidRange("split index is outside the buffer")
   }
-  self.storage.immutable = true
+  self.storage.mark_shared()
   let result = {
     storage: self.storage,
     start: self.start + at,
@@ -511,7 +491,7 @@ pub fn BytesMut::try_unsplit(self : BytesMut, other : BytesMut) -> Bool {
     return false
   }
   self.end = other.end
-  self.storage.immutable = true
+  self.storage.mark_shared()
   true
 }
 
@@ -531,7 +511,7 @@ pub fn BytesMut::unsplit(
 ///|
 /// Freeze without copying. Future mutable writes detach through COW.
 pub fn BytesMut::freeze(self : BytesMut) -> SharedBytes {
-  self.storage.immutable = true
+  self.storage.mark_shared()
   { storage: self.storage, start: self.start, end: self.end }
 }
 
@@ -560,11 +540,6 @@ pub fn[T] BytesMut::with_spare_capacity(
   }
   self.end += initialized
   result
-}
-
-///|
-pub fn BytesMut::copied_bytes(self : BytesMut) -> Int {
-  self.storage.copied_bytes
 }
 
 ///|

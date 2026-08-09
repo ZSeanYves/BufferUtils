@@ -143,8 +143,8 @@ Scope:
 
 - Convert `scripts/check_api_surface` into a strict allowlist plus intentional
   diff report.
-- Remove or isolate `copied_bytes`, underlying-call, and syscall counters from
-  the permanent public API.
+- Keep `copied_bytes`, underlying-call, and syscall evidence in benchmark-only
+  fixtures or generated diagnostics; none is part of the permanent public API.
 - Require documentation and a test/example for every public symbol.
 - Audit all names against the rules in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Keep native mmap and socket types visibly separate from shared byte values.

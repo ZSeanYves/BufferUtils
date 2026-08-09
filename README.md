@@ -64,10 +64,11 @@ Naming follows lower snake case for methods and fields, PascalCase for types,
 resources. `get_ref`/`get_mut` borrow the wrapped value; `into_inner` consumes
 the wrapper. Views are borrowed until the next operation on their owner.
 
-The memory and I/O counter accessors are diagnostic hooks used by tests and
-benchmarks. They are observable counters, not synchronization or correctness
-state. The `examples` package is executable documentation and is outside the
-compatibility promise of the four core packages.
+Copy evidence is collected by benchmark-only fixtures and structural
+instrumentation. The release API does not expose allocation, backing identity,
+reference counts, detach state, or benchmark counters. The `examples` package
+is executable documentation and is outside the compatibility promise of the
+four core packages.
 
 The stable scope includes typed 8/16/32/64-bit integer and floating-point
 helpers, short-progress and error contracts, lazy cursors, vectored fallback,

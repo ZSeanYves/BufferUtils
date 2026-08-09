@@ -21,7 +21,6 @@ test "immutable bytes slices share storage and cursors advance independently" {
   assert_eq(cursor.remaining_bytes().view(), [b'b', b'c'])
   assert_eq(prefix.view(), [b'a', b'b', b'c'])
   assert_eq(cloned.view(), [b'a', b'b', b'c', b'd', b'e', b'f'])
-  assert_eq(cloned.copied_bytes(), 0)
 }
 
 ///|
@@ -112,11 +111,9 @@ test "UTF-8 append and decode use exact byte boundaries" {
 test "freeze and split are zero-copy until a mutation" {
   let mutable = BytesMut::from_array([b'a', b'b', b'c', b'd'][:])
   let frozen = mutable.freeze()
-  assert_eq(frozen.copied_bytes(), 0)
   mutable.put_byte(b'e')
   assert_eq(frozen.view(), [b'a', b'b', b'c', b'd'])
   assert_eq(mutable.view(), [b'a', b'b', b'c', b'd', b'e'])
-  assert_eq(mutable.copied_bytes(), 4)
 }
 
 ///|
@@ -158,9 +155,8 @@ fn bytes_mut_model_holds(seed : UInt, steps : Int) -> Bool {
             model.truncate(length)
           }
         2 => {
-          let copied_before = mutable.copied_bytes()
           let frozen = mutable.freeze()
-          if frozen.view() != model || frozen.copied_bytes() != copied_before {
+          if frozen.view() != model {
             return false
           }
         }

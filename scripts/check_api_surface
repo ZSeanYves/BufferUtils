@@ -111,6 +111,8 @@ forbidden=(
   "buffer/pkg.generated.mbti|pub fn SharedBytes::split_off"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::split_to"
   "buffer/pkg.generated.mbti|pub fn SharedBytes::truncate"
+  "buffer/pkg.generated.mbti|pub fn SharedBytes::copied_bytes"
+  "buffer/pkg.generated.mbti|pub fn BytesMut::copied_bytes"
   "buffer/pkg.generated.mbti|pub impl Buf for SharedBytes"
   "io/pkg.generated.mbti|MemoryPipeState"
   "io/pkg.generated.mbti|pub struct MemoryPipe"

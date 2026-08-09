@@ -7,7 +7,26 @@
 struct SharedStorage {
   data : FixedArray[Byte]
   mut immutable : Bool
-  copied_bytes : Int
+}
+
+///|
+/// Mark a backing as shared by an immutable view or another mutable range.
+fn SharedStorage::mark_shared(self : SharedStorage) -> Unit {
+  self.immutable = true
+}
+
+///|
+/// Copy one visible range into a fresh mutable backing.
+fn SharedStorage::copy_range(
+  self : SharedStorage,
+  start : Int,
+  end : Int,
+  capacity : Int,
+) -> SharedStorage {
+  let length = end - start
+  let data = FixedArray::make(capacity, (0).to_byte())
+  self.data.blit_to(data, src_offset=start, dst_offset=0, len=length)
+  { data, immutable: false }
 }
 
 ///|
@@ -41,11 +60,7 @@ pub struct SharedBytesSplit {
 /// Create immutable storage by copying an array view.
 pub fn SharedBytes::from_array(data : ArrayView[Byte]) -> SharedBytes {
   {
-    storage: {
-      data: FixedArray::from_array(data),
-      immutable: true,
-      copied_bytes: 0,
-    },
+    storage: { data: FixedArray::from_array(data), immutable: true },
     start: 0,
     end: data.length(),
   }
@@ -86,7 +101,7 @@ pub fn SharedBytes::unsafe_adopt_fixed_array(
       "fixed-array range is outside the backing storage",
     )
   }
-  { storage: { data, immutable: true, copied_bytes: 0 }, start, end }
+  { storage: { data, immutable: true }, start, end }
 }
 
 ///|
@@ -224,12 +239,6 @@ pub fn SharedBytes::to_array(self : SharedBytes) -> Array[Byte] {
 /// Materialize the visible range as an owned Core Bytes value.
 pub fn SharedBytes::to_bytes(self : SharedBytes) -> Bytes {
   self.as_bytes_view().to_owned()
-}
-
-///|
-/// Number of bytes copied by copy-on-write for this storage.
-pub fn SharedBytes::copied_bytes(self : SharedBytes) -> Int {
-  self.storage.copied_bytes
 }
 
 ///|

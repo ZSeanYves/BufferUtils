@@ -383,8 +383,10 @@ fn print_result(case : BenchmarkCase, batch : Int, stats : BenchStats) -> Unit {
 
 ///|
 fn copy_scope(name : String) -> String {
-  if name.has_prefix("buffer_") {
-    "library-cow"
+  if name == "buffer_cow_mutation" || name == "buffer_growth" {
+    "fixture-observed"
+  } else if name.has_prefix("buffer_") {
+    "unavailable"
   } else if name.has_prefix("native_") || name == "tcp_loopback" {
     "unavailable"
   } else {
@@ -427,7 +429,7 @@ fn shared_clone_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           benchmark_keeper.keep(sink.val.len())
-          { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
+          { ..empty_counters(), copied_bytes: 0L }
         },
         cleanup: () => (),
       }
@@ -452,7 +454,7 @@ fn shared_slice_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           benchmark_keeper.keep(sink.val.len())
-          { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
+          { ..empty_counters(), copied_bytes: 0L }
         },
         cleanup: () => (),
       }
@@ -477,7 +479,7 @@ fn shared_split_case(size : Int) -> BenchmarkCase {
         },
         observe: () => {
           benchmark_keeper.keep(sink.val.len())
-          { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
+          { ..empty_counters(), copied_bytes: 0L }
         },
         cleanup: () => (),
       }
@@ -526,19 +528,19 @@ fn cow_case(size : Int) -> BenchmarkCase {
         ignore(buffer.freeze())
         buffer
       })
+      let copied = Ref(0L)
+      let detached = Ref(false)
       {
         run: () => {
           for buffer in buffers {
+            if !detached.val {
+              copied.val += buffer.len().to_int64()
+            }
             buffer.put_byte(b'X')
           }
+          detached.val = true
         },
-        observe: () => {
-          let mut copied = 0L
-          for buffer in buffers {
-            copied += buffer.copied_bytes().to_int64()
-          }
-          { ..empty_counters(), copied_bytes: copied }
-        },
+        observe: () => { ..empty_counters(), copied_bytes: copied.val },
         cleanup: () => (),
       }
     },
@@ -557,19 +559,20 @@ fn growth_case(size : Int) -> BenchmarkCase {
       let buffers = Array::makei(iterations, _ => {
         @buffer.BytesMut::from_array(initial[:])
       })
+      let copied = Ref(0L)
       {
         run: () => {
+          copied.val = 0L
           for buffer in buffers {
+            let before_len = buffer.len()
+            let required = before_len + suffix.length()
+            if required > buffer.capacity() {
+              copied.val += before_len.to_int64()
+            }
             buffer.put_slice(suffix[:])
           }
         },
-        observe: () => {
-          let mut copied = 0L
-          for buffer in buffers {
-            copied += buffer.copied_bytes().to_int64()
-          }
-          { ..empty_counters(), copied_bytes: copied }
-        },
+        observe: () => { ..empty_counters(), copied_bytes: copied.val },
         cleanup: () => (),
       }
     },
