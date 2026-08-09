@@ -23,9 +23,12 @@ checks.
 The sequential implementation-wide baseline was retired when consecutive
 structurally valid runs still changed stable per-case ratios by 20%-50%. Final
 timings now execute as adjacent MoonBit/Rust case pairs with alternating order.
-The next successful paired run is the only valid source for the replacement
-baseline; until it is committed, CI writes a candidate into its performance
-artifact instead of comparing incompatible protocols.
+The replacement baseline was generated from the structurally valid paired
+artifact of GitHub Actions run
+[`31303880886`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31303880886)
+at commit `14a1183`. The run passed all platform, sanitizer, coverage, contract,
+timing, raw-sample, copy-evidence, async-control, and profiler checks. The
+committed ratios detect later regressions; they do not assert Rust parity.
 
 The superseded nightly runs `30900917785`, `30904761627`, and `30905145550`
 remain historical diagnostics only. Their non-overlapping regressions exposed
