@@ -263,6 +263,7 @@ test "vectored helpers preserve ordering across short backends" {
 test "BufReader fill_buf and consume support allocation-free parsing" {
   let source = MemoryReader::new(b"alpha,beta", max_chunk=3)
   let reader = BufReader::new(source, capacity=4)
+  assert_eq(reader.capacity(), 4)
   assert_eq(BufRead::fill_buf(reader).to_owned(), [b'a', b'l', b'p'])
   BufRead::consume(reader, 2)
   assert_eq(BufRead::fill_buf(reader).to_owned(), [b'p'])

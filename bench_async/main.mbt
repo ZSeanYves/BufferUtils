@@ -11,6 +11,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
+let shared_iterations_path = ".tmp/bufferutils-bench/shared-iterations.csv"
+
+///|
 let bench_output_root = ".tmp"
 
 ///|
@@ -242,6 +245,36 @@ fn workload_multiplier(name : String, payload_size : Int) -> Int {
 }
 
 ///|
+fn parse_positive_int(value : StringView) -> Int? {
+  let parsed : Int = @string.from_str(value) catch { _ => return None }
+  if parsed > 0 {
+    Some(parsed)
+  } else {
+    None
+  }
+}
+
+///|
+fn forced_iterations(name : String, size : Int) -> Int? raise @fs.IOError {
+  if !@fs.path_exists(shared_iterations_path) {
+    return None
+  }
+  let contents = @fs.read_file_to_string(shared_iterations_path)
+  for line in contents.split("\n") {
+    let fields = line.split(",")
+    let row_name = fields.next()
+    let row_size = fields.next()
+    let row_iterations = fields.next()
+    if fields.next() is None &&
+      row_name == Some(name) &&
+      row_size.bind(parse_positive_int) == Some(size) {
+      return row_iterations.bind(parse_positive_int)
+    }
+  }
+  abort("shared iteration map is missing {name}/{size}")
+}
+
+///|
 async fn measure_case(
   name : String,
   payload : Array[Byte],
@@ -249,19 +282,27 @@ async fn measure_case(
 ) -> AsyncBenchStats {
   let mut iterations = initial_iterations
   let limit = iteration_limit(name, payload.length())
+  let forced = forced_iterations(name, payload.length())
+  match forced {
+    Some(value) if value <= limit => iterations = value
+    Some(_) => abort("shared iteration count exceeds the async benchmark limit")
+    None => ()
+  }
   iterations = Int::min(iterations, limit)
   let mut elapsed = 0.0
-  while elapsed < minimum_sample_us && iterations < limit {
+  while forced is None && elapsed < minimum_sample_us && iterations < limit {
     let (sample, _) = run_case_once(name, payload, iterations)
     elapsed = sample
     if elapsed < minimum_sample_us {
       iterations = Int::min(limit, iterations * 2)
     }
   }
-  iterations = Int::min(
-    limit,
-    iterations * workload_multiplier(name, payload.length()),
-  )
+  if forced is None {
+    iterations = Int::min(
+      limit,
+      iterations * workload_multiplier(name, payload.length()),
+    )
+  }
   while true {
     for _ in 0..<warmup_samples {
       ignore(run_case_once(name, payload, iterations))
@@ -279,7 +320,9 @@ async fn measure_case(
     }
     samples.sort()
     let median_us = median(samples)
-    if median_us >= minimum_sample_us || iterations >= limit {
+    if forced is Some(_) ||
+      median_us >= minimum_sample_us ||
+      iterations >= limit {
       return { iterations, median_us, p95_us: p95(samples), counters, samples }
     }
     iterations = Int::min(limit, iterations * 2)

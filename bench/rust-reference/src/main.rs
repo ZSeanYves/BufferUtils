@@ -13,6 +13,7 @@ const WARMUPS: usize = 10;
 const SAMPLES: usize = 30;
 const MIN_SAMPLE_US: f64 = 10_000.0;
 const MAX_ITERATIONS: usize = 16_777_216;
+const SHARED_ITERATIONS_PATH: &str = ".tmp/bufferutils-bench/shared-iterations.csv";
 
 #[derive(Clone, Copy, Default)]
 struct Counters {
@@ -52,11 +53,13 @@ fn median(samples: &[f64]) -> f64 {
 }
 
 fn forced_iterations(name: &str, size: usize) -> Option<usize> {
+    if !std::path::Path::new(SHARED_ITERATIONS_PATH).is_file() {
+        return None;
+    }
     static ITERATIONS: OnceLock<HashMap<(String, usize), usize>> = OnceLock::new();
     let map = ITERATIONS.get_or_init(|| {
         let mut values = HashMap::new();
-        let path = ".tmp/bufferutils-bench/moonbit-iterations.csv";
-        if let Ok(contents) = std::fs::read_to_string(path) {
+        if let Ok(contents) = std::fs::read_to_string(SHARED_ITERATIONS_PATH) {
             for line in contents.lines().skip(1) {
                 let fields: Vec<_> = line.split(',').collect();
                 if fields.len() == 3 {
@@ -70,7 +73,11 @@ fn forced_iterations(name: &str, size: usize) -> Option<usize> {
         }
         values
     });
-    map.get(&(name.to_string(), size)).copied()
+    Some(
+        map.get(&(name.to_string(), size))
+            .copied()
+            .unwrap_or_else(|| panic!("shared iteration map is missing {name}/{size}")),
+    )
 }
 
 fn measure<S, Setup, Run, Observe>(

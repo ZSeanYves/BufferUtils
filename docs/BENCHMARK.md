@@ -12,20 +12,25 @@ mkdir -p .tmp/bufferutils-bench
 moon run bench --target native --release --build-only
 moon run bench_async --target native --release --build-only
 cargo build --release --locked --manifest-path bench/rust-reference/Cargo.toml
+
+# Pilot each runtime independently without a shared iteration map.
+_build/native/release/build/bench/bench.exe 1 \
+  > .tmp/bufferutils-bench/pilot-moonbit.csv
+_build/native/release/build/bench_async/bench_async.exe 1 \
+  > .tmp/bufferutils-bench/pilot-moonbit-async.csv
+bench/rust-reference/target/release/bufferutils-rust-reference 1 \
+  > .tmp/bufferutils-bench/pilot-rust.csv
+
+scripts/build_shared_iterations \
+  .tmp/bufferutils-bench/shared-iterations.csv \
+  .tmp/bufferutils-bench/pilot-moonbit.csv \
+  .tmp/bufferutils-bench/pilot-moonbit-async.csv \
+  .tmp/bufferutils-bench/pilot-rust.csv
 for batch in 1 2 3; do
   _build/native/release/build/bench/bench.exe "$batch" \
     > ".tmp/bufferutils-bench/moonbit-batch-$batch.csv"
   _build/native/release/build/bench_async/bench_async.exe "$batch" \
     > ".tmp/bufferutils-bench/moonbit-async-batch-$batch.csv"
-done
-scripts/merge_performance_batches --moonbit-only .tmp/bufferutils-bench
-{
-  tail -n +2 .tmp/bufferutils-bench/moonbit.csv
-  tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv
-} | awk -F, \
-  'BEGIN { print "name,size,iterations" } { key=$2 FS $3; if (!(key in seen)) { print $2 "," $3 "," $5; seen[key]=1 } }' \
-  > .tmp/bufferutils-bench/moonbit-iterations.csv
-for batch in 1 2 3; do
   bench/rust-reference/target/release/bufferutils-rust-reference "$batch" \
     > ".tmp/bufferutils-bench/rust-batch-$batch.csv"
 done
@@ -54,16 +59,15 @@ implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,un
 ```
 
 Each case constructs its fixture outside the timer, runs only the operation
-inside the timer, and reads counters after timing stops. Iterations double
-until the measured median is at least 10ms. Each invocation performs 10
-warmups and 30 measured samples for one requested batch. Cases where the Rust
-reference is faster than the MoonBit calibration window use a case-class
-power-of-two amplification derived from remote measurements. The same final
-iteration count is written to `moonbit-iterations.csv` and forced on Rust.
-This keeps both implementations above 10ms without multiplying unrelated
-native and allocation diagnostics. The runner executes three MoonBit sync and
-async batches, records their shared iteration counts, then executes three Rust
-batches and merges the per-batch CSV files.
+inside the timer, and reads counters after timing stops. A pilot for each
+runtime doubles iterations until its measured median is at least 10ms. CI then
+takes the larger MoonBit/Rust pilot count for each comparable case, adds a 25%
+margin, and writes `shared-iterations.csv`. All three final MoonBit and Rust
+batches execute that exact count. The regression gate rejects any count that
+differs across implementations or batches. Each final invocation performs 10
+warmups and 30 measured samples. Case-class amplification remains part of pilot
+calibration for operations whose sub-10ms signal would otherwise be too small;
+it does not permit the final workloads to diverge.
 
 Fake writers copy every accepted byte into a fixture allocated before timing,
 account exact accepted bytes and calls, and sample the scratch buffer's first

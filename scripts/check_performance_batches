@@ -35,16 +35,22 @@ FILENAME != baseline_file {
   batch = $4 + 0
   per_iteration = ($6 + 0) / ($5 + 0)
   timing[implementation, key, batch] = per_iteration
+  iterations[implementation, key, batch] = $5 + 0
   next
 }
 END {
   for (key in baseline) {
+    expected_iterations = iterations["moonbit", key, 1]
     for (batch = 1; batch <= 3; batch++) {
       moon_key = "moonbit" SUBSEP key SUBSEP batch
       rust_key = "rust" SUBSEP key SUBSEP batch
       if (!(moon_key in timing) || !(rust_key in timing)) {
         fail("missing comparison row: " key " batch " batch)
         continue
+      }
+      if (iterations["moonbit", key, batch] != expected_iterations ||
+          iterations["rust", key, batch] != expected_iterations) {
+        fail("shared iteration mismatch: " key " batch " batch)
       }
       ratio = timing[moon_key] / timing[rust_key]
       if (ratio > baseline[key] * 1.15) regressions[key]++

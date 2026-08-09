@@ -230,17 +230,24 @@ jobs:
             echo "benchmark batch remained noisy after three attempts: $label/$batch" >&2
             return 1
           }
+          run_pilot() {
+            local binary="$1"
+            local output="$2"
+            "${benchmark_prefix[@]}" "$binary" 1 __all__ > "$output"
+          }
+          rm -f .tmp/bufferutils-bench/shared-iterations.csv
+          run_pilot "$moon_binary" .tmp/bufferutils-bench/pilot-moonbit.csv
+          run_pilot "$moon_async_binary" .tmp/bufferutils-bench/pilot-moonbit-async.csv
+          run_pilot "$rust_binary" .tmp/bufferutils-bench/pilot-rust.csv
+          scripts/build_shared_iterations \
+            .tmp/bufferutils-bench/shared-iterations.csv \
+            .tmp/bufferutils-bench/pilot-moonbit.csv \
+            .tmp/bufferutils-bench/pilot-moonbit-async.csv \
+            .tmp/bufferutils-bench/pilot-rust.csv
           for batch in 1 2 3; do
             run_checked_batch moonbit "$moon_binary" moonbit moonbit-raw "$batch"
             run_checked_batch moonbit-async "$moon_async_binary" moonbit-async moonbit-async-raw "$batch"
           done
-          scripts/merge_performance_batches --moonbit-only .tmp/bufferutils-bench
-          {
-            tail -n +2 .tmp/bufferutils-bench/moonbit.csv
-            tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv
-          } | awk -F, 'BEGIN { print "name,size,iterations" } { key=$2 FS $3; if (!(key in seen)) { print $2 "," $3 "," $5; seen[key]=1 } }' \
-            > .tmp/bufferutils-bench/moonbit-iterations.csv
-          test "$(head -n 1 .tmp/bufferutils-bench/moonbit-iterations.csv)" = "name,size,iterations"
           for batch in 1 2 3; do
             run_checked_batch rust "$rust_binary" rust rust-raw "$batch"
           done

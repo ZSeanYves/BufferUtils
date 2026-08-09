@@ -4,6 +4,7 @@ import {
   "moonbitlang/async",
   "moonbitlang/core/bench" @mbench,
   "moonbitlang/core/env",
+  "moonbitlang/core/string",
   "moonbitlang/x/fs",
 }
 

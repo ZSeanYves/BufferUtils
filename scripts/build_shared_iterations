@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=${1:?usage: build_shared_iterations OUTPUT.csv PILOT.csv [PILOT.csv ...]}
+shift
+if (($# < 2)); then
+  echo "at least two independent pilot CSV files are required" >&2
+  exit 1
+fi
+
+for file in "$@"; do
+  [[ -f "$file" ]] || {
+    printf 'pilot CSV not found: %s\n' "$file" >&2
+    exit 1
+  }
+done
+
+awk -F, '
+function fail(message) {
+  print message > "/dev/stderr"
+  failed = 1
+}
+FNR == 1 {
+  expected = "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s"
+  if ($0 != expected) fail("pilot CSV header mismatch: " FILENAME)
+  next
+}
+{
+  if (NF != 12 || $2 == "" || ($3 + 0) <= 0 || ($5 + 0) <= 0) {
+    fail("invalid pilot row: " FILENAME ":" FNR)
+    next
+  }
+  row_count++
+  key = $2 SUBSEP $3
+  if (($5 + 0) > maximum[key]) {
+    maximum[key] = $5 + 0
+    names[key] = $2
+    sizes[key] = $3 + 0
+  }
+}
+END {
+  if (row_count == 0) fail("pilot CSV files contain no benchmark rows")
+  if (failed) exit 1
+  print "name,size,iterations"
+  for (key in maximum) {
+    iterations = int((maximum[key] * 5 + 3) / 4)
+    limit = 16777216
+    if (names[key] == "async_copy") limit = int(2147483647 / sizes[key])
+    if (iterations > limit) iterations = limit
+    print names[key] "," sizes[key] "," iterations
+  }
+}
+' "$@" | {
+  IFS= read -r header
+  printf '%s\n' "$header"
+  sort -t, -k1,1 -k2,2n
+} > "$output"
+
+[[ $(head -n 1 "$output") == "name,size,iterations" ]]

@@ -17,6 +17,9 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
+let shared_iterations_path = ".tmp/bufferutils-bench/shared-iterations.csv"
+
+///|
 let benchmark_keeper : @mbench.Bench = @mbench.Bench()
 
 ///|
@@ -313,7 +316,43 @@ fn measure_until_stable(
 }
 
 ///|
+fn parse_positive_int(value : StringView) -> Int? {
+  let parsed : Int = @string.from_str(value) catch { _ => return None }
+  if parsed > 0 {
+    Some(parsed)
+  } else {
+    None
+  }
+}
+
+///|
+fn forced_iterations(name : String, size : Int) -> Int? raise @fs.IOError {
+  if !@fs.path_exists(shared_iterations_path) {
+    return None
+  }
+  let contents = @fs.read_file_to_string(shared_iterations_path)
+  for line in contents.split("\n") {
+    let fields = line.split(",")
+    let row_name = fields.next()
+    let row_size = fields.next()
+    let row_iterations = fields.next()
+    if fields.next() is None &&
+      row_name == Some(name) &&
+      row_size.bind(parse_positive_int) == Some(size) {
+      return row_iterations.bind(parse_positive_int)
+    }
+  }
+  abort("shared iteration map is missing {name}/{size}")
+}
+
+///|
 fn measure(case : BenchmarkCase, initial_iterations : Int) -> BenchStats raise {
+  match forced_iterations(case.name, case.size) {
+    Some(iterations) if iterations <= maximum_iterations =>
+      return measure_at(case, iterations)
+    Some(_) => abort("shared iteration count exceeds the benchmark limit")
+    None => ()
+  }
   let calibrated = calibrate(case, initial_iterations)
   let expanded = Int::min(
     maximum_iterations,
