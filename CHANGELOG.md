@@ -25,6 +25,14 @@
 - This RC is not published by CI. A maintainer must review the migration,
   performance evidence, and consumer builds before manual publication.
 
+### Documentation
+- Consolidated the architecture, contracts, performance evidence, migration,
+  maintenance plan, and release procedure under `docs/` with one documentation
+  index and no obsolete rc.1 document links.
+- Moved maintained MoonBit packages and executable examples under `src/` while
+  preserving their public import paths; benchmark entry points now live under
+  `src/bench` and `src/bench_async`.
+
 ## v0.40.0-rc.1
 
 ### Breaking
@@ -79,7 +87,7 @@
 - Small/short/vectored/native benchmark workloads, three-batch baseline gates,
   and executable example tests.
 - The 0.36-to-0.37 source differences are superseded by the current
-  `docs/MIGRATION_0.37_TO_0.40.md` guide.
+  `docs/MIGRATION.md` guide.
 
 ## v0.36.0
 
@@ -160,7 +168,8 @@
 
 ### Compatibility
 - Preserved the public package interfaces and runtime behavior.
-- Added `docs/MAINTENANCE_PLAN.md` for the intentionally breaking v2 design direction.
+- Recorded the intentionally breaking v2 design direction in the project
+  maintenance documentation.
 
 ## v0.24.0
 
@@ -366,7 +375,8 @@
 
 ### Added
 - Added an experimental benchmark baseline runner under `bench`.
-- Added `docs/BENCHMARK.md` with benchmark scope, run instructions, output format, and hotspot notes.
+- Added the benchmark scope, run instructions, output format, and hotspot notes
+  that are now maintained in `docs/PERFORMANCE.md`.
 - Added benchmark coverage for low-level buffers, memory streaming, and file convenience layers at `1KB`, `64KB`, `1MB`, and `10MB`.
 
 ### Changed

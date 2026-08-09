@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source_root=src
+
 for file in \
-  buffer/pkg.generated.mbti \
-  io/pkg.generated.mbti \
-  native/pkg.generated.mbti \
-  async_io/pkg.generated.mbti; do
+  "$source_root/buffer/pkg.generated.mbti" \
+  "$source_root/io/pkg.generated.mbti" \
+  "$source_root/native/pkg.generated.mbti" \
+  "$source_root/async_io/pkg.generated.mbti"; do
   test -f "$file"
 done
 
@@ -81,6 +83,9 @@ required=(
 for requirement in "${required[@]}"; do
   file=${requirement%%|*}
   symbol=${requirement#*|}
+  case "$file" in
+    buffer/*|io/*|async_io/*|native/*|examples/*) file="$source_root/$file" ;;
+  esac
   if ! grep -Fq "$symbol" "$file"; then
     printf 'missing public symbol: %s\n' "$symbol" >&2
     exit 1
@@ -109,6 +114,9 @@ forbidden=(
 for entry in "${forbidden[@]}"; do
   file=${entry%%|*}
   symbol=${entry#*|}
+  case "$file" in
+    buffer/*|io/*|async_io/*|native/*|examples/*) file="$source_root/$file" ;;
+  esac
   if grep -Fq "$symbol" "$file"; then
     printf 'obsolete public symbol remains: %s\n' "$symbol" >&2
     exit 1

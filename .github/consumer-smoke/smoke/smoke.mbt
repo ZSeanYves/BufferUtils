@@ -3,7 +3,7 @@ pub fn sync_native_smoke() -> Unit raise {
   let mutable = @buffer.BytesMut::new(capacity=16)
   mutable.put_u32_be(0x12345678U)
   let shared = mutable.freeze()
-  guard shared.remaining() == 4 else {
+  guard shared.len() == 4 else {
     abort("shared buffer smoke test failed")
   }
 

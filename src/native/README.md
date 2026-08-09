@@ -18,17 +18,18 @@ cancellation.
 The native package is an opt-in backend, not a replacement for the portable
 traits. Use `NativeFile` for blocking file handles, `NativeTcpStream` and
 `NativeTcpListener` for TCP, and `MappedBytes` only when a read-only mmap is
-appropriate. See [`docs/API_SURFACE.md`](../docs/API_SURFACE.md) for naming and
-ownership rules.
+appropriate. See [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) for naming,
+ownership, and native-lifetime rules.
 
 POSIX builds use `open/read/write/lseek/mmap` and pthread mutexes. Windows
 builds use UTF-8 to UTF-16 path conversion, Win32 file and mapping APIs,
 Winsock TCP, and critical sections. The current portable vectored API reports
 capability and uses scalar fallback where a platform implementation is not
-available; see the parity matrix for remaining native optimization work.
+available; see [`docs/PERFORMANCE.md`](../../docs/PERFORMANCE.md) for the
+measured native diagnostic scope.
 
 Run native tests with:
 
 ```bash
-moon test native --target native --deny-warn
+moon test src/native --target native --deny-warn
 ```

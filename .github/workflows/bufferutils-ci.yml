@@ -66,8 +66,8 @@ jobs:
           moon check --target all --deny-warn
           moon test --target all --deny-warn
           moon doc --frozen
-          moon check examples --target native --deny-warn
-          moon test examples --target native --deny-warn
+          moon check src/examples --target native --deny-warn
+          moon test src/examples --target native --deny-warn
           scripts/check_api_surface
 
   critical-contracts:
@@ -120,7 +120,7 @@ jobs:
         run: |
           moon update
           chmod +x scripts/ar scripts/clang-asan-ubsan scripts/clang-tsan
-          MOON_CC="$PWD/${{ matrix.compiler }}" moon test native \
+          MOON_CC="$PWD/${{ matrix.compiler }}" moon test src/native \
             --target native --release --deny-warn
 
   coverage:
@@ -179,8 +179,8 @@ jobs:
         shell: bash
         run: |
           moon update
-          moon run bench --target native --release --build-only
-          moon run bench_async --target native --release --build-only
+          moon run src/bench --target native --release --build-only
+          moon run src/bench_async --target native --release --build-only
           cargo build --release --locked --manifest-path bench/rust-reference/Cargo.toml
           moon_binary="$PWD/_build/native/release/build/bench/bench.exe"
           moon_async_binary="$PWD/_build/native/release/build/bench_async/bench_async.exe"

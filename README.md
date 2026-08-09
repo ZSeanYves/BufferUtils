@@ -1,8 +1,9 @@
 # BufferUtils
 
-BufferUtils is a pre-1.0 MoonBit library for shared byte storage and
-synchronous, asynchronous, and native I/O. The 0.40 release intentionally
-breaks the 0.37 source API and does not provide a deprecation layer.
+BufferUtils is a pre-1.0 MoonBit library for shared immutable byte ranges,
+copy-on-write mutable buffers, and composable synchronous and asynchronous
+streaming I/O. The 0.40 release intentionally breaks the 0.37 source API and
+does not provide a deprecation layer.
 
 The current source version is `0.40.0-rc.2`. This repository does not publish
 packages or create releases automatically.
@@ -15,6 +16,12 @@ packages or create releases automatically.
 | `io` | fallible synchronous I/O traits, buffering, seeking, and adapters | all |
 | `async_io` | cancellation-aware async traits, buffering, duplex, and copy | native |
 | `native` | blocking files, TCP, mmap, and structured socket addresses | native |
+
+The maintained MoonBit packages live under `src/`; their public import paths
+remain `ZSeanYves/bufferutils/{buffer,io,async_io,native}` because `moon.mod`
+uses `src` as the module source root. The root `bench/` directory contains
+only the Rust reference project and committed benchmark data; MoonBit benchmark
+entry points are `src/bench` and `src/bench_async`.
 
 Use the portable packages by default. The `native` package is an explicit
 operating-system boundary and requires the native target.
@@ -87,17 +94,9 @@ each core package, sanitizer race checks, structural benchmark counters, and
 per-case MoonBit/Rust ratio regression gates. These gates do not claim that
 MoonBit throughput must equal Rust throughput.
 
-Read [`docs/API_SURFACE.md`](docs/API_SURFACE.md) for the public API boundary,
-[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) when
-upgrading, [`docs/MIGRATION_0.40_RC1_TO_RC2.md`](docs/MIGRATION_0.40_RC1_TO_RC2.md)
-for the cursor migration, and [`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) for the manual
-review and consumer-install procedure.
-
-Detailed semantics and evidence are in
-[`docs/API_CONTRACT.md`](docs/API_CONTRACT.md),
-[`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md),
-[`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md), and
-[`docs/BENCHMARK.md`](docs/BENCHMARK.md). The measured performance gaps,
-confirmed root causes, and remaining compiler/runtime constraints are recorded
-without a parity claim in
-[`docs/PERFORMANCE_0.40.md`](docs/PERFORMANCE_0.40.md).
+Start with the [documentation index](docs/README.md). It links the
+[architecture and contracts](docs/ARCHITECTURE.md), the staged
+[maintenance plan](docs/MAINTENANCE_PLAN_0.40.md), the reproducible
+[performance evidence](docs/PERFORMANCE.md), the combined
+[migration guide](docs/MIGRATION.md), and the manual
+[release procedure](docs/RELEASE.md).

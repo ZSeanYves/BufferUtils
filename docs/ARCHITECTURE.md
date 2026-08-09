@@ -1,0 +1,136 @@
+# Architecture and Contracts
+
+## Product boundary
+
+BufferUtils is not a replacement for a generic MoonBit array or string
+container. Its core contract is:
+
+> Shared immutable byte ranges and copy-on-write mutable buffers, integrated
+> with composable synchronous and asynchronous streaming I/O.
+
+The library owns byte ownership and stream-progress contracts. It does not
+emulate Rust's ownership type system, and it does not claim every path is
+zero-copy.
+
+## Package boundaries
+
+| Package | Source path | Responsibility | Targets |
+| --- | --- | --- | --- |
+| `buffer` | `src/buffer` | Shared ranges, mutable buffers, cursors, `Buf` and `BufMut` | all supported targets |
+| `io` | `src/io` | Fallible synchronous read/write, buffering, seek, and adapters | all supported targets |
+| `async_io` | `src/async_io` | Cancellation-aware async traits, buffering, duplex, and copy | native |
+| `native` | `src/native` | Files, TCP, mmap, OS errors, and close safety | native |
+| `examples` | `src/examples` | Executable documentation | native |
+| `bench`, `bench_async` | `src/bench`, `src/bench_async` | Benchmark-only executables and evidence instrumentation | native |
+
+`moon.mod` declares `src` as the module source root, so the source path is
+not part of any public import path.
+
+`native` is an operating-system boundary. Its external resources are not
+ordinary `SharedBytes` backing storage. `examples` and the benchmark packages
+are outside the compatibility promise of the four core packages.
+
+## Ownership model
+
+### `SharedBytes`
+
+`SharedBytes` is an immutable `#valtype` containing a shared backing allocation
+and a visible `[start, end)` range. `clone`, `slice`, `prefix`, `suffix`, and
+`split_at` do not mutate the source or copy payload bytes on the supported hot
+path.
+
+`SharedBytes` does not implement `Buf` and has no consuming methods. Use
+`bytes.cursor()` when a read operation needs a mutable position.
+
+### `BytesMut`
+
+`BytesMut` is the mutable construction and accumulation type. `freeze()` returns
+an immutable `SharedBytes` snapshot without copying. A later mutation detaches
+the smallest required mutable range when a frozen or aliased backing is
+reachable. Earlier snapshots remain unchanged.
+
+### `BytesCursor`
+
+`BytesCursor` owns a position independent of its source `SharedBytes`. It is the
+only byte-range type intended to advance, split consumptively, copy out, or run
+typed `get_*` helpers.
+
+## Copy boundaries
+
+| Operation | Contract |
+| --- | --- |
+| `SharedBytes::from_array` | Copies the array view |
+| `SharedBytes::from_fixed_array` | Validates and copies the selected range |
+| `unsafe_adopt_fixed_array` | Explicit unsafe adoption; caller must not mutate the backing |
+| `SharedBytes::as_bytes_view` | Borrowed view; no payload copy |
+| `BytesMut::freeze` | Shared immutable snapshot; no payload copy |
+| `SharedBytes::to_array` / `to_bytes` | Explicit materialization |
+| `BufRead::fill_buf` | Borrowed internal reader storage until the next reader operation |
+| `MappedBytes::copy_range` | Explicit materialization from an mmap view |
+
+The public API must not call a path zero-copy when it crosses one of these
+explicit materialization boundaries.
+
+## Synchronous and asynchronous I/O
+
+`Read` and `Write` classify invalid ranges, short progress, `Interrupted`, EOF,
+`WriteZero`, and backend contract violations. `read_exact` and `write_all`
+retry ordinary short progress and report cumulative progress on failure.
+
+`BufReader` and `BufWriter` own user-space buffering. `flush` drains the user
+buffer; native durability requires `sync_all` or `sync_data`. `into_parts` is
+only valid after the wrapper has stopped using its backing storage.
+
+`AsyncRead` and `AsyncWrite` preserve the same progress and error meanings
+while adding pending and cancellation behavior. One read chunk in
+`async_io::copy` is a cancellation-protected unit; all short writes and the
+committed byte count for that chunk complete inside the same protection region.
+
+The current high-level async `read_to_end` path returns owned `Bytes` after
+materialization. Adding a shared-byte return path is a maintenance target, not
+a claim that the current API is already zero-copy end to end.
+
+## Native safety
+
+Each native file, socket, listener, and mmap view owns an independent external
+object with platform locking and idempotent close state. There is no global
+handle registry or global last-error slot. Mmap slices retain their owner;
+closing a parent does not invalidate a live child view.
+
+Native errors map to portable `IoErrorKind` values while raw platform codes
+remain diagnostic. Callers must close resources on success, error, and
+cancellation. ASan/UBSan and TSan validate the same C layer used by release
+builds.
+
+## API and naming rules
+
+- Types and error variants use PascalCase.
+- Methods and fields use lower snake case.
+- `Async*` is reserved for asynchronous wrappers and endpoints.
+- `Native*` is reserved for OS resources.
+- `get_ref` and `get_mut` borrow a wrapped value; `into_inner` consumes it.
+- `*_view` and `buffer()` return borrowed views.
+- `to_array` and `to_bytes` name explicit materialization.
+- `unsafe_` is mandatory for unsafe adoption boundaries.
+- `*_calls` and `*_syscalls` are diagnostic names, not correctness state.
+
+Generated interfaces are the public API source of truth. Public counters and
+benchmark fixtures should not become permanent compatibility obligations.
+
+## Rust parity inventory
+
+The comparison target is Rust 1.97.1 `std::io`, `bytes` 1.12.1, and Tokio
+1.53.1. The inventory is capability-based, not a weighted score.
+
+Implemented capabilities include immutable shared ranges, safe and unsafe
+construction boundaries, visible-byte value semantics, mutable freeze/COW,
+typed `Buf`/`BufMut`, synchronous buffered I/O, lazy lines/split cursors,
+buffer adapters, async buffering and duplex, cancellation-aware copy,
+structured socket addresses, and native close safety.
+
+The following remain explicitly excluded:
+
+- Rust ownership and borrowing type-system equivalence
+- Uninitialized spare-capacity APIs
+- `u128`/`i128` helpers unavailable in the supported MoonBit surface
+- TLS, compression, UDP, codec frameworks, and io_uring

@@ -1,8 +1,8 @@
 # BufferUtils
 
-BufferUtils 是面向 MoonBit 的 pre-1.0 字节缓冲区与 I/O 工具库，覆盖共享
-字节存储、同步 I/O、异步 I/O 和原生 I/O。0.40 有意直接破坏 0.37 源码 API，
-不提供弃用兼容层。
+BufferUtils 是面向 MoonBit 的 pre-1.0 共享不可变字节范围、COW 可变缓冲区和
+可组合同步/异步流式 I/O 基础库。0.40 有意直接破坏 0.37 源码 API，不提供弃用
+兼容层。
 
 当前源码版本为 `0.40.0-rc.2`。本仓库不会自动执行发布、打 tag 或创建
 GitHub Release。
@@ -15,6 +15,11 @@ GitHub Release。
 | `io` | 可失败的同步 I/O trait、缓冲、seek 和 adapter | 全目标 |
 | `async_io` | 支持取消的异步 trait、缓冲、duplex 和 copy | native |
 | `native` | 阻塞文件、TCP、mmap 和结构化 socket 地址 | native |
+
+正式维护的 MoonBit 包全部位于 `src/`；由于 `moon.mod` 将 `src` 设为模块源根，
+对外导入名仍保持为 `ZSeanYves/bufferutils/{buffer,io,async_io,native}`。根目录
+`bench/` 只保留 Rust 对照工程和已提交的基线数据；MoonBit benchmark 入口为
+`src/bench` 和 `src/bench_async`。
 
 默认使用可移植的 `buffer`/`io`。`native` 是明确的操作系统边界，只能用于
 `native` 目标。
@@ -81,12 +86,6 @@ CI 还要求总体覆盖率至少 95%，四个核心包各至少 90%，并执行
 检查、benchmark 结构计数和逐 case MoonBit/Rust 回归门禁。这些门禁不承诺
 MoonBit 吞吐绝对追平 Rust。
 
-请先阅读 [`docs/API_SURFACE.md`](docs/API_SURFACE.md) 了解公开边界，升级时阅读
-[`docs/MIGRATION_0.37_TO_0.40.md`](docs/MIGRATION_0.37_TO_0.40.md) 和
-[`docs/MIGRATION_0.40_RC1_TO_RC2.md`](docs/MIGRATION_0.40_RC1_TO_RC2.md)，发布前按
-[`docs/RELEASE_0.40.md`](docs/RELEASE_0.40.md) 手工审查和验证 consumer。
-
-详细语义与验证证据见 [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)、
-[`docs/RUST_PARITY_MATRIX.md`](docs/RUST_PARITY_MATRIX.md)、
-[`docs/NATIVE_SAFETY.md`](docs/NATIVE_SAFETY.md) 和
-[`docs/BENCHMARK.md`](docs/BENCHMARK.md)。
+请先阅读[文档索引](docs/README.md)。其中依次包含[架构与合同](docs/ARCHITECTURE.md)、
+[分阶段维护计划](docs/MAINTENANCE_PLAN_0.40.md)、[可复现性能证据](docs/PERFORMANCE.md)、
+[合并迁移指南](docs/MIGRATION.md)以及[人工发布流程](docs/RELEASE.md)。

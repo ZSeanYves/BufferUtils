@@ -21,19 +21,19 @@ run_contract() {
 moon check --target native --deny-warn
 
 run_contract vectored-fallback \
-  moon test io/io_test.mbt --target native --deny-warn --frozen --filter '*vectored*'
+  moon test src/io/io_test.mbt --target native --deny-warn --frozen --filter '*vectored*'
 run_contract buffered-writer-recovery \
-  moon test io/io_test.mbt --target native --deny-warn --frozen \
+  moon test src/io/io_test.mbt --target native --deny-warn --frozen \
   --filter '*BufWriter preserves*'
 run_contract async-error-mapping \
-  moon test async_io/errors_wbtest.mbt --target native --deny-warn --frozen
+  moon test src/async_io/errors_wbtest.mbt --target native --deny-warn --frozen
 run_contract async-cancellation \
-  moon test async_io --target native --deny-warn --frozen --filter '*cancellation*'
+  moon test src/async_io --target native --deny-warn --frozen --filter '*cancellation*'
 run_contract native-error-mapping \
-  moon test native/native_wbtest.mbt --target native --deny-warn --frozen \
+  moon test src/native/native_wbtest.mbt --target native --deny-warn --frozen \
   --filter '*error classification*'
 run_contract native-close-race \
-  moon test native/native_wbtest.mbt --target native --deny-warn --frozen \
+  moon test src/native/native_wbtest.mbt --target native --deny-warn --frozen \
   --filter '*race*close*'
 
 printf 'critical error mapping, cancellation, vectored fallback, recovery, and close-race contracts passed\n'
