@@ -6,9 +6,13 @@ source_root=src
 allowlist=docs/API_ALLOWLIST.txt
 test -f "$allowlist"
 generated_allowlist=$(mktemp)
-trap 'rm -f "$generated_allowlist"' EXIT
+normalized_allowlist=$(mktemp)
+trap 'rm -f "$generated_allowlist" "$normalized_allowlist"' EXIT
 scripts/generate_api_allowlist "$generated_allowlist"
-if ! diff -u "$allowlist" "$generated_allowlist"; then
+# Git's Windows checkout may expose tracked text as CRLF while the generator
+# writes LF. Compare normalized content so the allowlist remains portable.
+tr -d '\r' < "$allowlist" > "$normalized_allowlist"
+if ! diff -u "$normalized_allowlist" "$generated_allowlist"; then
   printf 'generated public API differs from docs/API_ALLOWLIST.txt\n' >&2
   exit 1
 fi
