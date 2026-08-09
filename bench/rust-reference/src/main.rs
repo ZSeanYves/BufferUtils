@@ -281,8 +281,10 @@ impl AsyncWrite for AsyncCountingWriter {
         _cx: &mut Context<'_>,
         source: &[u8],
     ) -> Poll<io::Result<usize>> {
+        let source = black_box(source);
         let count = source.len().min(self.scratch.len());
         self.scratch[..count].copy_from_slice(&source[..count]);
+        black_box(&self.scratch[..count]);
         if count > 0 {
             self.checksum = (self.checksum
                 + self.scratch[0] as u64
@@ -327,6 +329,7 @@ impl Write for CountingWriter {
         let source = black_box(source);
         let count = source.len().min(self.max_chunk).min(self.scratch.len());
         self.scratch[..count].copy_from_slice(&source[..count]);
+        black_box(&self.scratch[..count]);
         if count > 0 {
             self.checksum = (self.checksum
                 + self.scratch[0] as u64
@@ -354,6 +357,7 @@ impl Write for CountingWriter {
                 break;
             }
         }
+        black_box(&self.scratch[..accepted]);
         if accepted > 0 {
             self.checksum = (self.checksum
                 + self.scratch[0] as u64
@@ -373,13 +377,17 @@ fn buffer_cases(size: usize, batch: usize) {
         "buffer_shared_clone",
         size,
         batch,
-        |_| Bytes::copy_from_slice(&payload),
-        |source, iterations| {
+        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+        |state, iterations| {
             for _ in 0..iterations {
-                black_box(source.clone().len());
+                state.1 = state.0.clone();
+                black_box(&state.1);
             }
         },
-        |_, _| Counters::default(),
+        |state, _| {
+            black_box(state.1.len());
+            Counters::default()
+        },
     );
 
     let payload = pattern_bytes(size);
@@ -387,13 +395,17 @@ fn buffer_cases(size: usize, batch: usize) {
         "buffer_shared_slice",
         size,
         batch,
-        |_| Bytes::copy_from_slice(&payload),
-        |source, iterations| {
+        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+        |state, iterations| {
             for _ in 0..iterations {
-                black_box(source.slice(0..source.len()).len());
+                state.1 = state.0.slice(0..state.0.len());
+                black_box(&state.1);
             }
         },
-        |_, _| Counters::default(),
+        |state, _| {
+            black_box(state.1.len());
+            Counters::default()
+        },
     );
 
     let payload = pattern_bytes(size);
@@ -401,14 +413,18 @@ fn buffer_cases(size: usize, batch: usize) {
         "buffer_shared_split",
         size,
         batch,
-        |_| Bytes::copy_from_slice(&payload),
-        |source, iterations| {
+        |_| (Bytes::copy_from_slice(&payload), Bytes::new()),
+        |state, iterations| {
             for _ in 0..iterations {
-                let mut cursor = source.clone();
-                black_box(cursor.split_to(size / 2).len());
+                let mut cursor = state.0.clone();
+                state.1 = cursor.split_to(size / 2);
+                black_box(&state.1);
             }
         },
-        |_, _| Counters::default(),
+        |state, _| {
+            black_box(state.1.len());
+            Counters::default()
+        },
     );
 }
 

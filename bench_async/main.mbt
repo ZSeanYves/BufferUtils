@@ -11,9 +11,6 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
-let workload_multiplier = 16
-
-///|
 let bench_output_root = ".tmp"
 
 ///|
@@ -234,6 +231,17 @@ fn iteration_limit(name : String, payload_size : Int) -> Int {
 }
 
 ///|
+fn workload_multiplier(name : String, payload_size : Int) -> Int {
+  if name == "async_copy" && payload_size == 1024 {
+    16
+  } else if name == "async_copy" {
+    2
+  } else {
+    1
+  }
+}
+
+///|
 async fn measure_case(
   name : String,
   payload : Array[Byte],
@@ -250,7 +258,10 @@ async fn measure_case(
       iterations = Int::min(limit, iterations * 2)
     }
   }
-  iterations = Int::min(limit, iterations * workload_multiplier)
+  iterations = Int::min(
+    limit,
+    iterations * workload_multiplier(name, payload.length()),
+  )
   while true {
     for _ in 0..<warmup_samples {
       ignore(run_case_once(name, payload, iterations))

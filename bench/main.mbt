@@ -17,9 +17,6 @@ let minimum_sample_us = 10000.0
 let maximum_iterations = 16777216
 
 ///|
-let workload_multiplier = 16
-
-///|
 let benchmark_keeper : @mbench.Bench = @mbench.Bench()
 
 ///|
@@ -229,6 +226,31 @@ fn median(samples : Array[Double]) -> Double {
 }
 
 ///|
+fn workload_multiplier(case : BenchmarkCase) -> Int {
+  if case.name == "sync_vectored_bulk" {
+    16
+  } else if case.name == "sync_vectored_fallback" {
+    2
+  } else if case.name == "sync_bufreader_bypass" {
+    2
+  } else if case.name == "buffer_shared_clone" ||
+    case.name == "buffer_shared_slice" ||
+    case.name == "buffer_shared_split" {
+    4
+  } else if case.size == 1024 &&
+    (
+      case.name == "sync_bufreader_small" ||
+      case.name == "sync_raw_small_write" ||
+      case.name == "sync_bufwriter_small" ||
+      case.name == "sync_short_write_16"
+    ) {
+    4
+  } else {
+    1
+  }
+}
+
+///|
 fn run_prepared(prepared : PreparedRun) -> Double raise {
   let started = @mbench.monotonic_clock_start()
   (prepared.run)()
@@ -293,7 +315,10 @@ fn measure_until_stable(
 ///|
 fn measure(case : BenchmarkCase, initial_iterations : Int) -> BenchStats raise {
   let calibrated = calibrate(case, initial_iterations)
-  let expanded = Int::min(maximum_iterations, calibrated * workload_multiplier)
+  let expanded = Int::min(
+    maximum_iterations,
+    calibrated * workload_multiplier(case),
+  )
   measure_until_stable(case, expanded)
 }
 
@@ -351,17 +376,15 @@ fn shared_clone_case(size : Int) -> BenchmarkCase {
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let sink = Ref(0)
+      let sink = Ref(source.clone())
       {
         run: () => {
-          let mut checksum = 0
           for _ in 0..<iterations {
-            checksum += source.clone().remaining()
+            sink.val = source.clone()
           }
-          sink.val = checksum
         },
         observe: () => {
-          ignore(sink.val)
+          benchmark_keeper.keep(sink.val.remaining())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),
@@ -378,17 +401,15 @@ fn shared_slice_case(size : Int) -> BenchmarkCase {
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let sink = Ref(0)
+      let sink = Ref(source.clone())
       {
         run: () => {
-          let mut checksum = 0
           for _ in 0..<iterations {
-            checksum += source.slice(0, source.remaining()).remaining()
+            sink.val = source.slice(0, source.remaining())
           }
-          sink.val = checksum
         },
         observe: () => {
-          ignore(sink.val)
+          benchmark_keeper.keep(sink.val.remaining())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),
@@ -405,18 +426,16 @@ fn shared_split_case(size : Int) -> BenchmarkCase {
     size,
     bytes_per_iteration: size.to_int64(),
     prepare: iterations => {
-      let sink = Ref(0)
+      let sink = Ref(source.clone())
       {
         run: () => {
-          let mut checksum = 0
           for _ in 0..<iterations {
             let cursor = source.clone()
-            checksum += cursor.split_to(size / 2).remaining()
+            sink.val = cursor.split_to(size / 2)
           }
-          sink.val = checksum
         },
         observe: () => {
-          ignore(sink.val)
+          benchmark_keeper.keep(sink.val.remaining())
           { ..empty_counters(), copied_bytes: source.copied_bytes().to_int64() }
         },
         cleanup: () => (),

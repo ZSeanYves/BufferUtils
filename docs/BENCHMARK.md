@@ -2,6 +2,7 @@
 
 BufferUtils uses Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 as the fixed
 comparison toolchain. `Cargo.lock` is committed under `bench/rust-reference`.
+MoonBit benchmarks use the latest nightly installed by CI.
 
 Build both implementations once, then execute the generated binaries so build
 processes cannot contaminate timing or RSS:
@@ -16,6 +17,15 @@ for batch in 1 2 3; do
     > ".tmp/bufferutils-bench/moonbit-batch-$batch.csv"
   _build/native/release/build/bench_async/bench_async.exe "$batch" \
     > ".tmp/bufferutils-bench/moonbit-async-batch-$batch.csv"
+done
+scripts/merge_performance_batches --moonbit-only .tmp/bufferutils-bench
+{
+  tail -n +2 .tmp/bufferutils-bench/moonbit.csv
+  tail -n +2 .tmp/bufferutils-bench/moonbit-async.csv
+} | awk -F, \
+  'BEGIN { print "name,size,iterations" } { key=$2 FS $3; if (!(key in seen)) { print $2 "," $3 "," $5; seen[key]=1 } }' \
+  > .tmp/bufferutils-bench/moonbit-iterations.csv
+for batch in 1 2 3; do
   bench/rust-reference/target/release/bufferutils-rust-reference "$batch" \
     > ".tmp/bufferutils-bench/rust-batch-$batch.csv"
 done
@@ -46,19 +56,25 @@ implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,un
 Each case constructs its fixture outside the timer, runs only the operation
 inside the timer, and reads counters after timing stops. Iterations double
 until the measured median is at least 10ms. Each invocation performs 10
-warmups and 30 measured samples for one requested batch. The runner executes
-three batches in interleaved MoonBit-sync, MoonBit-async, Rust order and then
-merges the per-batch CSV files.
+warmups and 30 measured samples for one requested batch. Cases where the Rust
+reference is faster than the MoonBit calibration window use a case-class
+power-of-two amplification derived from remote measurements. The same final
+iteration count is written to `moonbit-iterations.csv` and forced on Rust.
+This keeps both implementations above 10ms without multiplying unrelated
+native and allocation diagnostics. The runner executes three MoonBit sync and
+async batches, records their shared iteration counts, then executes three Rust
+batches and merges the per-batch CSV files.
 
 Fake writers copy every accepted byte into a fixture allocated before timing,
 account exact accepted bytes and calls, and sample the scratch buffer's first
-and last byte plus the accepted length into an observed checksum. This makes a
-reported sink copy a real memory copy without adding a second full checksum
-scan. MoonBit and Rust use the same rule; the checksum is consumed after timing
-to prevent dead-code elimination. The independent `*-copy-evidence.csv`
-sidecars contain observed fixture bytes, COW bytes, underlying calls, and
-syscalls. An unavailable counter is explicitly zero and marked `unavailable`;
-the runner never multiplies payload size to claim an unobserved internal copy.
+and last byte plus the accepted length into an observed checksum. Rust also
+passes the copied destination through `black_box`; otherwise LLVM can retain
+the checksum while eliminating unobserved middle stores. Shared clone, slice,
+and split workloads retain the produced handle instead of observing only its
+constant length. The independent `*-copy-evidence.csv` sidecars contain
+observed fixture bytes, COW bytes, underlying calls, and syscalls. An
+unavailable counter is explicitly zero and marked `unavailable`; the runner
+never multiplies payload size to claim an unobserved internal copy.
 
 ArrayView fallback and `IoSlice` bulk vectored writes are separate cases. Both
 record the sink fixture's actual copied bytes. The `*-raw.csv` sidecars retain
