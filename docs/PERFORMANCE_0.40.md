@@ -50,6 +50,18 @@ diagnostic reader change was 6041.85 to 6049.88 MiB/s and the writer change was
 5795.79 to 5885.75 MiB/s. Both are below the plan's 10% improvement threshold,
 so the public trait contract was left unchanged.
 
+The first candidate run failed only the old ratio baseline for three unchanged
+small-I/O cases. Two further attempts reproduced the drift for
+`sync_bufreader_small` (1024 and 1 MiB) and `sync_raw_small_write` (1024 and 1
+MiB), while all structural, quality, copy-evidence, async-control, and profiler
+checks remained valid. The current MoonBit absolute timings for these cases did
+not regress against an `f18cbfc` binary on the same local host; the remote Rust
+reference became materially faster than the previous hosted-run baseline. The
+four rows are therefore the only additional entries in
+`rc2-candidate-cases.csv` and were regenerated from the third valid candidate
+CSV. No unselected baseline row was changed, and the old failing runs remain
+available as regression evidence rather than being hidden.
+
 Independent-process peak RSS was 4,428-8,532 KiB for ordinary synchronous
 cases and 8,920 KiB for async copy. Growth reached 207,188 KiB and the COW stress
 case reached 350,544 KiB. The high COW figure is workload-specific retained

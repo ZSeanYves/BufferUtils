@@ -7,3 +7,7 @@ buffer_shared_slice,1024
 buffer_shared_slice,1048576
 buffer_shared_split,1024
 buffer_shared_split,1048576
+sync_bufreader_small,1024
+sync_bufreader_small,1048576
+sync_raw_small_write,1024
+sync_raw_small_write,1048576
