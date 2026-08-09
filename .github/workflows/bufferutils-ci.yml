@@ -173,8 +173,11 @@ jobs:
       - name: Install unprivileged profiler fallback
         shell: bash
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y valgrind
+          if sudo apt-get update -qq && sudo apt-get install -y valgrind; then
+            echo "valgrind installed for callgrind evidence"
+          else
+            echo "valgrind unavailable on this runner; callgrind evidence will be marked unavailable"
+          fi
       - name: Run three calibrated batches per implementation
         shell: bash
         run: |
