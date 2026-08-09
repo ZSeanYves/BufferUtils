@@ -14,7 +14,7 @@ let measured_samples = 30
 let minimum_sample_us = 10000.0
 
 ///|
-let maximum_iterations = 16777216
+let maximum_iterations = 33554432
 
 ///|
 let shared_iterations_path = ".tmp/bufferutils-bench/shared-iterations.csv"

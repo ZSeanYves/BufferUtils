@@ -49,7 +49,7 @@ END {
     # quality gate minimum of 10 ms on faster runners. Give only these cases
     # enough work to remain measurable; all other workloads keep the cap.
     if (names[key] == "buffer_shared_clone" || names[key] == "buffer_freeze") {
-      limit = 67108864
+      limit = 33554432
     }
     if (names[key] == "async_copy") limit = int(2147483647 / sizes[key])
     if (iterations > limit) iterations = limit
