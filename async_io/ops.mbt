@@ -16,6 +16,14 @@ pub async fn[R : AsyncRead, W : AsyncWrite] copy(
     }
     let bytes = buffer.unsafe_reinterpret_as_bytes()
     @async.protect_from_cancel(() => {
+      if count > 2147483647 - total {
+        raise @syncio.io_error(
+          @syncio.Unsupported,
+          "async copy",
+          message="copied byte count exceeds the Int return range",
+          progress=total,
+        )
+      }
       AsyncWrite::write_all(writer, bytes, offset=0, len=count)
       total += count
     })

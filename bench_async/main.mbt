@@ -225,21 +225,32 @@ async fn run_case_once(
 }
 
 ///|
+fn iteration_limit(name : String, payload_size : Int) -> Int {
+  if name == "async_copy" {
+    Int::max(1, 2147483647 / payload_size)
+  } else {
+    maximum_iterations
+  }
+}
+
+///|
 async fn measure_case(
   name : String,
   payload : Array[Byte],
   initial_iterations : Int,
 ) -> AsyncBenchStats {
   let mut iterations = initial_iterations
+  let limit = iteration_limit(name, payload.length())
+  iterations = Int::min(iterations, limit)
   let mut elapsed = 0.0
-  while elapsed < minimum_sample_us && iterations < maximum_iterations {
+  while elapsed < minimum_sample_us && iterations < limit {
     let (sample, _) = run_case_once(name, payload, iterations)
     elapsed = sample
     if elapsed < minimum_sample_us {
-      iterations = Int::min(maximum_iterations, iterations * 2)
+      iterations = Int::min(limit, iterations * 2)
     }
   }
-  iterations = Int::min(maximum_iterations, iterations * workload_multiplier)
+  iterations = Int::min(limit, iterations * workload_multiplier)
   while true {
     for _ in 0..<warmup_samples {
       ignore(run_case_once(name, payload, iterations))
@@ -257,10 +268,10 @@ async fn measure_case(
     }
     samples.sort()
     let median_us = median(samples)
-    if median_us >= minimum_sample_us || iterations >= maximum_iterations {
+    if median_us >= minimum_sample_us || iterations >= limit {
       return { iterations, median_us, p95_us: p95(samples), counters, samples }
     }
-    iterations = Int::min(maximum_iterations, iterations * 2)
+    iterations = Int::min(limit, iterations * 2)
   }
   abort("unreachable async benchmark loop")
 }
