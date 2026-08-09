@@ -20,10 +20,13 @@ evaluated. Its artifact must include timing CSVs, raw samples, copy evidence,
 peak-RSS reports, exact toolchain identities, and passing structural and noise
 checks.
 
-The current baseline was generated from GitHub Actions run
-[`31295804121`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31295804121)
-at commit `6c0484a`. The run is the source of truth for all raw evidence. The
-committed ratios detect later regressions; they do not assert Rust parity.
+The current baseline was regenerated from the structurally valid, corrected
+shared-calibration artifact of GitHub Actions run
+[`31298367169`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31298367169)
+at commit `023650b`. Its performance job was rejected only because the prior
+pre-shared-calibration baseline reported a runner-variant regression; all timing,
+raw-sample, copy-evidence, async-control, and noise checks passed. The committed
+ratios detect later regressions; they do not assert Rust parity.
 
 The superseded nightly runs `30900917785`, `30904761627`, and `30905145550`
 remain historical diagnostics only. Their non-overlapping regressions exposed

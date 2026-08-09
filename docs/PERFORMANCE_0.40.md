@@ -8,24 +8,25 @@ committed baseline. It does not mean that BufferUtils equals Rust.
 ## Evidence checkpoint
 
 GitHub Actions run
-[`31295804121`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31295804121)
-is the authoritative corrected-fixture checkpoint for commit `6c0484a`. It
-passed all platform, sanitizer, coverage, contract, benchmark-structure, and
-noise gates. It used the MoonBit nightly available at the time,
+[`31298367169`](https://github.com/ZSeanYves/BufferUtils/actions/runs/31298367169)
+is the authoritative shared-calibration checkpoint for commit `023650b`. Its
+platform, sanitizer, coverage, contract, benchmark-structure, copy-evidence,
+async-control, and noise checks passed; the old baseline-only regression was
+replaced after this structurally valid run. It used the MoonBit nightly available at the time,
 Rust 1.97.1, `bytes` 1.12.1, and Tokio 1.53.1 on an Ubuntu 24.04 AMD EPYC 7763
 hosted runner.
 
 | Workload | MoonBit/Rust median ratio | Interpretation |
 | --- | ---: | --- |
-| `SharedBytes` clone/slice/split | 1.44-1.46 / 1.67-1.71 / 2.12-2.14 | O(1), but each retained handle still allocates |
-| raw read, 1 KiB / 1 MiB | 1.16 / 0.96 | bulk copy is competitive once call cost is amortized |
-| buffered read, 1 KiB / 1 MiB | 1.59 / 0.60 | resident bulk copy wins at scale; small calls do not |
-| buffered bypass read/write | 0.97 / 0.98 | bypass paths are aligned and slightly faster |
-| buffered write, 1 KiB / 1 MiB | 2.59 / 2.33 | checked blit and call boundaries remain |
-| raw small write | 2.54-2.64 | fixture and trait boundary are call-dominated |
-| short write | 2.47 | progress checks and repeated result boundaries dominate |
-| vectored fallback / bulk | 1.94 / 3.19 | equal counters, but descriptor iteration and dispatch remain expensive |
-| async copy, 1 KiB / 1 MiB | 11.97 / 2.28 | scheduler/continuation cost dominates small transfers |
+| `SharedBytes` clone/slice/split | 1.19 / 1.35 / 1.82 | O(1), but each retained handle still allocates |
+| raw read, 1 KiB / 1 MiB | 1.28 / 1.06 | bulk copy is close once call cost is amortized |
+| buffered read, 1 KiB / 1 MiB | 1.64 / 1.55 | resident bulk copy and call boundaries remain |
+| buffered bypass read/write | 1.07 / 1.07 | near parity, but not below the 1.05 target |
+| buffered write, 1 KiB / 1 MiB | 2.49 / 2.57 | checked blit and call boundaries remain |
+| raw small write | 2.17-2.19 | fixture and trait boundary are call-dominated |
+| short write | 2.21 | progress checks and repeated result boundaries dominate |
+| vectored fallback / bulk | 1.87 / 2.62 | equal counters, but descriptor iteration and dispatch remain expensive |
+| async copy, 1 KiB / 1 MiB | 8.93 / 2.39 | scheduler/continuation cost dominates small transfers |
 
 These values are medians of the three per-batch, per-iteration ratios. They are
 the committed regression baseline, not a parity claim. Any row whose median is

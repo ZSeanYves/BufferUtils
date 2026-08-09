@@ -268,10 +268,13 @@ fn forced_iterations(name : String, size : Int) -> Int? raise @fs.IOError {
     if fields.next() is None &&
       row_name == Some(name) &&
       row_size.bind(parse_positive_int) == Some(size) {
-      return row_iterations.bind(parse_positive_int)
+      match row_iterations.bind(parse_positive_int) {
+        Some(iterations) => return Some(iterations)
+        None => abort("shared iteration map has an invalid count")
+      }
     }
   }
-  abort("shared iteration map is missing {name}/{size}")
+  abort("shared iteration map is missing a requested case")
 }
 
 ///|
