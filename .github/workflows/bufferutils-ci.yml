@@ -306,7 +306,7 @@ jobs:
             (
               cd "$profile_dir"
               perf record -F 99 -g -o moonbit-bufwriter.perf.data -- \
-                "${benchmark_prefix[@]}" "$moon_binary" 1 sync_bufwriter_small \
+                "$moon_binary" 1 sync_bufwriter_small \
                 > moonbit-bufwriter-profile.csv \
                 2> moonbit-bufwriter-perf.stderr
               perf report --stdio -i moonbit-bufwriter.perf.data \
@@ -326,12 +326,17 @@ jobs:
             IFS=: read -r label binary case_name <<< "$entry"
             (
               cd "$profile_dir"
-              valgrind --tool=callgrind --collect-jumps=yes \
+              if valgrind --tool=callgrind --collect-jumps=yes \
                 --callgrind-out-file="$label.callgrind" \
-                "${benchmark_prefix[@]}" "$binary" 1 "$case_name" > "$label-profile.csv" \
-                2> "$label-callgrind.stderr"
-              callgrind_annotate --inclusive=yes --threshold=0.5 \
-                "$label.callgrind" > "$label-callgrind.txt"
+                "$binary" 1 "$case_name" > "$label-profile.csv" \
+                2> "$label-callgrind.stderr" && \
+                grep -q '^events:' "$label.callgrind"; then
+                callgrind_annotate --inclusive=yes --threshold=0.5 \
+                  "$label.callgrind" > "$label-callgrind.txt"
+              else
+                printf 'callgrind profiling unavailable for %s\n' "$case_name" \
+                  > "$label-callgrind-unavailable.txt"
+              fi
             )
           done
           cp -R "$profile_dir" .tmp/bufferutils-bench/profile

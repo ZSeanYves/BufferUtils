@@ -908,34 +908,70 @@ fn mmap_case(size : Int) -> BenchmarkCase {
 }
 
 ///|
-fn benchmark_cases() -> Array[BenchmarkCase] raise @io.IoError {
-  let cases : Array[BenchmarkCase] = [
-    vectored_write_case(),
-    vectored_bulk_case(),
-  ]
+fn includes_case(selected : String?, name : String) -> Bool {
+  selected is None || selected == Some(name)
+}
+
+///|
+fn benchmark_cases(
+  selected : String?,
+) -> Array[BenchmarkCase] raise @io.IoError {
+  let cases : Array[BenchmarkCase] = []
+  if includes_case(selected, "sync_vectored_fallback") {
+    cases.push(vectored_write_case())
+  }
+  if includes_case(selected, "sync_vectored_bulk") {
+    cases.push(vectored_bulk_case())
+  }
   for size in bench_sizes {
-    cases.push(shared_clone_case(size))
-    cases.push(shared_slice_case(size))
-    cases.push(shared_split_case(size))
-    cases.push(freeze_case(size))
-    if size == 1024 * 1024 {
+    if includes_case(selected, "buffer_shared_clone") {
+      cases.push(shared_clone_case(size))
+    }
+    if includes_case(selected, "buffer_shared_slice") {
+      cases.push(shared_slice_case(size))
+    }
+    if includes_case(selected, "buffer_shared_split") {
+      cases.push(shared_split_case(size))
+    }
+    if includes_case(selected, "buffer_freeze") {
+      cases.push(freeze_case(size))
+    }
+    if size == 1024 * 1024 && includes_case(selected, "buffer_cow_mutation") {
       cases.push(cow_case(size))
+    }
+    if size == 1024 * 1024 && includes_case(selected, "buffer_growth") {
       cases.push(growth_case(size))
     }
-    cases.push(raw_read_case(size))
-    cases.push(buffered_read_case(size, 32, "sync_bufreader_small"))
-    cases.push(raw_write_case(size, 32, "sync_raw_small_write"))
-    cases.push(buffered_write_case(size, 32, "sync_bufwriter_small"))
-    if size >= 8192 {
+    if includes_case(selected, "sync_raw_read") {
+      cases.push(raw_read_case(size))
+    }
+    if includes_case(selected, "sync_bufreader_small") {
+      cases.push(buffered_read_case(size, 32, "sync_bufreader_small"))
+    }
+    if includes_case(selected, "sync_raw_small_write") {
+      cases.push(raw_write_case(size, 32, "sync_raw_small_write"))
+    }
+    if includes_case(selected, "sync_bufwriter_small") {
+      cases.push(buffered_write_case(size, 32, "sync_bufwriter_small"))
+    }
+    if size >= 8192 && includes_case(selected, "sync_bufreader_bypass") {
       cases.push(buffered_read_case(size, size, "sync_bufreader_bypass"))
+    }
+    if size >= 8192 && includes_case(selected, "sync_bufwriter_bypass") {
       cases.push(buffered_write_case(size, size, "sync_bufwriter_bypass"))
     }
-    if size == 1024 {
+    if size == 1024 && includes_case(selected, "sync_short_write_16") {
       cases.push(short_write_case(size, 16))
     }
-    cases.push(native_write_case(size))
-    cases.push(native_read_case(size))
-    cases.push(mmap_case(size))
+    if includes_case(selected, "native_file_write") {
+      cases.push(native_write_case(size))
+    }
+    if includes_case(selected, "native_file_read") {
+      cases.push(native_read_case(size))
+    }
+    if includes_case(selected, "native_mmap_scan") {
+      cases.push(mmap_case(size))
+    }
   }
   cases
 }
@@ -987,12 +1023,9 @@ fn run_benchmarks(batch : Int, selected : String?) -> Unit raise {
   println(
     "implementation,name,size,batch,iterations,median_us,p95_us,bytes,copied_bytes,underlying_calls,syscalls,median_mib_per_s",
   )
-  let cases = benchmark_cases()
+  let cases = benchmark_cases(selected)
   let multiplier = iteration_multiplier()
   for case in cases {
-    if selected is Some(name) && case.name != name {
-      continue
-    }
     let stats = measure(case, multiplier)
     print_result(case, batch, stats)
     append_auxiliary_rows(raw, evidence, case, batch, stats)
