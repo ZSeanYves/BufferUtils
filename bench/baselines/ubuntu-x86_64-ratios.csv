@@ -1,8 +1,8 @@
 name,size,moonbit_over_rust
 async_copy,1024,10.5129
 async_copy,1048576,2.16053
-buffer_shared_clone,1024,0.100786
-buffer_shared_clone,1048576,0.100768
+buffer_shared_clone,1024,0.125986
+buffer_shared_clone,1048576,0.125962
 buffer_shared_slice,1024,0.133196
 buffer_shared_slice,1048576,0.132991
 buffer_shared_split,1024,0.164221

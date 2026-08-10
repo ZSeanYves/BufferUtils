@@ -68,6 +68,15 @@ for an explicit `name,size` allowlist backed by three structurally valid batches
 Native file, mmap, TCP, and real-disk timings remain diagnostic when no
 structurally identical Rust workload exists.
 
+The PR-02 ownership refactor refreshed only the two `buffer_shared_clone`
+entries listed in `bench/baselines/pr02-candidate-cases.csv`. Attempts 1 and 2
+of CI run 31325227809 each produced three structurally valid batches at a
+stable ratio of approximately `0.126`. A same-toolchain, same-iteration local
+A/B between the pre-PR-02 and PR-02 implementations showed unchanged
+per-clone cost, so the evidence identifies a runner/toolchain ratio shift
+rather than a reproducible library regression. No threshold or unrelated
+baseline entry was changed.
+
 ## Confirmed causes and limits
 
 - Bulk copy paths use Core blit primitives; the original per-byte library loops
