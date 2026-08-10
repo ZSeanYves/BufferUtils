@@ -40,9 +40,9 @@ packages, create tags, or create GitHub Releases automatically.
   package.
 - `src/bench` and `src/bench_async` contain MoonBit benchmark entry points.
 - `bench/` retains the Rust reference project and committed benchmark data.
-- `docs/`, `scripts/`, and `toolchains/` contain documentation, verification
-  tooling, and Rust comparison locks. There are no maintained functional
-  packages at the repository root.
+- `docs/` and `scripts/` contain documentation and verification tooling. The
+  Rust reference lock is kept with `bench/rust-reference`; there are no
+  maintained functional packages at the repository root.
 
 The `src` source root is an implementation-layout detail. It does not add
 `src` to public package import paths.

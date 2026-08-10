@@ -60,6 +60,10 @@ lower snake case，类型使用 PascalCase，异步对应物使用 `Async` 前�
 资源使用 `Native` 前缀。`get_ref`/`get_mut` 借用包装值，`into_inner` 消费
 包装器。view 只保证在所属对象的下一次操作前有效。
 
+每个包只保留一个规范接口文件；编号或编辑器生成的备份会被仓库卫生检查拒绝。
+`buffer`、`io`、`async_io` 和 `native` 是四个兼容性包；examples 与 benchmark
+仅是非核心的可执行产物。
+
 内存、I/O 和 native 的计数器只是测试与 benchmark 的诊断钩子，不是同步原语或
 正确性状态。`examples` 包属于可执行文档，不纳入四个核心包的兼容承诺。
 
@@ -78,6 +82,7 @@ git diff --exit-code
 moon check --target all --deny-warn
 moon test --target all --deny-warn
 moon doc --frozen
+scripts/check_repository_hygiene
 scripts/check_api_surface
 scripts/check_critical_contracts
 ```

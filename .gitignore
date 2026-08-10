@@ -5,4 +5,10 @@ target/
 _build/
 .tmp/
 *.moon_db
+
+# Keep exactly one canonical interface per MoonBit package. `moon info` may
+# leave numbered or editor-style backups beside the canonical file.
 **/pkg.generated [0-9]*.mbti
+**/pkg.generated.*.mbti
+**/pkg.generated.mbti.[0-9]*
+**/pkg.generated.mbti~

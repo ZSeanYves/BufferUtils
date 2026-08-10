@@ -59,6 +59,10 @@ while lines.next() is Some(line) {
 ## API policy
 
 The generated `pkg.generated.mbti` files are the authoritative public surface.
+Each package has exactly one canonical interface file; numbered or editor
+backup copies are rejected by repository hygiene checks. The four compatibility
+packages are `buffer`, `io`, `async_io`, and `native`; examples and benchmarks
+remain non-core executable artifacts.
 Naming follows lower snake case for methods and fields, PascalCase for types,
 `Async` for asynchronous counterparts, and `Native` for operating-system
 resources. `get_ref`/`get_mut` borrow the wrapped value; `into_inner` consumes
@@ -86,6 +90,7 @@ git diff --exit-code
 moon check --target all --deny-warn
 moon test --target all --deny-warn
 moon doc --frozen
+scripts/check_repository_hygiene
 scripts/check_api_surface
 scripts/check_critical_contracts
 ```

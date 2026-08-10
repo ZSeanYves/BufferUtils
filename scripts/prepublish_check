@@ -29,6 +29,7 @@ moon test --target all --deny-warn
 moon doc --frozen
 moon check src/examples --target native --deny-warn
 moon test src/examples --target native --deny-warn
+scripts/check_repository_hygiene
 scripts/check_api_surface
 scripts/check_critical_contracts
 

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_root=src
+core_packages=(buffer io async_io native)
+non_core_packages=(examples bench bench_async)
+
+for package in "${core_packages[@]}" "${non_core_packages[@]}"; do
+  interface="$source_root/$package/pkg.generated.mbti"
+  if [[ ! -f "$interface" ]]; then
+    printf 'missing canonical generated interface: %s\n' "$interface" >&2
+    exit 1
+  fi
+done
+
+while IFS= read -r -d '' file; do
+  if [[ "$(basename "$file")" != 'pkg.generated.mbti' ]]; then
+    printf 'duplicate generated interface artifact: %s\n' "$file" >&2
+    exit 1
+  fi
+done < <(find "$source_root" -type f -name 'pkg.generated*.mbti' -print0)
+
+if [[ -e scripts/install_pinned_moonbit_linux || -e toolchains/moonbit-linux-x86_64.lock ]]; then
+  printf 'obsolete pinned MoonBit toolchain assets remain in the repository\n' >&2
+  exit 1
+fi
+
+printf 'repository hygiene checks passed: canonical interfaces and latest-toolchain policy\n'

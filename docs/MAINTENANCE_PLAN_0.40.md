@@ -28,8 +28,9 @@ must be reviewable and revertible without reverting unrelated test or CI work.
 - Documentation has been consolidated under `docs/`; historical changelog
   entries may mention superseded RC documents, but active instructions point
   to the consolidated guides and latest-toolchain policy.
-- The workspace has duplicate generated interface artifacts that must be
-  removed from the maintained package.
+- Each maintained package keeps one canonical `pkg.generated.mbti`; numbered
+  and editor-style backups are ignored and rejected by the repository hygiene
+  gate.
 - Functional packages and executable examples are now under `src/`; the root
   `bench/` directory is reserved for the Rust reference project and benchmark
   data, while MoonBit benchmark entry points live under `src/bench` and
