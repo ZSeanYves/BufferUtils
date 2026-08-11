@@ -148,6 +148,42 @@ enum InterruptedWithProgressReader {
 }
 
 ///|
+enum ProbeFailure {
+  ProbeInterrupt
+  ProbeProgress
+  ProbeError
+}
+
+///|
+struct ProbeFailureReader {
+  data : Bytes
+  mut position : Int
+  failure : ProbeFailure
+  mut raised : Bool
+}
+
+///|
+impl Read for ProbeFailureReader with fn read(self, dst, offset, length) {
+  if self.position < self.data.length() {
+    let count = Int::min(length, self.data.length() - self.position)
+    for i in 0..<count {
+      dst[offset + i] = self.data[self.position + i]
+    }
+    self.position += count
+    return count
+  }
+  if !self.raised {
+    self.raised = true
+    match self.failure {
+      ProbeInterrupt => raise io_error(Interrupted, "probe")
+      ProbeProgress => raise io_error(Interrupted, "probe", progress=1)
+      ProbeError => raise io_error(Backend, "probe")
+    }
+  }
+  0
+}
+
+///|
 impl Read for InterruptedWithProgressReader with fn read(
   _self,
   _dst,
@@ -394,6 +430,44 @@ test "shared accumulation preserves ownership while materialization copies" {
     })
     is Err(_),
   )
+  let interrupted_probe = ProbeFailureReader::{
+    data: b"abcd",
+    position: 0,
+    failure: ProbeInterrupt,
+    raised: false,
+  }
+  assert_eq(
+    read_to_shared_bytes(interrupted_probe, initial_capacity=4).to_bytes(),
+    b"abcd",
+  )
+  let probe_error = ProbeFailureReader::{
+    data: b"abcd",
+    position: 0,
+    failure: ProbeError,
+    raised: false,
+  }
+  assert_true(
+    capture_io_result(() => {
+      read_to_shared_bytes(probe_error, initial_capacity=4)
+    })
+    is Err(_),
+  )
+  let probe_progress = ProbeFailureReader::{
+    data: b"abcd",
+    position: 0,
+    failure: ProbeProgress,
+    raised: false,
+  }
+  assert_true(
+    capture_io_result(() => {
+      read_to_shared_bytes(probe_progress, initial_capacity=4)
+    })
+    is Err(_),
+  )
+  assert_true(
+    capture_io_result(() => read_to_shared_bytes(ErrorRead::ErrorRead))
+    is Err(_),
+  )
 }
 
 ///|
@@ -417,6 +491,21 @@ test "shared writes preserve ranges and retry short interrupted progress" {
     capture_io_result(() => {
       write_all_shared(InvalidWrite::ZeroWrite, source, offset=1, len=1)
     })
+    is Err(_),
+  )
+  assert_true(
+    capture_io_result(() => {
+      write_all_shared(
+        InterruptedWithProgressWriter::InterruptedWithProgressWriter,
+        source,
+        offset=1,
+        len=1,
+      )
+    })
+    is Err(_),
+  )
+  assert_true(
+    capture_io_result(() => write_all_shared(short, source, offset=9, len=0))
     is Err(_),
   )
   assert_true(

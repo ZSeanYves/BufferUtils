@@ -501,6 +501,41 @@ fn append_bytes(dst : Array[Byte], src : ArrayView[Byte]) -> Unit raise IoError 
 }
 
 ///|
+fn next_shared_capacity(current : Int, progress : Int) -> Int raise IoError {
+  if current == 2147483647 {
+    raise io_error(
+      OutOfMemory,
+      "read_to_shared_bytes",
+      progress~,
+      message="shared byte length exceeds the supported range",
+    )
+  }
+  if current > 1073741823 {
+    2147483647
+  } else {
+    current * 2
+  }
+}
+
+///|
+fn adopt_shared_storage(
+  storage : FixedArray[Byte],
+  start : Int,
+  end : Int,
+  progress : Int,
+) -> @buffer.SharedBytes raise IoError {
+  @buffer.SharedBytes::unsafe_adopt_fixed_array(storage, start, end) catch {
+    error =>
+      raise io_error(
+        ContractViolation,
+        "read_to_shared_bytes",
+        progress~,
+        message=@debug.render(Repr(error)),
+      )
+  }
+}
+
+///|
 /// Append through and including `delimiter`, or append to EOF.
 impl BufRead with fn read_until(self, delimiter, dst) {
   let initial = dst.length()
@@ -605,19 +640,7 @@ pub fn[R : Read] read_to_shared_bytes(
       if count == 0 {
         break
       }
-      if storage.length() == 2147483647 {
-        raise io_error(
-          OutOfMemory,
-          "read_to_shared_bytes",
-          progress=length,
-          message="shared byte length exceeds the supported range",
-        )
-      }
-      let next_capacity = if storage.length() > 1073741823 {
-        2147483647
-      } else {
-        storage.length() * 2
-      }
+      let next_capacity = next_shared_capacity(storage.length(), length)
       let grown = FixedArray::make(next_capacity, (0).to_byte())
       FixedArray::unsafe_blit(grown, 0, storage, 0, length)
       grown[length] = probe[0]
@@ -651,13 +674,5 @@ pub fn[R : Read] read_to_shared_bytes(
     }
     length += count
   }
-  @buffer.SharedBytes::unsafe_adopt_fixed_array(storage, 0, length) catch {
-    error =>
-      raise io_error(
-        ContractViolation,
-        "read_to_shared_bytes",
-        progress=length,
-        message=@debug.render(Repr(error)),
-      )
-  }
+  adopt_shared_storage(storage, 0, length, length)
 }
