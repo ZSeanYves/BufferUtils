@@ -18,9 +18,9 @@ must be reviewable and revertible without reverting unrelated test or CI work.
 - `BytesMut::freeze` provides immutable snapshots and COW detachment.
 - `io` and `async_io` implement short-progress, EOF, interruption, write-zero,
   cancellation, and recovery contracts.
-- The final CI run [31490083002](https://github.com/ZSeanYves/BufferUtils/actions/runs/31490083002)
+- The PR-04 implementation CI run [31495616259](https://github.com/ZSeanYves/BufferUtils/actions/runs/31495616259)
   passed all validation, coverage, sanitizer, contract, and performance jobs.
-- Coverage was 95.30% overall with each core package above 90%.
+- Coverage was 95.22% overall with each core package above 90%.
 - Synchronous shared streaming has additive accumulation, write, buffered
   extraction, adapter, and memory-fixture paths. Asynchronous shared streaming
   now has additive accumulation and write paths while retaining the existing
