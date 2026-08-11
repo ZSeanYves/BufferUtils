@@ -53,6 +53,15 @@ while lines.next() is Some(line) {
 }
 ```
 
+同步负载不需要物化为 `Array` 或 Core `Bytes` 时，可以保持共享所有权：
+
+```moonbit
+let bytes = @io.read_to_shared_bytes(reader)
+@io.write_all_shared(writer, bytes)
+```
+
+原有 `read_to_end` 与 `write_all_bytes` API 保持可用。
+
 ## API 约定
 
 `pkg.generated.mbti` 是唯一权威的公开接口。命名统一为：方法和字段使用

@@ -58,6 +58,26 @@ Port-only native methods remain available; structured `local_addr()` and
 
 ## 0.40.0-rc.1 to rc.2
 
+### Synchronous shared streaming
+
+Use the additive shared path when the result should remain in BufferUtils
+ownership:
+
+```moonbit
+let bytes = @io.read_to_shared_bytes(reader)
+@io.write_all_shared(writer, bytes)
+```
+
+`read_to_end(reader, array)` remains the append-to-caller-array API, and
+`write_all_bytes` remains the Core `Bytes` API. `Read` and `Write` implementers
+do not need changes because their required methods are unchanged.
+
+`BufReader::into_shared_parts`,
+`BufMutWriterAdapter::into_shared_bytes`,
+`MemoryReader::from_shared`, and `MemoryWriter::to_shared_bytes` preserve
+shared ranges. Their existing `into_parts`, `into_inner`, `new`, and `to_bytes`
+counterparts retain the previous materializing or wrapper-return behavior.
+
 ### Consuming reads moved to `BytesCursor`
 
 Before:
@@ -111,4 +131,3 @@ moon check --target all --deny-warn
 moon test --target all --deny-warn
 moon doc --frozen
 ```
-

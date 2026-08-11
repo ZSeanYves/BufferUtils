@@ -64,6 +64,8 @@ typed `get_*` helpers.
 | `unsafe_adopt_fixed_array` | Explicit unsafe adoption; caller must not mutate the backing |
 | `SharedBytes::as_bytes_view` | Borrowed view; no payload copy |
 | `BytesMut::freeze` | Shared immutable snapshot; no payload copy |
+| `read_to_shared_bytes` final adoption | Transfers its exclusive fixed backing; growth may copy retained prefixes |
+| `write_shared` / `write_all_shared` | Borrow the shared backing as Core `Bytes`; no payload copy |
 | `SharedBytes::to_array` / `to_bytes` | Explicit materialization |
 | `BufRead::fill_buf` | Borrowed internal reader storage until the next reader operation |
 | `MappedBytes::copy_range` | Explicit materialization from an mmap view |
@@ -99,6 +101,7 @@ Every payload copy is explicit in the API and evidence:
 | `SharedBytes::from_array` / `from_fixed_array` | owned immutable backing | safe construction copies caller-owned data |
 | `SharedBytes::to_array` / `to_bytes` | owned mutable/Core bytes | caller requested materialization |
 | `BufReader::into_parts` / `AsyncBufReader::into_parts` | owned `Bytes` remainder | wrapper storage must leave the reader |
+| `BufReader::into_shared_parts` | owned `SharedBytes` remainder | synchronous wrapper storage transfers directly |
 | `BufWriter::into_parts` / `AsyncBufWriter::into_parts` | owned `SharedBytes` remainder | wrapper storage must leave the writer |
 | `MappedBytes::copy_range` | owned `Bytes` | mmap lifetime must not escape the native owner |
 | `BytesMut` detach or growth | new mutable backing | COW protects immutable snapshots and aliases |
@@ -116,6 +119,15 @@ retry ordinary short progress and report cumulative progress on failure.
 `BufReader` and `BufWriter` own user-space buffering. `flush` drains the user
 buffer; native durability requires `sync_all` or `sync_data`. `into_parts` is
 only valid after the wrapper has stopped using its backing storage.
+
+Synchronous callers can use `read_to_shared_bytes` to accumulate directly into
+an exclusively owned fixed backing and transfer it to `SharedBytes` without a
+final materialization. Geometric capacity growth can still copy the retained
+prefix; the API is ownership-preserving, not universally zero-copy.
+`write_shared` and `write_all_shared` pass the backing Core `Bytes` plus the
+shared range offset through the unchanged `Write` trait. The older
+`read_to_end`, `write_all_bytes`, and materializing `into_parts` paths remain
+available.
 
 `AsyncRead` and `AsyncWrite` preserve the same progress and error meanings
 while adding pending and cancellation behavior. One read chunk in

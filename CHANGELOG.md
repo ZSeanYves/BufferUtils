@@ -2,6 +2,12 @@
 
 ## v0.40.0-rc.2
 
+### Added
+- Added synchronous `read_to_shared_bytes`, `write_shared`, and
+  `write_all_shared` without changing the required `Read` or `Write` methods.
+- Added shared extraction and fixture paths for `BufReader`, buffer adapters,
+  and memory readers/writers.
+
 ### Breaking
 - Made `SharedBytes` an immutable `#valtype` range. It no longer implements
   `Buf` and no longer exposes consuming methods such as `advance`, `split_to`,
@@ -13,6 +19,8 @@
   call `into_parts` at an explicit allocation boundary.
 
 ### Performance
+- Added separate shared and materialized synchronous accumulation benchmarks
+  with structural copy evidence for the caller-owned array boundary.
 - Native release code now represents clone, slice, and split ranges as value
   descriptors. The hot split path has no per-operation `moonbit_malloc`.
 - Fused the short-write loop inside `async_io::copy` while keeping each read

@@ -96,6 +96,34 @@ impl @io.Read for CyclingReader with fn read(self, dst, offset, length) {
 }
 
 ///|
+struct FiniteReader {
+  data : FixedArray[Byte]
+  mut position : Int
+  mut calls : Int
+  mut bytes : Int64
+}
+
+///|
+fn FiniteReader::new(data : FixedArray[Byte]) -> FiniteReader {
+  { data, position: 0, calls: 0, bytes: 0L }
+}
+
+///|
+fn FiniteReader::reset(self : FiniteReader) -> Unit {
+  self.position = 0
+}
+
+///|
+impl @io.Read for FiniteReader with fn read(self, dst, offset, length) {
+  let count = Int::min(length, self.data.length() - self.position)
+  FixedArray::unsafe_blit(dst, offset, self.data, self.position, count)
+  self.position += count
+  self.calls += 1
+  self.bytes += count.to_int64()
+  count
+}
+
+///|
 struct CountingWriter {
   max_chunk : Int
   scratch : FixedArray[Byte]
@@ -580,6 +608,76 @@ fn growth_case(size : Int) -> BenchmarkCase {
 }
 
 ///|
+fn read_to_shared_case(size : Int) -> BenchmarkCase {
+  let payload = FixedArray::from_array(pattern_bytes(size)[:])
+  {
+    name: "sync_read_to_shared",
+    size,
+    bytes_per_iteration: size.to_int64(),
+    prepare: iterations => {
+      let reader = FiniteReader::new(payload)
+      let sink = Ref(@buffer.SharedBytes::new())
+      {
+        run: () => {
+          for _ in 0..<iterations {
+            reader.reset()
+            sink.val = @io.read_to_shared_bytes(
+              reader,
+              initial_capacity=size + 1,
+            )
+          }
+        },
+        observe: () => {
+          benchmark_keeper.keep(sink.val.len())
+          {
+            copied_bytes: reader.bytes,
+            underlying_calls: reader.calls.to_int64(),
+            syscalls: 0,
+          }
+        },
+        cleanup: () => (),
+      }
+    },
+  }
+}
+
+///|
+fn read_to_materialized_case(size : Int) -> BenchmarkCase {
+  let payload = FixedArray::from_array(pattern_bytes(size)[:])
+  {
+    name: "sync_read_to_materialized",
+    size,
+    bytes_per_iteration: size.to_int64(),
+    prepare: iterations => {
+      let reader = FiniteReader::new(payload)
+      let sink : Ref[Array[Byte]] = Ref([])
+      let accumulated = Ref(0L)
+      {
+        run: () => {
+          accumulated.val = 0L
+          for _ in 0..<iterations {
+            reader.reset()
+            let output : Array[Byte] = Array::new(capacity=size + 1)
+            ignore(@io.read_to_end(reader, output))
+            accumulated.val += output.length().to_int64()
+            sink.val = output
+          }
+        },
+        observe: () => {
+          benchmark_keeper.keep(sink.val.length())
+          {
+            copied_bytes: reader.bytes + accumulated.val,
+            underlying_calls: reader.calls.to_int64(),
+            syscalls: 0,
+          }
+        },
+        cleanup: () => (),
+      }
+    },
+  }
+}
+
+///|
 fn raw_read_case(size : Int) -> BenchmarkCase {
   let payload = pattern_bytes(size)
   let payload_fixed = FixedArray::from_array(payload[:])
@@ -988,6 +1086,12 @@ fn benchmark_cases(
     }
     if includes_case(selected, "sync_raw_read") {
       cases.push(raw_read_case(size))
+    }
+    if includes_case(selected, "sync_read_to_shared") {
+      cases.push(read_to_shared_case(size))
+    }
+    if includes_case(selected, "sync_read_to_materialized") {
+      cases.push(read_to_materialized_case(size))
     }
     if includes_case(selected, "sync_bufreader_small") {
       cases.push(buffered_read_case(size, 32, "sync_bufreader_small"))

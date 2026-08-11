@@ -216,3 +216,19 @@ pub fn[R] BufReader::into_inner(self : BufReader[R]) -> R {
 pub fn[R] BufReader::into_parts(self : BufReader[R]) -> (R, Bytes) {
   (self.inner, Bytes::from_array(self.buffer[self.position:self.end]))
 }
+
+///|
+/// Return the wrapped reader and transfer ownership of unread buffered bytes
+/// into immutable shared storage without copying them.
+pub fn[R] BufReader::into_shared_parts(
+  self : BufReader[R],
+) -> (R, @buffer.SharedBytes) raise @buffer.BufferError {
+  (
+    self.inner,
+    @buffer.SharedBytes::unsafe_adopt_fixed_array(
+      self.buffer,
+      self.position,
+      self.end,
+    ),
+  )
+}

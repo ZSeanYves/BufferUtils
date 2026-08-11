@@ -213,8 +213,9 @@ pub impl[W : Write + Seek] Seek for BufWriter[W] with fn stream_position(self) {
 }
 
 ///|
-/// Return the wrapped writer and a copy of bytes still pending in the buffer.
-/// This method performs no I/O and therefore cannot lose recovery state.
+/// Return the wrapped writer and transfer pending bytes into immutable shared
+/// storage without copying them. This method performs no I/O and therefore
+/// cannot lose recovery state.
 pub fn[W] BufWriter::into_parts(
   self : BufWriter[W],
 ) -> (W, @buffer.SharedBytes) raise @buffer.BufferError {

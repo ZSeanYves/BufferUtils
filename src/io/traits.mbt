@@ -350,6 +350,81 @@ pub fn[W : Write] write_all_bytes(
 }
 
 ///|
+/// Write one range from immutable shared storage without materializing it.
+pub fn[W : Write] write_shared(
+  writer : W,
+  source : @buffer.SharedBytes,
+  offset? : Int = 0,
+  len? : Int = source.len() - offset,
+) -> Int raise IoError {
+  if offset < 0 || len < 0 || offset > source.len() - len {
+    raise io_error(
+      InvalidInput,
+      "write_shared",
+      message="source range is invalid",
+    )
+  }
+  let view = source.as_bytes_view()
+  let count = Write::write(
+    writer,
+    view.data(),
+    view.start_offset() + offset,
+    len,
+  )
+  validate_progress("write_shared", count, len)
+  count
+}
+
+///|
+/// Write an entire immutable shared range, retrying short and interrupted
+/// writes without materializing it.
+pub fn[W : Write] write_all_shared(
+  writer : W,
+  source : @buffer.SharedBytes,
+  offset? : Int = 0,
+  len? : Int = source.len() - offset,
+) -> Unit raise IoError {
+  if offset < 0 || len < 0 || offset > source.len() - len {
+    raise io_error(
+      InvalidInput,
+      "write_all_shared",
+      message="source range is invalid",
+    )
+  }
+  let bytes = source.as_bytes_view()
+  let start = bytes.start_offset() + offset
+  let mut completed = 0
+  while completed < len {
+    let count = Write::write(
+      writer,
+      bytes.data(),
+      start + completed,
+      len - completed,
+    ) catch {
+      error if error.kind() == Interrupted => {
+        let progress = error.progress()
+        validate_progress("write_all_shared", progress, len - completed)
+        if progress != 0 {
+          raise io_error(
+            ContractViolation,
+            "write_all_shared",
+            progress=completed,
+            message="an interrupted write reported committed bytes",
+          )
+        }
+        continue
+      }
+      error => raise error.add_progress(completed)
+    }
+    validate_progress("write_all_shared", count, len - completed)
+    if count == 0 {
+      raise io_error(WriteZero, "write_all_shared", progress=completed)
+    }
+    completed += count
+  }
+}
+
+///|
 /// A reader that exposes its current buffer for allocation-free parsing.
 pub(open) trait BufRead: Read {
   fn fill_buf(Self) -> ArrayView[Byte] raise IoError
@@ -488,4 +563,101 @@ pub fn[R : Read] read_to_end(
     append_bytes(dst, scratch.view(end=count))
   }
   dst.length() - initial
+}
+
+///|
+/// Read all remaining bytes into storage returned as an immutable shared
+/// range. The final ownership transfer does not materialize the accumulated
+/// payload.
+pub fn[R : Read] read_to_shared_bytes(
+  reader : R,
+  initial_capacity? : Int = 8192,
+) -> @buffer.SharedBytes raise IoError {
+  if initial_capacity <= 0 {
+    raise io_error(
+      InvalidInput,
+      "read_to_shared_bytes",
+      message="initial_capacity must be positive",
+    )
+  }
+  let mut storage = FixedArray::make(initial_capacity, (0).to_byte())
+  let probe = FixedArray::make(1, (0).to_byte())
+  let mut length = 0
+  while true {
+    if length == storage.length() {
+      let count = Read::read(reader, probe, 0, 1) catch {
+        error if error.kind() == Interrupted => {
+          let progress = error.progress()
+          validate_progress("read_to_shared_bytes", progress, 1)
+          if progress != 0 {
+            raise io_error(
+              ContractViolation,
+              "read_to_shared_bytes",
+              progress=length,
+              message="an interrupted read reported committed bytes",
+            )
+          }
+          continue
+        }
+        error => raise error.add_progress(length)
+      }
+      validate_progress("read_to_shared_bytes", count, 1)
+      if count == 0 {
+        break
+      }
+      if storage.length() == 2147483647 {
+        raise io_error(
+          OutOfMemory,
+          "read_to_shared_bytes",
+          progress=length,
+          message="shared byte length exceeds the supported range",
+        )
+      }
+      let next_capacity = if storage.length() > 1073741823 {
+        2147483647
+      } else {
+        storage.length() * 2
+      }
+      let grown = FixedArray::make(next_capacity, (0).to_byte())
+      FixedArray::unsafe_blit(grown, 0, storage, 0, length)
+      grown[length] = probe[0]
+      storage = grown
+      length += 1
+      continue
+    }
+    let count = Read::read(reader, storage, length, storage.length() - length) catch {
+      error if error.kind() == Interrupted => {
+        let progress = error.progress()
+        validate_progress(
+          "read_to_shared_bytes",
+          progress,
+          storage.length() - length,
+        )
+        if progress != 0 {
+          raise io_error(
+            ContractViolation,
+            "read_to_shared_bytes",
+            progress=length,
+            message="an interrupted read reported committed bytes",
+          )
+        }
+        continue
+      }
+      error => raise error.add_progress(length)
+    }
+    validate_progress("read_to_shared_bytes", count, storage.length() - length)
+    if count == 0 {
+      break
+    }
+    length += count
+  }
+  @buffer.SharedBytes::unsafe_adopt_fixed_array(storage, 0, length) catch {
+    error =>
+      raise io_error(
+        ContractViolation,
+        "read_to_shared_bytes",
+        progress=length,
+        message=@debug.render(Repr(error)),
+      )
+  }
 }

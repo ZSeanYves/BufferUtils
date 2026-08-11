@@ -286,6 +286,8 @@ jobs:
             "buffer_freeze:$moon_binary:moonbit"
             "buffer_cow_mutation:$moon_binary:moonbit"
             "buffer_growth:$moon_binary:moonbit"
+            "sync_read_to_shared:$moon_binary:moonbit"
+            "sync_read_to_materialized:$moon_binary:moonbit"
             "native_file_write:$moon_binary:moonbit"
             "native_file_read:$moon_binary:moonbit"
             "native_mmap_scan:$moon_binary:moonbit"
@@ -380,6 +382,8 @@ jobs:
             "cow:$moon_binary:buffer_cow_mutation" \
             "growth:$moon_binary:buffer_growth" \
             "raw-read:$moon_binary:sync_raw_read" \
+            "read-to-shared:$moon_binary:sync_read_to_shared" \
+            "read-to-materialized:$moon_binary:sync_read_to_materialized" \
             "bufreader-small:$moon_binary:sync_bufreader_small" \
             "bufreader-bypass:$moon_binary:sync_bufreader_bypass" \
             "raw-small-write:$moon_binary:sync_raw_small_write" \

@@ -15,11 +15,17 @@ pub fn[R : Read] read_exact_vectored(R, ArrayView[MutArrayView[Byte]]) -> Unit r
 
 pub fn[R : Read] read_to_end(R, Array[Byte]) -> Int raise IoError
 
+pub fn[R : Read] read_to_shared_bytes(R, initial_capacity? : Int) -> @buffer.SharedBytes raise IoError
+
 pub fn[R : Read] read_to_string(R) -> String raise IoError
 
 pub fn[W : Write] write_all_bytes(W, Bytes, offset? : Int, len? : Int) -> Unit raise IoError
 
+pub fn[W : Write] write_all_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Unit raise IoError
+
 pub fn[W : Write] write_all_vectored(W, ArrayView[ArrayView[Byte]]) -> Unit raise IoError
+
+pub fn[W : Write] write_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Int raise IoError
 
 // Errors
 pub suberror IoError {
@@ -41,6 +47,7 @@ pub struct BufMutWriterAdapter[B] {
 }
 pub fn[B] BufMutWriterAdapter::get_ref(Self[B]) -> B
 pub fn[B] BufMutWriterAdapter::into_inner(Self[B]) -> B
+pub fn[B : @buffer.BufMut] BufMutWriterAdapter::into_shared_bytes(Self[B]) -> @buffer.SharedBytes
 pub fn[B] BufMutWriterAdapter::new(B) -> Self[B]
 pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B]
 
@@ -53,6 +60,7 @@ pub fn[R] BufReader::get_mut(Self[R]) -> R
 pub fn[R] BufReader::get_ref(Self[R]) -> R
 pub fn[R] BufReader::into_inner(Self[R]) -> R
 pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
+pub fn[R] BufReader::into_shared_parts(Self[R]) -> (R, @buffer.SharedBytes) raise @buffer.BufferError
 pub fn[R] BufReader::lines(Self[R]) -> Lines[R]
 pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
 pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
@@ -216,6 +224,7 @@ pub impl Close for MemoryPipeWriter
 pub impl Write for MemoryPipeWriter
 
 type MemoryReader
+pub fn MemoryReader::from_shared(@buffer.SharedBytes, max_chunk? : Int) -> Self raise IoError
 pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
 pub fn MemoryReader::read_calls(Self) -> Int
 pub fn MemoryReader::remaining(Self) -> Int
@@ -225,6 +234,7 @@ type MemoryWriter
 pub fn MemoryWriter::flush_calls(Self) -> Int
 pub fn MemoryWriter::new(max_chunk? : Int) -> Self raise IoError
 pub fn MemoryWriter::to_bytes(Self) -> Bytes
+pub fn MemoryWriter::to_shared_bytes(Self) -> @buffer.SharedBytes
 pub fn MemoryWriter::write_calls(Self) -> Int
 pub impl Write for MemoryWriter
 

@@ -1,7 +1,42 @@
 ///|
 /// An in-memory `Read` implementation with optional short-read behavior.
+priv enum MemoryReaderData {
+  Core(Bytes)
+  Shared(@buffer.SharedBytes)
+}
+
+///|
+fn MemoryReaderData::len(self : MemoryReaderData) -> Int {
+  match self {
+    Core(data) => data.length()
+    Shared(data) => data.len()
+  }
+}
+
+///|
+fn MemoryReaderData::copy_to(
+  self : MemoryReaderData,
+  destination : FixedArray[Byte],
+  destination_offset : Int,
+  source_offset : Int,
+  length : Int,
+) -> Unit {
+  match self {
+    Core(data) =>
+      destination.blit_from_bytes(
+        destination_offset, data, source_offset, length,
+      )
+    Shared(data) =>
+      destination.blit_from_bytesview(
+        destination_offset,
+        data.as_bytes_view()[source_offset:source_offset + length],
+      )
+  }
+}
+
+///|
 struct MemoryReader {
-  data : Bytes
+  data : MemoryReaderData
   mut position : Int
   max_chunk : Int
   mut read_calls : Int
@@ -20,13 +55,29 @@ pub fn MemoryReader::new(
       message="max_chunk must be positive",
     )
   }
-  { data, position: 0, max_chunk, read_calls: 0 }
+  { data: Core(data), position: 0, max_chunk, read_calls: 0 }
+}
+
+///|
+/// Create a reader over immutable shared storage without materializing it.
+pub fn MemoryReader::from_shared(
+  data : @buffer.SharedBytes,
+  max_chunk? : Int = 2147483647,
+) -> MemoryReader raise IoError {
+  if max_chunk <= 0 {
+    raise io_error(
+      InvalidInput,
+      "MemoryReader::from_shared",
+      message="max_chunk must be positive",
+    )
+  }
+  { data: Shared(data), position: 0, max_chunk, read_calls: 0 }
 }
 
 ///|
 /// Return the number of bytes still available to the reader.
 pub fn MemoryReader::remaining(self : MemoryReader) -> Int {
-  self.data.length() - self.position
+  self.data.len() - self.position
 }
 
 ///|
@@ -49,7 +100,7 @@ pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
   }
   self.read_calls += 1
   let count = Int::min(Int::min(length, self.remaining()), self.max_chunk)
-  dst.blit_from_bytes(offset, self.data, self.position, count)
+  self.data.copy_to(dst, offset, self.position, count)
   self.position += count
   count
 }
@@ -84,7 +135,16 @@ pub fn MemoryWriter::new(
 ///|
 /// Return the bytes accepted by the writer as an owned value.
 pub fn MemoryWriter::to_bytes(self : MemoryWriter) -> Bytes {
-  self.data.freeze().to_bytes()
+  self.to_shared_bytes().to_bytes()
+}
+
+///|
+/// Return a shared snapshot of bytes accepted by the writer without
+/// materializing them. Later writes detach through copy-on-write.
+pub fn MemoryWriter::to_shared_bytes(
+  self : MemoryWriter,
+) -> @buffer.SharedBytes {
+  self.data.freeze()
 }
 
 ///|

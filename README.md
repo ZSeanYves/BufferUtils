@@ -56,6 +56,16 @@ while lines.next() is Some(line) {
 }
 ```
 
+Keep synchronous payloads in shared ownership when a caller does not need a
+materialized `Array` or Core `Bytes`:
+
+```moonbit
+let bytes = @io.read_to_shared_bytes(reader)
+@io.write_all_shared(writer, bytes)
+```
+
+The existing `read_to_end` and `write_all_bytes` APIs remain available.
+
 ## API policy
 
 The generated `pkg.generated.mbti` files are the authoritative public surface.

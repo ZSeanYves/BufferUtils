@@ -168,9 +168,12 @@ io|pub fn io_error(IoErrorKind, String, context? : String, path? : String, raw_c
 io|pub fn[R : Read] read_exact_fixed(R, FixedArray[Byte], Int, Int) -> Unit raise IoError
 io|pub fn[R : Read] read_exact_vectored(R, ArrayView[MutArrayView[Byte]]) -> Unit raise IoError
 io|pub fn[R : Read] read_to_end(R, Array[Byte]) -> Int raise IoError
+io|pub fn[R : Read] read_to_shared_bytes(R, initial_capacity? : Int) -> @buffer.SharedBytes raise IoError
 io|pub fn[R : Read] read_to_string(R) -> String raise IoError
 io|pub fn[W : Write] write_all_bytes(W, Bytes, offset? : Int, len? : Int) -> Unit raise IoError
+io|pub fn[W : Write] write_all_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Unit raise IoError
 io|pub fn[W : Write] write_all_vectored(W, ArrayView[ArrayView[Byte]]) -> Unit raise IoError
+io|pub fn[W : Write] write_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Int raise IoError
 io|pub suberror IoError {
 io|pub fn IoError::add_progress(Self, Int) -> Self
 io|pub fn IoError::context(Self) -> String
@@ -184,6 +187,7 @@ io|pub fn IoError::raw_code(Self) -> Int
 io|pub struct BufMutWriterAdapter[B] {
 io|pub fn[B] BufMutWriterAdapter::get_ref(Self[B]) -> B
 io|pub fn[B] BufMutWriterAdapter::into_inner(Self[B]) -> B
+io|pub fn[B : @buffer.BufMut] BufMutWriterAdapter::into_shared_bytes(Self[B]) -> @buffer.SharedBytes
 io|pub fn[B] BufMutWriterAdapter::new(B) -> Self[B]
 io|pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B]
 io|pub fn[R] BufReader::buffer(Self[R]) -> ArrayView[Byte]
@@ -194,6 +198,7 @@ io|pub fn[R] BufReader::get_mut(Self[R]) -> R
 io|pub fn[R] BufReader::get_ref(Self[R]) -> R
 io|pub fn[R] BufReader::into_inner(Self[R]) -> R
 io|pub fn[R] BufReader::into_parts(Self[R]) -> (R, Bytes)
+io|pub fn[R] BufReader::into_shared_parts(Self[R]) -> (R, @buffer.SharedBytes) raise @buffer.BufferError
 io|pub fn[R] BufReader::lines(Self[R]) -> Lines[R]
 io|pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
 io|pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
@@ -304,6 +309,7 @@ io|pub impl Close for MemoryPipeReader
 io|pub impl Read for MemoryPipeReader
 io|pub impl Close for MemoryPipeWriter
 io|pub impl Write for MemoryPipeWriter
+io|pub fn MemoryReader::from_shared(@buffer.SharedBytes, max_chunk? : Int) -> Self raise IoError
 io|pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
 io|pub fn MemoryReader::read_calls(Self) -> Int
 io|pub fn MemoryReader::remaining(Self) -> Int
@@ -311,6 +317,7 @@ io|pub impl Read for MemoryReader
 io|pub fn MemoryWriter::flush_calls(Self) -> Int
 io|pub fn MemoryWriter::new(max_chunk? : Int) -> Self raise IoError
 io|pub fn MemoryWriter::to_bytes(Self) -> Bytes
+io|pub fn MemoryWriter::to_shared_bytes(Self) -> @buffer.SharedBytes
 io|pub fn MemoryWriter::write_calls(Self) -> Int
 io|pub impl Write for MemoryWriter
 io|pub struct Repeat {

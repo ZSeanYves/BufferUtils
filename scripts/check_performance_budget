@@ -72,8 +72,12 @@ NR == 1 { next }
   }
   if (name == "sync_raw_read" || name == "sync_bufreader_small" ||
       name == "sync_raw_small_write" || name == "sync_bufwriter_small" ||
-      name == "sync_short_write_16" || name ~ /^sync_vectored_/) {
+      name == "sync_short_write_16" || name == "sync_read_to_shared" ||
+      name ~ /^sync_vectored_/) {
     if (copied != bytes) fail("fixture copy counter mismatch: " row)
+  }
+  if (name == "sync_read_to_materialized" && copied != bytes * 2) {
+    fail("materialized read copy counter mismatch: " row)
   }
   if (name == "sync_bufreader_bypass" || name == "sync_bufwriter_bypass") {
     if (copied != bytes || calls != iterations) {
@@ -136,6 +140,8 @@ END {
   moonbit_required["buffer_freeze"] = 1
   moonbit_required["buffer_cow_mutation"] = 1
   moonbit_required["buffer_growth"] = 1
+  moonbit_required["sync_read_to_shared"] = 1
+  moonbit_required["sync_read_to_materialized"] = 1
   moonbit_required["native_file_write"] = 1
   moonbit_required["native_file_read"] = 1
   moonbit_required["native_mmap_scan"] = 1

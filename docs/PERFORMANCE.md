@@ -47,6 +47,14 @@ the timer; counters are read after timing. A pilot calibrates each case to a
 minimum signal, and the larger implementation count is shared by both sides.
 MoonBit and Rust run as adjacent processes with alternating order.
 
+The synchronous PR-03 diagnostics run `sync_read_to_shared` and
+`sync_read_to_materialized` as separate MoonBit cases. Both construct the
+final owned result inside the timer. The shared case records the bytes copied
+by the reader into its adopted backing; the materialized case additionally
+records the observed length copied from `read_to_end`'s scratch buffer into the
+caller-owned `Array`. These are structural copy counters, not inferred
+allocation counts or Rust parity cases.
+
 The timing CSV is:
 
 ```text

@@ -16,6 +16,8 @@ type CountingWriter
 
 type CyclingReader
 
+type FiniteReader
+
 type PreparedRun
 
 // Type aliases

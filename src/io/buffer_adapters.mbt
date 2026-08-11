@@ -77,6 +77,15 @@ pub fn[B] BufMutWriterAdapter::into_inner(self : BufMutWriterAdapter[B]) -> B {
 }
 
 ///|
+/// Freeze the wrapped mutable buffer and return its initialized range without
+/// materializing it.
+pub fn[B : @buffer.BufMut] BufMutWriterAdapter::into_shared_bytes(
+  self : BufMutWriterAdapter[B],
+) -> @buffer.SharedBytes {
+  @buffer.BufMut::freeze(self.inner)
+}
+
+///|
 pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B] with fn write(
   self,
   source,

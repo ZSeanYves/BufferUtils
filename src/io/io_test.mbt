@@ -351,6 +351,118 @@ test "read_to_end appends to existing caller storage" {
 }
 
 ///|
+test "shared accumulation preserves ownership while materialization copies" {
+  let shared = read_to_shared_bytes(
+    MemoryReader::new(b"payload", max_chunk=2),
+    initial_capacity=8,
+  )
+  assert_eq(shared.to_bytes(), b"payload")
+  let clone = shared.clone()
+  assert_true(
+    physical_equal(shared.as_bytes_view().data(), clone.as_bytes_view().data()),
+  )
+  let materialized = shared.to_bytes()
+  assert_false(physical_equal(shared.as_bytes_view().data(), materialized))
+
+  let grown = read_to_shared_bytes(
+    MemoryReader::new(b"abcdefghij", max_chunk=3),
+    initial_capacity=2,
+  )
+  assert_eq(grown.to_bytes(), b"abcdefghij")
+  let interrupted : InterruptOnceReader = {
+    data: b"retry",
+    position: 0,
+    interrupted: false,
+  }
+  assert_eq(
+    read_to_shared_bytes(interrupted, initial_capacity=6).to_bytes(),
+    b"retry",
+  )
+  assert_true(
+    capture_io_result(() => {
+      ignore(
+        read_to_shared_bytes(
+          InterruptedWithProgressReader::InterruptedWithProgressReader,
+        ),
+      )
+    })
+    is Err(_),
+  )
+  assert_true(
+    capture_io_result(() => {
+      ignore(read_to_shared_bytes(MemoryReader::new(b""), initial_capacity=0))
+    })
+    is Err(_),
+  )
+}
+
+///|
+test "shared writes preserve ranges and retry short interrupted progress" {
+  let backing = @buffer.SharedBytes::from_array(
+    [b'x', b'x', b'-', b's', b'h', b'a', b'r', b'e', b'd', b'-', b'y'][:],
+  )
+  let source = backing.slice(2, 10)
+  let one = MemoryWriter::new(max_chunk=2)
+  assert_eq(write_shared(one, source, offset=1, len=6), 2)
+  assert_eq(one.to_bytes(), b"sh")
+
+  let short = MemoryWriter::new(max_chunk=2)
+  write_all_shared(short, source, offset=1, len=6)
+  assert_eq(short.to_bytes(), b"shared")
+
+  let interrupted : InterruptOnceWriter = { data: [], interrupted: false }
+  write_all_shared(interrupted, source, offset=1, len=6)
+  assert_eq(Bytes::from_array(interrupted.data[:]), b"shared")
+  assert_true(
+    capture_io_result(() => {
+      write_all_shared(InvalidWrite::ZeroWrite, source, offset=1, len=1)
+    })
+    is Err(_),
+  )
+  assert_true(
+    capture_io_result(() => write_shared(short, source, offset=9, len=0))
+    is Err(_),
+  )
+  let failing : FailingWriter = { data: [], remaining_before_error: 2 }
+  match capture_io_result(() => write_all_shared(failing, source)) {
+    Err(error) => assert_eq(error.progress(), 2)
+    Ok(_) => fail("expected injected write failure")
+  }
+}
+
+///|
+test "buffered adapters and memory fixtures retain shared snapshots" {
+  let source = @buffer.SharedBytes::from_array(
+    [b'a', b'b', b'c', b'd', b'e', b'f'][:],
+  )
+  let memory_reader = MemoryReader::from_shared(source, max_chunk=2)
+  let round_trip = read_to_shared_bytes(memory_reader, initial_capacity=7)
+  assert_eq(round_trip.to_bytes(), b"abcdef")
+  assert_true(
+    capture_io_result(() => MemoryReader::from_shared(source, max_chunk=0))
+    is Err(_),
+  )
+
+  let buffered = BufReader::new(MemoryReader::from_shared(source), capacity=4)
+  assert_eq(BufRead::fill_buf(buffered), [b'a', b'b', b'c', b'd'])
+  BufRead::consume(buffered, 1)
+  let (_, unread) = buffered.into_shared_parts()
+  assert_eq(unread.to_bytes(), b"bcd")
+
+  let memory_writer = MemoryWriter::new()
+  write_all_shared(memory_writer, source)
+  let snapshot = memory_writer.to_shared_bytes()
+  ignore(Write::write(memory_writer, b"!", 0, 1))
+  assert_eq(snapshot.to_bytes(), b"abcdef")
+  assert_eq(memory_writer.to_bytes(), b"abcdef!")
+
+  let mutable = @buffer.BytesMut::new()
+  let adapted = BufMutWriterAdapter::new(mutable)
+  write_all_shared(adapted, source, offset=1, len=4)
+  assert_eq(adapted.into_shared_bytes().to_bytes(), b"bcde")
+}
+
+///|
 test "structured errors retain portable and platform context" {
   let error = io_error(
     PermissionDenied,

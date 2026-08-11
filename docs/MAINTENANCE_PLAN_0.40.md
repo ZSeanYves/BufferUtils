@@ -21,9 +21,9 @@ must be reviewable and revertible without reverting unrelated test or CI work.
 - The final CI run [31311385990](https://github.com/ZSeanYves/BufferUtils/actions/runs/31311385990)
   passed all validation, coverage, sanitizer, contract, and performance jobs.
 - Coverage was 95.04% overall with each core package above 90%.
-- Shared-byte semantics do not yet form a complete end-to-end I/O path:
-  async `read_to_end` materializes `Bytes`, and the primary write traits accept
-  `Bytes` rather than an ownership-preserving shared range.
+- Synchronous shared streaming has additive accumulation, write, buffered
+  extraction, adapter, and memory-fixture paths. Async `read_to_end` still
+  materializes `Bytes` and remains the next ownership boundary to address.
 - Diagnostic counters are still visible in generated public interfaces.
 - Documentation has been consolidated under `docs/`; historical changelog
   entries may mention superseded RC documents, but active instructions point
