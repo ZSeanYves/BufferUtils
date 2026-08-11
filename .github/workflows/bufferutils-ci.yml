@@ -295,6 +295,7 @@ jobs:
           )
           control_cases=(
             async_ready_read async_pending_read async_short_progress
+            async_shared_read async_materialized_read
             async_cancel async_shutdown_failure async_typed_u64_read
             async_typed_u64_write async_lines_large
             async_split_no_delimiter_eof

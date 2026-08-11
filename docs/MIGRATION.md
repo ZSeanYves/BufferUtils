@@ -78,6 +78,23 @@ do not need changes because their required methods are unchanged.
 shared ranges. Their existing `into_parts`, `into_inner`, `new`, and `to_bytes`
 counterparts retain the previous materializing or wrapper-return behavior.
 
+### Asynchronous shared streaming
+
+Async callers can retain the final accumulation in shared storage and write a
+shared range without changing existing `AsyncRead` or `AsyncWrite`
+implementations:
+
+```moonbit
+let bytes = @async_io.read_to_shared_bytes(reader)
+@async_io.write_all_shared(writer, bytes)
+```
+
+`@async_io.read_to_end` and `@async_io.write_all` retain their Core `Bytes`
+contracts. `write_shared` performs one write and reports short progress;
+`write_all_shared` retries short writes. Both extract the backing Core `Bytes`
+and absolute offset before the first await, so no borrowed `BytesView` crosses
+an async suspension point.
+
 ### Consuming reads moved to `BytesCursor`
 
 Before:

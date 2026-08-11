@@ -25,9 +25,15 @@ pub async fn read_file(StringView) -> Bytes
 
 pub async fn[R : AsyncRead] read_to_end(R) -> Bytes
 
+pub async fn[R : AsyncRead] read_to_shared_bytes(R) -> @buffer.SharedBytes
+
 pub async fn[W : AsyncWrite] write_all(W, Bytes) -> Unit
 
+pub async fn[W : AsyncWrite] write_all_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Unit
+
 pub async fn write_file(StringView, BytesView) -> Unit
+
+pub async fn[W : AsyncWrite] write_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Int
 
 // Errors
 

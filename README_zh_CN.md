@@ -62,6 +62,15 @@ let bytes = @io.read_to_shared_bytes(reader)
 
 原有 `read_to_end` 与 `write_all_bytes` API 保持可用。
 
+异步包也提供不改变必需 trait 方法的增量共享所有权路径：
+
+```moonbit
+let bytes = @async_io.read_to_shared_bytes(reader)
+@async_io.write_all_shared(writer, bytes)
+```
+
+`read_to_end` 仍是显式物化为异步 Core `Bytes` 的路径。
+
 ## API 约定
 
 `pkg.generated.mbti` 是唯一权威的公开接口。命名统一为：方法和字段使用

@@ -374,8 +374,11 @@ async_io|pub async fn copy_file(StringView, StringView, buffer_size? : Int, on_p
 async_io|pub fn duplex(capacity? : Int) -> (AsyncDuplexStream, AsyncDuplexStream) raise @io.IoError
 async_io|pub async fn read_file(StringView) -> Bytes
 async_io|pub async fn[R : AsyncRead] read_to_end(R) -> Bytes
+async_io|pub async fn[R : AsyncRead] read_to_shared_bytes(R) -> @buffer.SharedBytes
 async_io|pub async fn[W : AsyncWrite] write_all(W, Bytes) -> Unit
+async_io|pub async fn[W : AsyncWrite] write_all_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Unit
 async_io|pub async fn write_file(StringView, BytesView) -> Unit
+async_io|pub async fn[W : AsyncWrite] write_shared(W, @buffer.SharedBytes, offset? : Int, len? : Int) -> Int
 async_io|pub struct AsyncBufReader[R] {
 async_io|pub fn[R] AsyncBufReader::buffered_len(Self[R]) -> Int
 async_io|pub fn[R] AsyncBufReader::get_mut(Self[R]) -> R

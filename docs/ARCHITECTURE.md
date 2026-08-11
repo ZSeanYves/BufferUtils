@@ -66,6 +66,8 @@ typed `get_*` helpers.
 | `BytesMut::freeze` | Shared immutable snapshot; no payload copy |
 | `read_to_shared_bytes` final adoption | Transfers its exclusive fixed backing; growth may copy retained prefixes |
 | `write_shared` / `write_all_shared` | Borrow the shared backing as Core `Bytes`; no payload copy |
+| async `read_to_shared_bytes` final adoption | Freezes the accumulator as shared storage; no final Core `Bytes` materialization |
+| async `write_shared` / `write_all_shared` | Extract the backing Core `Bytes` and absolute range before awaiting; no borrowed view crosses an await |
 | `SharedBytes::to_array` / `to_bytes` | Explicit materialization |
 | `BufRead::fill_buf` | Borrowed internal reader storage until the next reader operation |
 | `MappedBytes::copy_range` | Explicit materialization from an mmap view |
@@ -134,9 +136,13 @@ while adding pending and cancellation behavior. One read chunk in
 `async_io::copy` is a cancellation-protected unit; all short writes and the
 committed byte count for that chunk complete inside the same protection region.
 
-The current high-level async `read_to_end` path returns owned `Bytes` after
-materialization. Adding a shared-byte return path is a maintenance target, not
-a claim that the current API is already zero-copy end to end.
+Async callers can use `read_to_shared_bytes` to freeze the accumulator without
+the final materialization performed by `read_to_end`. Appending each completed
+read chunk is cancellation-protected. `write_shared` performs one underlying
+write; `write_all_shared` protects and accounts for each completed short write
+before retrying. Both shared write functions extract the backing Core `Bytes`
+and range offset synchronously before awaiting, so a borrowed `BytesView` never
+survives a suspension point. The existing Core `Bytes` APIs remain available.
 
 ## Native safety
 

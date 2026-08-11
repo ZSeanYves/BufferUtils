@@ -464,6 +464,107 @@ pub async fn[R : AsyncRead] read_to_end(reader : R) -> Bytes {
 }
 
 ///|
+/// Read all remaining bytes into immutable shared storage. The scratch-buffer
+/// append is protected as one cancellation unit after each async read, so a
+/// completed read cannot be silently discarded by cancellation.
+pub async fn[R : AsyncRead] read_to_shared_bytes(
+  reader : R,
+) -> @buffer.SharedBytes {
+  let output = @buffer.BytesMut::new(capacity=8192)
+  let scratch = FixedArray::make(8192, (0).to_byte())
+  while true {
+    let count = AsyncRead::read(reader, scratch)
+    if count == 0 {
+      break
+    }
+    if count < 0 || count > scratch.length() {
+      raise @syncio.io_error(
+        @syncio.ContractViolation,
+        "async read_to_shared_bytes",
+        progress=output.len(),
+      )
+    }
+    @async.protect_from_cancel(() => {
+      output.put_bytes_view(scratch.unsafe_reinterpret_as_bytes()[0:count])
+    })
+  }
+  output.freeze()
+}
+
+///|
 pub async fn[W : AsyncWrite] write_all(writer : W, bytes : Bytes) -> Unit {
   AsyncWrite::write_all(writer, bytes)
+}
+
+///|
+/// Write one shared range without materializing the payload. The borrowed
+/// view is converted to a Core Bytes value before the async write begins.
+pub async fn[W : AsyncWrite] write_shared(
+  writer : W,
+  source : @buffer.SharedBytes,
+  offset? : Int = 0,
+  len? : Int = source.len() - offset,
+) -> Int {
+  if offset < 0 || len < 0 || offset > source.len() - len {
+    raise @syncio.io_error(
+      @syncio.InvalidInput,
+      "async write_shared",
+      message="source range is invalid",
+    )
+  }
+  let (data, start) = {
+    let view = source.as_bytes_view()
+    (view.data(), view.start_offset() + offset)
+  }
+  let count = AsyncWrite::write(writer, data, offset=start, len~)
+  if count < 0 || count > len {
+    raise @syncio.io_error(@syncio.ContractViolation, "async write_shared")
+  }
+  count
+}
+
+///|
+/// Write an entire shared range, retrying short writes in a
+/// cancellation-protected unit for each underlying write.
+pub async fn[W : AsyncWrite] write_all_shared(
+  writer : W,
+  source : @buffer.SharedBytes,
+  offset? : Int = 0,
+  len? : Int = source.len() - offset,
+) -> Unit {
+  if offset < 0 || len < 0 || offset > source.len() - len {
+    raise @syncio.io_error(
+      @syncio.InvalidInput,
+      "async write_all_shared",
+      message="source range is invalid",
+    )
+  }
+  let (data, start) = {
+    let view = source.as_bytes_view()
+    (view.data(), view.start_offset() + offset)
+  }
+  for progress = 0; progress < len; {
+    let count = @async.protect_from_cancel(() => {
+      let count = AsyncWrite::write(
+        writer,
+        data,
+        offset=start + progress,
+        len=len - progress,
+      )
+      if count == 0 {
+        raise @syncio.io_error(@syncio.WriteZero, "async write_all_shared")
+      }
+      if count < 0 || count > len - progress {
+        raise @syncio.io_error(
+          @syncio.ContractViolation,
+          "async write_all_shared",
+        )
+      }
+      count
+    }) catch {
+      @syncio.IoError::Io(_) as error => raise error.add_progress(progress)
+      error => raise error
+    }
+    continue progress + count
+  }
 }

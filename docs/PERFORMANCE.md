@@ -55,6 +55,13 @@ records the observed length copied from `read_to_end`'s scratch buffer into the
 caller-owned `Array`. These are structural copy counters, not inferred
 allocation counts or Rust parity cases.
 
+The PR-04 async controls similarly run `async_shared_read` and
+`async_materialized_read` as separate cases. Each records the reader's observed
+copy count, the number of awaited reads including EOF, and scheduler-inclusive
+timing. The materialized case additionally records the observed final Core
+`Bytes` length copied at the explicit `read_to_end` boundary. These controls
+are structural diagnostics, not MoonBit/Rust parity cases.
+
 The timing CSV is:
 
 ```text

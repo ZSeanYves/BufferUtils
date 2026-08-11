@@ -189,6 +189,65 @@ async fn run_short_progress_control(
 }
 
 ///|
+async fn run_accumulation_control(
+  iterations : Int,
+  materialize : Bool,
+) -> (Double, AsyncControlCounters) {
+  let payload = FixedArray::makei(1024, index => (index % 251).to_byte())
+  let total_bytes = Ref(0L)
+  let total_calls = Ref(0L)
+  let copied_bytes = Ref(0L)
+  let checksum = Ref(0)
+  let started = @mbench.monotonic_clock_start()
+  for _ in 0..<iterations {
+    let reader : RepeatingAsyncReader = {
+      data: payload,
+      position: 0,
+      remaining_bytes: 1024L,
+      calls: 0L,
+      bytes: 0L,
+    }
+    if materialize {
+      let bytes = @async_io.read_to_end(reader)
+      checksum.val = (checksum.val + bytes[0].to_int()) % 65521
+      copied_bytes.val += reader.bytes + bytes.length().to_int64()
+    } else {
+      let bytes = @async_io.read_to_shared_bytes(reader)
+      checksum.val = (checksum.val + bytes.as_bytes_view()[0].to_int()) % 65521
+      copied_bytes.val += reader.bytes
+    }
+    total_bytes.val += reader.bytes
+    total_calls.val += reader.calls + 1L
+  }
+  let elapsed = @mbench.monotonic_clock_end(started)
+  benchmark_keeper.keep(checksum.val)
+  (
+    elapsed,
+    {
+      operations: iterations.to_int64(),
+      bytes: total_bytes.val,
+      copied_bytes: copied_bytes.val,
+      await_points: total_calls.val,
+      failures: 0L,
+    },
+  )
+}
+
+///|
+async fn run_shared_read_control(
+  iterations : Int,
+) -> (Double, AsyncControlCounters) {
+  run_accumulation_control(iterations, false)
+}
+
+///|
+async fn run_materialized_read_control(
+  iterations : Int,
+) -> (Double, AsyncControlCounters) {
+  run_accumulation_control(iterations, true)
+}
+
+///|
 async fn run_typed_read_control(
   iterations : Int,
 ) -> (Double, AsyncControlCounters) {
@@ -413,6 +472,8 @@ async fn run_control_once(
     "async_ready_read" => run_ready_control(iterations)
     "async_pending_read" => run_pending_control(iterations)
     "async_short_progress" => run_short_progress_control(iterations)
+    "async_shared_read" => run_shared_read_control(iterations)
+    "async_materialized_read" => run_materialized_read_control(iterations)
     "async_typed_u64_read" => run_typed_read_control(iterations)
     "async_typed_u64_write" => run_typed_write_control(iterations)
     "async_cancel" => run_cancel_control(iterations)
@@ -428,6 +489,7 @@ fn control_size(name : String) -> Int {
   match name {
     "async_ready_read" | "async_pending_read" => 1
     "async_short_progress" => 1024
+    "async_shared_read" | "async_materialized_read" => 1024
     "async_typed_u64_read" | "async_typed_u64_write" => 8
     "async_lines_large" | "async_split_no_delimiter_eof" => 65536
     _ => 0
@@ -484,9 +546,9 @@ async fn write_control_benchmarks(batch : Int, selected : String?) -> Unit {
   )
   for
     name in [
-      "async_ready_read", "async_pending_read", "async_short_progress", "async_cancel",
-      "async_shutdown_failure", "async_typed_u64_read", "async_typed_u64_write",
-      "async_lines_large", "async_split_no_delimiter_eof",
+      "async_ready_read", "async_pending_read", "async_short_progress", "async_shared_read",
+      "async_materialized_read", "async_cancel", "async_shutdown_failure", "async_typed_u64_read",
+      "async_typed_u64_write", "async_lines_large", "async_split_no_delimiter_eof",
     ] {
     if selected is None || selected == Some(name) {
       let stats = measure_control(name)

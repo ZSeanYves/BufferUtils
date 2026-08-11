@@ -69,6 +69,14 @@ FILENAME !~ /-raw-batch-/ {
         awaits != 64 * iterations || failures != 0) {
       fail("short-progress async structure mismatch: " key)
     }
+  } else if (name == "async_shared_read" || name == "async_materialized_read") {
+    expected_copied = bytes
+    if (name == "async_materialized_read") expected_copied += bytes
+    if (size != 1024 || operations != iterations ||
+        bytes != 1024 * iterations || copied != expected_copied ||
+        awaits != 2 * iterations || failures != 0) {
+      fail("shared/materialized async structure mismatch: " key)
+    }
   } else if (name == "async_typed_u64_read" || name == "async_typed_u64_write") {
     if (size != 8 || operations != iterations || bytes != 8 * iterations ||
         copied != bytes || awaits != iterations || failures != 0) {
@@ -119,6 +127,8 @@ END {
   required["async_ready_read"] = 1
   required["async_pending_read"] = 1
   required["async_short_progress"] = 1
+  required["async_shared_read"] = 1
+  required["async_materialized_read"] = 1
   required["async_typed_u64_read"] = 1
   required["async_typed_u64_write"] = 1
   required["async_cancel"] = 1

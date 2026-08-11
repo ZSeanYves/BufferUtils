@@ -66,6 +66,16 @@ let bytes = @io.read_to_shared_bytes(reader)
 
 The existing `read_to_end` and `write_all_bytes` APIs remain available.
 
+The async package provides the same additive ownership path without changing
+the required async traits:
+
+```moonbit
+let bytes = @async_io.read_to_shared_bytes(reader)
+@async_io.write_all_shared(writer, bytes)
+```
+
+`read_to_end` remains the explicit async Core `Bytes` materialization path.
+
 ## API policy
 
 The generated `pkg.generated.mbti` files are the authoritative public surface.
