@@ -17,6 +17,6 @@ sync_raw_read,1024,1.22845
 sync_raw_read,1048576,1.07349
 sync_raw_small_write,1024,2.53506
 sync_raw_small_write,1048576,2.55029
-sync_short_write_16,1024,2.14326
+sync_short_write_16,1024,2.46526
 sync_vectored_bulk,8,2.61418
 sync_vectored_fallback,8,1.78457

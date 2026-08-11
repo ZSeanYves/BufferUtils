@@ -92,6 +92,17 @@ per-clone cost, so the evidence identifies a runner/toolchain ratio shift
 rather than a reproducible library regression. No threshold or unrelated
 baseline entry was changed.
 
+The PR-04 implementation itself passed the complete performance job in CI run
+31495616259. A documentation-only follow-up then exposed a stale
+`sync_short_write_16,1024` baseline twice: run 31498034406 attempts 1 and 2
+each produced three structurally valid batches at stable ratios of
+approximately `2.47`, while the committed center was `2.14326`. The source
+diff from the passing implementation run contained only maintenance-plan text,
+and async control/copy evidence remained valid. The candidate allowlist in
+`bench/baselines/pr04-candidate-cases.csv` therefore refreshes only that one
+unmodified synchronous case from attempt 2; the 15% threshold and every other
+baseline remain unchanged.
+
 ## Confirmed causes and limits
 
 - Bulk copy paths use Core blit primitives; the original per-byte library loops
