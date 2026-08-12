@@ -25,4 +25,27 @@ if [[ -e scripts/install_pinned_moonbit_linux || -e toolchains/moonbit-linux-x86
   exit 1
 fi
 
+legacy_sources=(
+  reader.mbt
+  writer.mbt
+  source.mbt
+  sink.mbt
+  buf_reader.mbt
+  buf_writer.mbt
+  native/bufferutils_native.c
+)
+for file in "${legacy_sources[@]}"; do
+  if [[ -e "$file" ]]; then
+    printf 'legacy implementation still exists: %s\n' "$file" >&2
+    exit 1
+  fi
+done
+
+if [[ -f pkg.generated.mbti ]] && \
+   grep -Eq 'pub (struct|fn|type) (BufferReader|BufferWriter|MemorySource|MemorySink|FileSource|FileSink)' \
+     pkg.generated.mbti; then
+  printf 'legacy root API is still public\n' >&2
+  exit 1
+fi
+
 printf 'repository hygiene checks passed: canonical interfaces and latest-toolchain policy\n'

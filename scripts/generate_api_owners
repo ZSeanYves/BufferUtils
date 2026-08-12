@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+allowlist=${1:-docs/API_ALLOWLIST.txt}
+test -f "$allowlist"
+
+perl -F'\|' -lane '
+  next if $. <= 2;
+  my ($package, $line) = @F;
+  $line //= q{};
+  if ($line =~ /^pub(?:\(open\)|\(all\))? (?:suberror|struct|enum|trait) ([A-Za-z][A-Za-z0-9_]*)/) {
+    $owner = $1;
+    print "$package|$owner";
+    next;
+  }
+  if ($line =~ /^pub (?:async )?fn(?:\[[^]]+\])? ([A-Za-z][A-Za-z0-9_]*)::/) {
+    print "$package|$1";
+    next;
+  }
+  if ($line =~ /^pub (?:async )?fn(?:\[[^]]+\])? ([a-z][A-Za-z0-9_]*)\(/) {
+    print "$package|$1";
+    next;
+  }
+  if ($line =~ /^pub impl(?:\[[^]]+\])?.*\bfor ([A-Za-z][A-Za-z0-9_]*)/) {
+    print "$package|$1";
+    next;
+  }
+  if ($line =~ /^  (?:fn |[a-z][A-Za-z0-9_]*\s*:)/ && defined $owner) {
+    print "$package|$owner";
+  }
+' "$allowlist" | LC_ALL=C sort -u

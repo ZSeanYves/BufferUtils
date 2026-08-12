@@ -25,8 +25,6 @@ async test "async copy reuses bounded chunks and reports committed progress" {
     observations.push(current.bytes_copied)
   })
   assert_eq(progress.bytes_copied, data.length())
-  assert_eq(progress.write_calls, 6)
-  assert_eq(progress.read_calls, 7)
   assert_eq(observations, [3, 6, 9, 12, 15, 16])
   assert_eq(read_file(destination), data)
 }

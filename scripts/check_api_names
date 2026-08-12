@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+allowlist=${1:-docs/API_ALLOWLIST.txt}
+test -f "$allowlist"
+
+failed=0
+fail() {
+  printf '%s\n' "$1" >&2
+  failed=1
+}
+
+while IFS='|' read -r package declaration; do
+  [[ "$package" == \#* || -z "$declaration" ]] && continue
+
+  if [[ "$declaration" =~ ^pub(\(open\)|\(all\))?\ (suberror|struct|enum|trait)\ ([A-Za-z][A-Za-z0-9_]*) ]]; then
+    name=${BASH_REMATCH[3]}
+    [[ "$name" =~ ^[A-Z][A-Za-z0-9]*$ ]] || \
+      fail "public type is not PascalCase: $package|$declaration"
+    if [[ "$name" == Async* && "$package" != async_io ]]; then
+      fail "Async* type is outside async_io: $package|$declaration"
+    fi
+    if [[ "$name" == Native* && "$package" != native ]]; then
+      fail "Native* type is outside native: $package|$declaration"
+    fi
+  fi
+
+  if [[ "$declaration" =~ ^pub\ (async\ )?fn(\[[^]]+\])?\ ([A-Za-z][A-Za-z0-9_]*)::([A-Za-z][A-Za-z0-9_]*) ]]; then
+    name=${BASH_REMATCH[4]}
+    [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || \
+      fail "public method is not lower_snake_case: $package|$declaration"
+    if [[ "$declaration" == *" unsafe "* && "$name" != unsafe_* ]]; then
+      fail "unsafe public method lacks unsafe_ prefix: $package|$declaration"
+    fi
+  elif [[ "$declaration" =~ ^pub\ (async\ )?fn(\[[^]]+\])?\ ([a-z][A-Za-z0-9_]*)\( ]]; then
+    name=${BASH_REMATCH[3]}
+    [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || \
+      fail "public function is not lower_snake_case: $package|$declaration"
+  fi
+
+  if [[ "$declaration" =~ ^\ \ ([A-Za-z][A-Za-z0-9_]*)\ : ]]; then
+    field=${BASH_REMATCH[1]}
+    [[ "$field" =~ ^[a-z][a-z0-9_]*$ ]] || \
+      fail "public field is not lower_snake_case: $package|$declaration"
+  fi
+  if [[ "$declaration" =~ ^\ \ fn\ ([A-Za-z][A-Za-z0-9_]*)\( ]]; then
+    name=${BASH_REMATCH[1]}
+    [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || \
+      fail "public trait method is not lower_snake_case: $package|$declaration"
+  fi
+  if [[ "$declaration" =~ ^\ \ ([A-Za-z][A-Za-z0-9_]*)($|\() ]]; then
+    variant=${BASH_REMATCH[1]}
+    [[ "$variant" =~ ^[A-Z][A-Za-z0-9]*$ ]] || \
+      fail "public enum variant is not PascalCase: $package|$declaration"
+  fi
+
+  if [[ "$declaration" =~ (^|[^A-Za-z0-9_])(copied_bytes|underlying_calls|syscalls|[a-z][a-z0-9_]*_calls|[a-z][a-z0-9_]*_syscalls)([^A-Za-z0-9_]|$) ]]; then
+    fail "diagnostic counter leaked into public API: $package|$declaration"
+  fi
+done < "$allowlist"
+
+if grep -q '^native|.*SharedBytes' "$allowlist"; then
+  fail 'native public API must not expose SharedBytes ownership'
+fi
+if grep -Eq '^(buffer|io|async_io)\|.*MappedBytes' "$allowlist"; then
+  fail 'MappedBytes must remain confined to the native package'
+fi
+if ! grep -q '^buffer|pub struct SharedBytes' "$allowlist" || \
+   ! grep -q '^native|pub struct MappedBytes' "$allowlist" || \
+   ! grep -q '^native|pub struct NativeTcpStream' "$allowlist"; then
+  fail 'shared bytes, mmap, and socket ownership domains are not visibly distinct'
+fi
+
+(( failed == 0 )) || exit 1
+printf 'public API naming and ownership-boundary checks passed\n'

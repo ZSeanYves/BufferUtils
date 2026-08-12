@@ -184,11 +184,16 @@ byte ranges remain separate ownership domains.
 Generated interfaces are the public API source of truth. Public counters and
 benchmark fixtures should not become permanent compatibility obligations.
 
-`docs/API_ALLOWLIST.txt` is the reviewed public-surface allowlist generated
-from the four compatibility-package interfaces. `scripts/check_api_surface`
-regenerates it in memory and fails on any undeclared public declaration. An
-intentional API change must update the implementation, generated interfaces,
-allowlist, migration note, and focused tests in the same PR.
+`docs/API_ALLOWLIST.txt` is the exact reviewed public surface generated from
+the four compatibility-package interfaces. `scripts/check_api_surface`
+regenerates it in memory, writes `.tmp/API_SURFACE_DIFF.md`, and fails on any
+undeclared addition, removal, or signature change. `scripts/check_api_names`
+enforces the rules above and keeps `SharedBytes`, native mmap owners, and native
+socket owners in visibly separate ownership domains. `docs/API_EVIDENCE.tsv`
+must cover every public owner; its checker requires a generated documentation
+section, all public methods in that section, and a focused test or executable
+example. An intentional API change must update the implementation, generated
+interfaces, allowlist, API review, migration note, and evidence in the same PR.
 
 ## Rust parity inventory
 

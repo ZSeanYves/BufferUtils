@@ -192,7 +192,6 @@ io|pub fn[B] BufMutWriterAdapter::new(B) -> Self[B]
 io|pub impl[B : @buffer.BufMut] Write for BufMutWriterAdapter[B]
 io|pub fn[R] BufReader::buffer(Self[R]) -> ArrayView[Byte]
 io|pub fn[R] BufReader::buffered_len(Self[R]) -> Int
-io|pub fn[R] BufReader::bypass_read_calls(Self[R]) -> Int
 io|pub fn[R] BufReader::capacity(Self[R]) -> Int
 io|pub fn[R] BufReader::get_mut(Self[R]) -> R
 io|pub fn[R] BufReader::get_ref(Self[R]) -> R
@@ -204,7 +203,6 @@ io|pub fn[R] BufReader::new(R, capacity? : Int) -> Self[R] raise IoError
 io|pub fn[R : Read] BufReader::peek(Self[R], Int) -> ArrayView[Byte] raise IoError
 io|pub fn[R : Seek] BufReader::seek_relative(Self[R], Int64) -> Unit raise IoError
 io|pub fn[R] BufReader::split(Self[R], Byte) -> Split[R]
-io|pub fn[R] BufReader::underlying_read_calls(Self[R]) -> Int
 io|pub impl[R : Read] BufRead for BufReader[R]
 io|pub impl[R : Read] Read for BufReader[R]
 io|pub impl[R : Seek] Seek for BufReader[R]
@@ -221,14 +219,12 @@ io|pub impl[R : Read, W] Read for BufStream[R, W]
 io|pub impl[R, W : Write] Write for BufStream[R, W]
 io|pub fn[W] BufWriter::buffer(Self[W]) -> ArrayView[Byte]
 io|pub fn[W] BufWriter::buffered_len(Self[W]) -> Int
-io|pub fn[W] BufWriter::bypass_write_calls(Self[W]) -> Int
 io|pub fn[W] BufWriter::capacity(Self[W]) -> Int
 io|pub fn[W : Write] BufWriter::finish(Self[W]) -> Result[W, BufWriterFinishError[W]]
 io|pub fn[W] BufWriter::get_mut(Self[W]) -> W
 io|pub fn[W] BufWriter::get_ref(Self[W]) -> W
 io|pub fn[W] BufWriter::into_parts(Self[W]) -> (W, @buffer.SharedBytes) raise @buffer.BufferError
 io|pub fn[W] BufWriter::new(W, capacity? : Int) -> Self[W] raise IoError
-io|pub fn[W] BufWriter::underlying_write_calls(Self[W]) -> Int
 io|pub impl[W : Write + Seek] Seek for BufWriter[W]
 io|pub impl[W : Write] Sink for BufWriter[W]
 io|pub impl[W : Write] Write for BufWriter[W]
@@ -311,14 +307,11 @@ io|pub impl Close for MemoryPipeWriter
 io|pub impl Write for MemoryPipeWriter
 io|pub fn MemoryReader::from_shared(@buffer.SharedBytes, max_chunk? : Int) -> Self raise IoError
 io|pub fn MemoryReader::new(Bytes, max_chunk? : Int) -> Self raise IoError
-io|pub fn MemoryReader::read_calls(Self) -> Int
 io|pub fn MemoryReader::remaining(Self) -> Int
 io|pub impl Read for MemoryReader
-io|pub fn MemoryWriter::flush_calls(Self) -> Int
 io|pub fn MemoryWriter::new(max_chunk? : Int) -> Self raise IoError
 io|pub fn MemoryWriter::to_bytes(Self) -> Bytes
 io|pub fn MemoryWriter::to_shared_bytes(Self) -> @buffer.SharedBytes
-io|pub fn MemoryWriter::write_calls(Self) -> Int
 io|pub impl Write for MemoryWriter
 io|pub struct Repeat {
 io|pub fn Repeat::new(Byte) -> Self
@@ -458,8 +451,6 @@ async_io|pub impl AsyncRead for AsyncTcpStream
 async_io|pub impl AsyncWrite for AsyncTcpStream
 async_io|pub(all) struct CopyProgress {
 async_io|  bytes_copied : Int
-async_io|  read_calls : Int
-async_io|  write_calls : Int
 async_io|} derive(Eq, @debug.Debug)
 async_io|pub(open) trait AsyncBufRead : AsyncRead {
 async_io|  fn consume(Self, Int) -> Unit raise @io.IoError
@@ -489,10 +480,8 @@ native|pub fn NativeFile::create(String) -> Self raise @io.IoError
 native|pub fn NativeFile::open(String, NativeOpenOptions) -> Self raise @io.IoError
 native|pub fn NativeFile::open_read(String) -> Self raise @io.IoError
 native|pub fn NativeFile::path(Self) -> String
-native|pub fn NativeFile::read_syscalls(Self) -> Int
 native|pub fn NativeFile::sync_all(Self) -> Unit raise @io.IoError
 native|pub fn NativeFile::sync_data(Self) -> Unit raise @io.IoError
-native|pub fn NativeFile::write_syscalls(Self) -> Int
 native|pub impl @io.Close for NativeFile
 native|pub impl @io.Read for NativeFile
 native|pub impl @io.Seek for NativeFile
@@ -517,13 +506,11 @@ native|pub fn NativeTcpStream::local_addr(Self) -> SocketAddress raise @io.IoErr
 native|pub fn NativeTcpStream::local_port(Self) -> Int raise @io.IoError
 native|pub fn NativeTcpStream::peer_addr(Self) -> SocketAddress raise @io.IoError
 native|pub fn NativeTcpStream::peer_port(Self) -> Int raise @io.IoError
-native|pub fn NativeTcpStream::read_syscalls(Self) -> Int
 native|pub fn NativeTcpStream::read_timeout_ms(Self) -> Int? raise @io.IoError
 native|pub fn NativeTcpStream::set_timeouts(Self, Int, Int) -> Unit raise @io.IoError
 native|pub fn NativeTcpStream::shutdown_both(Self) -> Unit raise @io.IoError
 native|pub fn NativeTcpStream::shutdown_read(Self) -> Unit raise @io.IoError
 native|pub fn NativeTcpStream::shutdown_write(Self) -> Unit raise @io.IoError
-native|pub fn NativeTcpStream::write_syscalls(Self) -> Int
 native|pub fn NativeTcpStream::write_timeout_ms(Self) -> Int? raise @io.IoError
 native|pub impl @io.Close for NativeTcpStream
 native|pub impl @io.Read for NativeTcpStream

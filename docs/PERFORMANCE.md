@@ -73,6 +73,12 @@ peak RSS, environment identity, and profiler output. A missing counter is
 reported as unavailable or zero with an explicit scope; the benchmark never
 multiplies payload size to invent an internal copy.
 
+PR-05 removes call and syscall counters from the permanent compatibility API.
+Synchronous buffered cases read underlying-call evidence from benchmark-local
+probe readers and writers. Native file and TCP rows report `underlying_calls=0`
+and `syscalls=0` as explicit unavailable values; they do not infer syscall
+counts from iterations or payload size. Native timings remain diagnostic.
+
 ## Regression policy
 
 The gate fails only when a comparable case is more than 15% worse than its

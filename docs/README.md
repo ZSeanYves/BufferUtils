@@ -20,10 +20,15 @@ packages, create tags, or create GitHub Releases automatically.
    source changes.
 5. [Release procedure](RELEASE.md) is the maintainer-only checklist for RC,
    consumer verification, and manual publication.
+6. [PR-05 public API review](API_REVIEW_PR05.md) records every intentional
+   surface removal, migration rule, and rollback condition in the governance
+   change.
 
 ## Sources of truth
 
 - Generated `pkg.generated.mbti` files are the machine-checked public API.
+- `API_ALLOWLIST.txt` is the exact reviewed surface, while `API_EVIDENCE.tsv`
+  maps every public API owner to focused tests or executable examples.
 - `moon.mod` is the module and version source of truth.
 - CI uses the latest MoonBit toolchain available at run time and records its
   identity in every validation and performance artifact.

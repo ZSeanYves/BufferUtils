@@ -20,6 +20,9 @@
 - Changed `SharedBytes::split_at` to return `SharedBytesSplit`; callers that
   need both ranges can use `prefix`/`suffix` without a tuple allocation, or
   call `into_parts` at an explicit allocation boundary.
+- Removed public buffered-I/O call counters, native syscall counters, and the
+  `CopyProgress::read_calls`/`write_calls` fields. Diagnostics now live in
+  benchmark or test fixtures; `CopyProgress::bytes_copied` remains public.
 
 ### Performance
 - Added separate shared and materialized synchronous accumulation benchmarks
@@ -45,6 +48,8 @@
 - Moved maintained MoonBit packages and executable examples under `src/` while
   preserving their public import paths; benchmark entry points now live under
   `src/bench` and `src/bench_async`.
+- Added an exact API allowlist diff report, naming/ownership checks, a reviewed
+  API decision, and documentation/test evidence for every public API owner.
 
 ## v0.40.0-rc.1
 

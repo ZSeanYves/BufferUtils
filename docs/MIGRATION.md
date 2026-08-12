@@ -139,6 +139,19 @@ explicit adoption boundary.
 
 ## Verification after migration
 
+### PR-05 diagnostic API removal
+
+The public call-count and syscall getters on `BufReader`, `BufWriter`,
+`MemoryReader`, `MemoryWriter`, `NativeFile`, and `NativeTcpStream` are removed.
+`CopyProgress` now contains only `bytes_copied`; its `read_calls` and
+`write_calls` fields are also removed. These values were implementation
+diagnostics and could change with buffering, runtime, or platform behavior.
+
+Replace counter assertions with contract assertions for committed bytes,
+ordering, progress, errors, and close state. Performance or structural probes
+must own their counters inside benchmark or test fixtures. See
+`API_REVIEW_PR05.md` for the complete removal and rollback decision.
+
 ```bash
 moon fmt --check
 moon info --target all

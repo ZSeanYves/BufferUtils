@@ -6,8 +6,6 @@ struct BufWriter[W] {
   capacity : Int
   mut start : Int
   mut end : Int
-  mut underlying_writes : Int
-  mut bypass_writes : Int
 }
 
 ///|
@@ -50,8 +48,6 @@ pub fn[W] BufWriter::new(
     capacity,
     start: 0,
     end: 0,
-    underlying_writes: 0,
-    bypass_writes: 0,
   }
 }
 
@@ -72,22 +68,6 @@ pub fn[W] BufWriter::buffer(self : BufWriter[W]) -> ArrayView[Byte] {
 }
 
 ///|
-/// Return the number of writes issued to the wrapped writer.
-///
-/// This is a diagnostic counter used by contract tests and benchmarks.
-pub fn[W] BufWriter::underlying_write_calls(self : BufWriter[W]) -> Int {
-  self.underlying_writes
-}
-
-///|
-/// Return the number of writes that bypassed the internal buffer.
-///
-/// This is a diagnostic counter used by contract tests and benchmarks.
-pub fn[W] BufWriter::bypass_write_calls(self : BufWriter[W]) -> Int {
-  self.bypass_writes
-}
-
-///|
 pub fn[W] BufWriter::get_ref(self : BufWriter[W]) -> W {
   self.inner
 }
@@ -103,7 +83,6 @@ fn[W : Write] BufWriter::flush_pending(
 ) -> Unit raise IoError {
   let mut completed = 0
   while self.start < self.end {
-    self.underlying_writes += 1
     let bytes = self.buffer.unsafe_reinterpret_as_bytes()
     let pending = self.end - self.start
     let count = Write::write(self.inner, bytes, self.start, pending) catch {
@@ -155,8 +134,6 @@ pub impl[W : Write] Write for BufWriter[W] with fn write(
     return 0
   }
   if self.end == self.start && length >= self.capacity {
-    self.underlying_writes += 1
-    self.bypass_writes += 1
     let count = Write::write(self.inner, src, offset, length)
     validate_progress("BufWriter::write", count, length)
     return count
@@ -170,8 +147,6 @@ pub impl[W : Write] Write for BufWriter[W] with fn write(
   if self.end > self.start {
     self.flush_pending()
     if length >= self.capacity {
-      self.underlying_writes += 1
-      self.bypass_writes += 1
       let count = Write::write(self.inner, src, offset, length)
       validate_progress("BufWriter::write", count, length)
       return count

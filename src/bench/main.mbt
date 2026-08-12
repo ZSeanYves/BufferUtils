@@ -743,7 +743,7 @@ fn buffered_read_case(
         },
         observe: () => {
           copied_bytes: reader.get_ref().observed_bytes(),
-          underlying_calls: reader.underlying_read_calls().to_int64(),
+          underlying_calls: reader.get_ref().calls().to_int64(),
           syscalls: 0,
         },
         cleanup: () => (),
@@ -831,7 +831,7 @@ fn buffered_write_case(
           let copied = writer.get_ref().observed_bytes()
           {
             copied_bytes: copied,
-            underlying_calls: writer.underlying_write_calls().to_int64(),
+            underlying_calls: writer.get_ref().calls().to_int64(),
             syscalls: 0,
           }
         },
@@ -966,10 +966,7 @@ fn native_write_case(size : Int) -> BenchmarkCase {
           }
           @io.Write::flush(file)
         },
-        observe: () => {
-          let syscalls = file.write_syscalls().to_int64()
-          { copied_bytes: 0L, underlying_calls: syscalls, syscalls }
-        },
+        observe: () => { copied_bytes: 0L, underlying_calls: 0L, syscalls: 0L },
         cleanup: () => {
           @io.Close::close(file)
           @fs.remove_file(path)
@@ -1001,10 +998,7 @@ fn native_read_case(size : Int) -> BenchmarkCase {
             @io.Read::read_exact(file, output.mut_view())
           }
         },
-        observe: () => {
-          let syscalls = file.read_syscalls().to_int64()
-          { copied_bytes: 0L, underlying_calls: syscalls, syscalls }
-        },
+        observe: () => { copied_bytes: 0L, underlying_calls: 0L, syscalls: 0L },
         cleanup: () => {
           @io.Close::close(file)
           @fs.remove_file(path)

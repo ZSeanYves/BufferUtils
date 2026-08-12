@@ -39,7 +39,6 @@ struct MemoryReader {
   data : MemoryReaderData
   mut position : Int
   max_chunk : Int
-  mut read_calls : Int
 }
 
 ///|
@@ -55,7 +54,7 @@ pub fn MemoryReader::new(
       message="max_chunk must be positive",
     )
   }
-  { data: Core(data), position: 0, max_chunk, read_calls: 0 }
+  { data: Core(data), position: 0, max_chunk }
 }
 
 ///|
@@ -71,22 +70,13 @@ pub fn MemoryReader::from_shared(
       message="max_chunk must be positive",
     )
   }
-  { data: Shared(data), position: 0, max_chunk, read_calls: 0 }
+  { data: Shared(data), position: 0, max_chunk }
 }
 
 ///|
 /// Return the number of bytes still available to the reader.
 pub fn MemoryReader::remaining(self : MemoryReader) -> Int {
   self.data.len() - self.position
-}
-
-///|
-/// Return the number of calls made to the underlying memory reader.
-///
-/// This is a diagnostic counter for tests and benchmarks, not correctness
-/// state.
-pub fn MemoryReader::read_calls(self : MemoryReader) -> Int {
-  self.read_calls
 }
 
 ///|
@@ -98,7 +88,6 @@ pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
       message="destination range is invalid",
     )
   }
-  self.read_calls += 1
   let count = Int::min(Int::min(length, self.remaining()), self.max_chunk)
   self.data.copy_to(dst, offset, self.position, count)
   self.position += count
@@ -110,8 +99,6 @@ pub impl Read for MemoryReader with fn read(self, dst, offset, length) {
 struct MemoryWriter {
   data : @buffer.BytesMut
   max_chunk : Int
-  mut write_calls : Int
-  mut flush_calls : Int
 }
 
 ///|
@@ -129,7 +116,7 @@ pub fn MemoryWriter::new(
   let data = @buffer.BytesMut::new() catch {
     _ => abort("zero-capacity MemoryWriter construction failed")
   }
-  { data, max_chunk, write_calls: 0, flush_calls: 0 }
+  { data, max_chunk }
 }
 
 ///|
@@ -148,18 +135,6 @@ pub fn MemoryWriter::to_shared_bytes(
 }
 
 ///|
-/// Return the number of write calls observed by the memory writer.
-pub fn MemoryWriter::write_calls(self : MemoryWriter) -> Int {
-  self.write_calls
-}
-
-///|
-/// Return the number of flush calls observed by the memory writer.
-pub fn MemoryWriter::flush_calls(self : MemoryWriter) -> Int {
-  self.flush_calls
-}
-
-///|
 pub impl Write for MemoryWriter with fn write(self, src, offset, length) {
   if offset < 0 || length < 0 || offset > src.length() - length {
     raise io_error(
@@ -168,7 +143,6 @@ pub impl Write for MemoryWriter with fn write(self, src, offset, length) {
       message="source range is invalid",
     )
   }
-  self.write_calls += 1
   let count = Int::min(length, self.max_chunk)
   self.data.put_bytes_view(src[offset:offset + count]) catch {
     error =>
@@ -182,8 +156,8 @@ pub impl Write for MemoryWriter with fn write(self, src, offset, length) {
 }
 
 ///|
-pub impl Write for MemoryWriter with fn flush(self) {
-  self.flush_calls += 1
+pub impl Write for MemoryWriter with fn flush(_self) {
+  ()
 }
 
 ///|

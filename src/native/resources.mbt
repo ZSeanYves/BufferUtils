@@ -365,22 +365,6 @@ pub impl @io.Write for NativeFile with fn is_write_vectored(self) {
 }
 
 ///|
-/// Return the number of native read syscalls observed by this handle.
-///
-/// This is diagnostic evidence only; it is not synchronization state.
-pub fn NativeFile::read_syscalls(self : NativeFile) -> Int {
-  native_file_read_syscalls_ffi(self.handle)
-}
-
-///|
-/// Return the number of native write syscalls observed by this handle.
-///
-/// This is diagnostic evidence only; it is not synchronization state.
-pub fn NativeFile::write_syscalls(self : NativeFile) -> Int {
-  native_file_write_syscalls_ffi(self.handle)
-}
-
-///|
 pub impl @io.Write for NativeFile with fn flush(_self) {
   ()
 }

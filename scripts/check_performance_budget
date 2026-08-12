@@ -104,8 +104,8 @@ NR == 1 { next }
     fail("short-write counter mismatch: " row)
   }
   if (name ~ /^native_file_/) {
-    if (copied != 0 || calls != iterations || syscalls != iterations) {
-      fail("native syscall structure mismatch: " row)
+    if (copied != 0 || calls != 0 || syscalls != 0) {
+      fail("native diagnostic counters must remain explicit unknowns: " row)
     }
   }
   if (name == "async_copy") {

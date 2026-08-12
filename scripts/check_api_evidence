@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+allowlist=${1:-docs/API_ALLOWLIST.txt}
+evidence=docs/API_EVIDENCE.tsv
+expected=$(mktemp)
+actual=$(mktemp)
+section=$(mktemp)
+trap 'rm -f "$expected" "$actual" "$section"' EXIT
+
+test -f "$evidence"
+scripts/generate_api_owners "$allowlist" > "$expected"
+awk -F '\t' 'BEGIN { OFS="|" } !/^#/ && NF { print $1, $2 }' "$evidence" \
+  | LC_ALL=C sort > "$actual"
+
+if ! diff -u --label generated-api-owners --label docs/API_EVIDENCE.tsv \
+  "$expected" "$actual"; then
+  printf 'API evidence inventory is incomplete or stale\n' >&2
+  exit 1
+fi
+
+while IFS=$'\t' read -r package owner proof; do
+  [[ "$package" == \#* || -z "$package" ]] && continue
+  if [[ ! "$proof" =~ ^src/(buffer|io|async_io|native)/.+_(wb)?test\.mbt$ && \
+        ! "$proof" =~ ^src/examples/.+\.mbt$ ]]; then
+    printf 'invalid test/example evidence for %s|%s: %s\n' \
+      "$package" "$owner" "$proof" >&2
+    exit 1
+  fi
+  test -f "$proof" || {
+    printf 'missing test/example evidence for %s|%s: %s\n' \
+      "$package" "$owner" "$proof" >&2
+    exit 1
+  }
+
+  members="_build/doc/ZSeanYves/bufferutils/$package/members.md"
+  test -f "$members" || {
+    printf 'generated documentation missing for package %s; run moon doc --frozen\n' \
+      "$package" >&2
+    exit 1
+  }
+  if ! sed -n 's/^## //p' "$members" | tr -d '\\' | grep -Fxq "$owner"; then
+    printf 'generated documentation has no public owner section: %s|%s\n' \
+      "$package" "$owner" >&2
+    exit 1
+  fi
+
+  awk -v wanted="$owner" '
+    /^## / {
+      heading = substr($0, 4)
+      gsub(/\\_/, "_", heading)
+      if (active && heading != wanted) exit
+      active = heading == wanted
+    }
+    active { print }
+  ' "$members" > "$section"
+
+  while IFS= read -r symbol; do
+    [[ -z "$symbol" ]] && continue
+    if ! grep -Fq "$symbol" "$section"; then
+      printf 'generated documentation section %s|%s omits member %s\n' \
+        "$package" "$owner" "$symbol" >&2
+      exit 1
+    fi
+  done < <(
+    awk -F '|' -v package="$package" -v owner="$owner" '
+      $1 != package { next }
+      $2 ~ ("^pub (async )?fn(\\[[^]]+\\])? " owner "::") {
+        line = $2
+        sub(/^.*::/, "", line)
+        sub(/\(.*/, "", line)
+        print line
+      }
+      current == owner && $2 ~ /^  fn / {
+        line = $2
+        sub(/^  fn /, "", line)
+        sub(/\(.*/, "", line)
+        print line
+      }
+      current == owner && $2 ~ /^  [a-z][A-Za-z0-9_]*[[:space:]]*:/ {
+        line = $2
+        sub(/^  /, "", line)
+        sub(/[[:space:]]*:.*/, "", line)
+        print line
+      }
+      current == owner && $2 ~ /^  [A-Z][A-Za-z0-9_]*(\(|$)/ {
+        line = $2
+        sub(/^  /, "", line)
+        sub(/\(.*/, "", line)
+        print line
+      }
+      $2 ~ ("^pub(\\(open\\)|\\(all\\))? (suberror|struct|enum|trait) " owner "([ {[<]|$)") {
+        current = owner
+        next
+      }
+      $2 ~ /^pub/ { current = "" }
+    ' "$allowlist" | LC_ALL=C sort -u
+  )
+done < "$evidence"
+
+printf 'documentation and test/example evidence covers every public API owner\n'

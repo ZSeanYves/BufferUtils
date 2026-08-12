@@ -6,6 +6,61 @@ fn[T, E : Error] capture_io_result(f : () -> T raise E) -> Result[T, E] {
 }
 
 ///|
+struct ProbeReader {
+  data : Bytes
+  max_chunk : Int
+  mut position : Int
+  mut calls : Int
+}
+
+///|
+fn ProbeReader::new(data : Bytes, max_chunk? : Int = 2147483647) -> ProbeReader {
+  { data, max_chunk, position: 0, calls: 0 }
+}
+
+///|
+impl Read for ProbeReader with fn read(self, dst, offset, length) {
+  self.calls += 1
+  let count = Int::min(
+    Int::min(length, self.data.length() - self.position),
+    self.max_chunk,
+  )
+  for i in 0..<count {
+    dst[offset + i] = self.data[self.position + i]
+  }
+  self.position += count
+  count
+}
+
+///|
+struct ProbeWriter {
+  data : Array[Byte]
+  max_chunk : Int
+  mut calls : Int
+  mut flushes : Int
+}
+
+///|
+fn ProbeWriter::new(max_chunk? : Int = 2147483647) -> ProbeWriter {
+  { data: [], max_chunk, calls: 0, flushes: 0 }
+}
+
+///|
+impl Write for ProbeWriter with fn write(self, src, offset, length) {
+  self.calls += 1
+  let count = Int::min(length, self.max_chunk)
+  for i in 0..<count {
+    self.data.push(src[offset + i])
+  }
+  count
+}
+
+///|
+impl Write for ProbeWriter with fn flush(self) {
+  self.flushes += 1
+}
+
+///|
 struct FailingWriter {
   data : Array[Byte]
   mut remaining_before_error : Int
@@ -220,11 +275,11 @@ impl Read for ErrorRead with fn read(_self, _dst, _offset, _length) {
 
 ///|
 test "Read::read_exact handles ordinary short reads" {
-  let reader = MemoryReader::new(b"abcdef", max_chunk=2)
+  let reader = ProbeReader::new(b"abcdef", max_chunk=2)
   let dst = Array::make(6, (0).to_byte())
   Read::read_exact(reader, dst.mut_view())
   inspect(Bytes::from_array(dst[:]), content="b\"abcdef\"")
-  assert_eq(reader.read_calls(), 3)
+  assert_eq(reader.calls, 3)
 }
 
 ///|
@@ -258,10 +313,10 @@ test "Read::read_exact reports partial progress at EOF" {
 
 ///|
 test "Write::write_all handles ordinary short writes" {
-  let writer = MemoryWriter::new(max_chunk=2)
+  let writer = ProbeWriter::new(max_chunk=2)
   Write::write_all(writer, [b'a', b'b', b'c', b'd', b'e'][:])
-  inspect(writer.to_bytes(), content="b\"abcde\"")
-  assert_eq(writer.write_calls(), 3)
+  inspect(Bytes::from_array(writer.data[:]), content="b\"abcde\"")
+  assert_eq(writer.calls, 3)
 }
 
 ///|
@@ -310,26 +365,25 @@ test "BufReader fill_buf and consume support allocation-free parsing" {
 
 ///|
 test "BufReader bypasses an empty internal buffer for large reads" {
-  let source = MemoryReader::new(b"abcdefgh")
+  let source = ProbeReader::new(b"abcdefgh")
   let reader = BufReader::new(source, capacity=4)
   let dst = Array::make(8, (0).to_byte())
   assert_eq(Read::read_array(reader, dst.mut_view()), 8)
-  assert_eq(reader.bypass_read_calls(), 1)
-  assert_eq(reader.underlying_read_calls(), 1)
+  assert_eq(source.calls, 1)
   inspect(Bytes::from_array(dst[:]), content="b\"abcdefgh\"")
 }
 
 ///|
 test "BufWriter coalesces small writes and bypasses large writes" {
-  let sink = MemoryWriter::new()
+  let sink = ProbeWriter::new()
   let writer = BufWriter::new(sink, capacity=4)
   assert_eq(Write::write_array(writer, [b'a', b'b'][:]), 2)
   assert_eq(writer.buffered_len(), 2)
   Write::flush(writer)
-  assert_eq(sink.write_calls(), 1)
+  assert_eq(sink.calls, 1)
   assert_eq(Write::write_array(writer, [b'c', b'd', b'e', b'f'][:]), 4)
-  assert_eq(writer.bypass_write_calls(), 1)
-  inspect(sink.to_bytes(), content="b\"abcdef\"")
+  assert_eq(sink.calls, 2)
+  inspect(Bytes::from_array(sink.data[:]), content="b\"abcdef\"")
 }
 
 ///|
@@ -684,14 +738,14 @@ test "sync boundary branches cover buffered reads, EOF, and invalid contracts" {
     capture_io_result(() => MemoryReader::new(b"x", max_chunk=0)) is Err(_),
     true,
   )
-  let writer = MemoryWriter::new()
+  let writer = ProbeWriter::new()
   assert_eq(
     capture_io_result(() => MemoryWriter::new(max_chunk=0)) is Err(_),
     true,
   )
-  assert_eq(writer.flush_calls(), 0)
+  assert_eq(writer.flushes, 0)
   Write::flush(writer)
-  assert_eq(writer.flush_calls(), 1)
+  assert_eq(writer.flushes, 1)
 
   assert_eq(
     capture_io_result(() => {
@@ -845,12 +899,13 @@ test "BufReader and BufWriter validate construction and expose parts" {
     capture_io_result(() => BufWriter::new(sink, capacity=0)) is Err(_),
     true,
   )
-  let writer = BufWriter::new(MemoryWriter::new(), capacity=2)
+  let inner = ProbeWriter::new()
+  let writer = BufWriter::new(inner, capacity=2)
   assert_eq(writer.capacity(), 2)
-  assert_eq(writer.underlying_write_calls(), 0)
-  assert_eq(writer.get_ref().write_calls(), 0)
-  assert_eq(writer.get_mut().write_calls(), 0)
+  assert_eq(writer.get_ref().calls, 0)
+  assert_eq(writer.get_mut().calls, 0)
   assert_eq(Write::write_array(writer, [][:]), 0)
+  assert_eq(inner.calls, 0)
   let seek_writer = BufWriter::new(Cursor::new([][:]), capacity=2)
   ignore(Write::write_array(seek_writer, [b'a', b'b'][:]))
   assert_eq(Seek::stream_position(seek_writer), 2L)

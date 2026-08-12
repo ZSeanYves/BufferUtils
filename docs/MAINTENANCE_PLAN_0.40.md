@@ -25,7 +25,10 @@ must be reviewable and revertible without reverting unrelated test or CI work.
   extraction, adapter, and memory-fixture paths. Asynchronous shared streaming
   now has additive accumulation and write paths while retaining the existing
   Core `Bytes` materialization APIs.
-- Diagnostic counters are still visible in generated public interfaces.
+- PR-05 removes diagnostic counters from generated public interfaces and keeps
+  call/copy evidence in benchmark or test fixtures. Exact allowlist, naming,
+  ownership-boundary, generated-documentation, and test/example evidence gates
+  now govern the compatibility surface.
 - Documentation has been consolidated under `docs/`; historical changelog
   entries may mention superseded RC documents, but active instructions point
   to the consolidated guides and latest-toolchain policy.

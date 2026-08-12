@@ -226,22 +226,6 @@ pub impl @io.Write for NativeTcpStream with fn is_write_vectored(self) {
 }
 
 ///|
-/// Return the number of native read syscalls observed by this stream.
-///
-/// This is diagnostic evidence only; it is not synchronization state.
-pub fn NativeTcpStream::read_syscalls(self : NativeTcpStream) -> Int {
-  native_tcp_read_syscalls_ffi(self.handle)
-}
-
-///|
-/// Return the number of native write syscalls observed by this stream.
-///
-/// This is diagnostic evidence only; it is not synchronization state.
-pub fn NativeTcpStream::write_syscalls(self : NativeTcpStream) -> Int {
-  native_tcp_write_syscalls_ffi(self.handle)
-}
-
-///|
 pub impl @io.Write for NativeTcpStream with fn flush(_self) {
   ()
 }

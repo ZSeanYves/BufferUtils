@@ -182,8 +182,6 @@ pub impl AsyncWrite for AsyncTcpStream
 
 pub(all) struct CopyProgress {
   bytes_copied : Int
-  read_calls : Int
-  write_calls : Int
 } derive(Eq, @debug.Debug)
 
 // Type aliases

@@ -6,8 +6,6 @@ struct BufReader[R] {
   mut position : Int
   mut end : Int
   mut eof : Bool
-  mut underlying_reads : Int
-  mut bypass_reads : Int
 }
 
 ///|
@@ -29,8 +27,6 @@ pub fn[R] BufReader::new(
     position: 0,
     end: 0,
     eof: false,
-    underlying_reads: 0,
-    bypass_reads: 0,
   }
 }
 
@@ -42,22 +38,6 @@ pub fn[R] BufReader::capacity(self : BufReader[R]) -> Int {
 ///|
 pub fn[R] BufReader::buffered_len(self : BufReader[R]) -> Int {
   self.end - self.position
-}
-
-///|
-/// Return the number of reads issued to the wrapped reader.
-///
-/// This is a diagnostic counter used by contract tests and benchmarks.
-pub fn[R] BufReader::underlying_read_calls(self : BufReader[R]) -> Int {
-  self.underlying_reads
-}
-
-///|
-/// Return the number of reads that bypassed the internal buffer.
-///
-/// This is a diagnostic counter used by contract tests and benchmarks.
-pub fn[R] BufReader::bypass_read_calls(self : BufReader[R]) -> Int {
-  self.bypass_reads
 }
 
 ///|
@@ -135,8 +115,6 @@ pub impl[R : Read] Read for BufReader[R] with fn read(self, dst, offset, length)
     return count
   }
   if length >= self.buffer.length() {
-    self.underlying_reads += 1
-    self.bypass_reads += 1
     let count = Read::read(self.inner, dst, offset, length)
     validate_progress("BufReader::read", count, length)
     self.eof = count == 0
@@ -159,7 +137,6 @@ pub impl[R : Read] BufRead for BufReader[R] with fn fill_buf(self) {
   }
   self.position = 0
   self.end = 0
-  self.underlying_reads += 1
   let count = Read::read_fixed(self.inner, self.buffer, 0, self.buffer.length())
   validate_progress("BufReader::fill_buf", count, self.buffer.length())
   self.end = count

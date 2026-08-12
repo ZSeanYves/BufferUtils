@@ -74,14 +74,6 @@ extern "C" fn native_file_is_write_vectored_ffi(
 
 ///|
 #borrow(handle)
-extern "C" fn native_file_read_syscalls_ffi(handle : NativeFileHandle) -> Int = "bufferutils_file_read_syscalls"
-
-///|
-#borrow(handle)
-extern "C" fn native_file_write_syscalls_ffi(handle : NativeFileHandle) -> Int = "bufferutils_file_write_syscalls"
-
-///|
-#borrow(handle)
 extern "C" fn native_file_seek_ffi(
   handle : NativeFileHandle,
   offset : Int64,
@@ -256,14 +248,6 @@ extern "C" fn native_tcp_is_read_vectored_ffi(
 extern "C" fn native_tcp_is_write_vectored_ffi(
   socket : NativeSocketHandle,
 ) -> Int = "bufferutils_tcp_is_write_vectored"
-
-///|
-#borrow(socket)
-extern "C" fn native_tcp_read_syscalls_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_read_syscalls"
-
-///|
-#borrow(socket)
-extern "C" fn native_tcp_write_syscalls_ffi(socket : NativeSocketHandle) -> Int = "bufferutils_tcp_write_syscalls"
 
 ///|
 #borrow(socket)

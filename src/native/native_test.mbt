@@ -97,11 +97,10 @@ test "NativeFile fixed-array reads honor destination offsets" {
 }
 
 ///|
-test "NativeFile vectored I/O preserves ordering and syscall accounting" {
+test "NativeFile vectored I/O preserves ordering" {
   ensure_native_test_dir()
   let path = native_test_dir + "/vectored.bin"
   let writer = NativeFile::create(path)
-  let before_write = writer.write_syscalls()
   let sources = [
     @io.IoSlice::new(b"", 0, 0),
     @io.IoSlice::new(b"-ab-", 1, 2),
@@ -110,7 +109,6 @@ test "NativeFile vectored I/O preserves ordering and syscall accounting" {
   let write_vectored = @io.Write::is_write_vectored(writer)
   let written = @io.Write::write_vectored(writer, sources[:])
   assert_eq(written, if write_vectored { 4 } else { 2 })
-  assert_eq(writer.write_syscalls() - before_write, 1)
   if !write_vectored {
     assert_eq(@io.Write::write(writer, b"cd", 0, 2), 2)
   }
@@ -127,7 +125,6 @@ test "NativeFile vectored I/O preserves ordering and syscall accounting" {
   let reader = NativeFile::open_read(path)
   let first = FixedArray::make(3, b'-')
   let second = FixedArray::make(3, b'-')
-  let before_read = reader.read_syscalls()
   let destinations = [
     @io.IoSliceMut::new(first, 1, 2),
     @io.IoSliceMut::new(second, 0, 2),
@@ -140,24 +137,8 @@ test "NativeFile vectored I/O preserves ordering and syscall accounting" {
   }
   assert_eq(first.unsafe_reinterpret_as_bytes(), b"-ab")
   assert_eq(second.unsafe_reinterpret_as_bytes(), b"cd-")
-  assert_eq(
-    reader.read_syscalls() - before_read,
-    if read_vectored {
-      1
-    } else {
-      2
-    },
-  )
   let empty = [@io.IoSliceMut::new(first, 0, 0)]
   assert_eq(@io.Read::read_vectored(reader, empty[:]), 0)
-  assert_eq(
-    reader.read_syscalls() - before_read,
-    if read_vectored {
-      1
-    } else {
-      2
-    },
-  )
   @io.Close::close(reader)
 }
 
@@ -443,17 +424,15 @@ test "native access-mode and closed mmap branches remain structured" {
 }
 
 ///|
-test "NativeTcp uses one vectored syscall per ordered message" {
+test "NativeTcp vectored I/O preserves one ordered message" {
   let listener = NativeTcpListener::bind("127.0.0.1", 0)
   let client = NativeTcpStream::connect("127.0.0.1", listener.local_port())
   let server = listener.accept()
-  let before_write = client.write_syscalls()
   let message = [
     @io.IoSlice::new(b"vec", 0, 3),
     @io.IoSlice::new(b"tored", 0, 5),
   ]
   assert_eq(@io.Write::write_vectored(client, message[:]), 8)
-  assert_eq(client.write_syscalls() - before_write, 1)
   assert_eq(@io.Write::is_write_vectored(client), true)
   let left = FixedArray::make(3, (0).to_byte())
   let right = FixedArray::make(5, (0).to_byte())
@@ -461,11 +440,9 @@ test "NativeTcp uses one vectored syscall per ordered message" {
     @io.IoSliceMut::new(left, 0, 3),
     @io.IoSliceMut::new(right, 0, 5),
   ]
-  let before_read = server.read_syscalls()
   assert_eq(@io.Read::read_vectored(server, destinations[:]), 8)
   assert_eq(left.unsafe_reinterpret_as_bytes(), b"vec")
   assert_eq(right.unsafe_reinterpret_as_bytes(), b"tored")
-  assert_eq(server.read_syscalls() - before_read, 1)
   assert_eq(@io.Read::is_read_vectored(server), true)
   @io.Close::close(client)
   @io.Close::close(server)
