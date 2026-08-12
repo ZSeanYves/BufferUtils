@@ -21,6 +21,7 @@ fi
 
 while IFS=$'\t' read -r package owner proof; do
   [[ "$package" == \#* || -z "$package" ]] && continue
+  proof=${proof%$'\r'}
   if [[ ! "$proof" =~ ^src/(buffer|io|async_io|native)/.+_(wb)?test\.mbt$ && \
         ! "$proof" =~ ^src/examples/.+\.mbt$ ]]; then
     printf 'invalid test/example evidence for %s|%s: %s\n' \
