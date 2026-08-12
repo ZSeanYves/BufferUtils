@@ -191,9 +191,10 @@ undeclared addition, removal, or signature change. `scripts/check_api_names`
 enforces the rules above and keeps `SharedBytes`, native mmap owners, and native
 socket owners in visibly separate ownership domains. `docs/API_EVIDENCE.tsv`
 must cover every public owner; its checker requires a generated documentation
-section, all public methods in that section, and a focused test or executable
-example. An intentional API change must update the implementation, generated
-interfaces, allowlist, API review, migration note, and evidence in the same PR.
+section, all public methods, trait methods, fields, and enum variants in that
+section, and a focused test or executable example. An intentional API change
+must update the implementation, generated interfaces, allowlist, API review,
+migration note, and evidence in the same PR.
 
 ## Rust parity inventory
 

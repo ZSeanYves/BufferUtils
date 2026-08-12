@@ -47,7 +47,7 @@ instrumentation belongs in its fixture or generated diagnostics.
   boundaries in `ARCHITECTURE.md`.
 - `docs/API_EVIDENCE.tsv` and `scripts/check_api_evidence` require generated
   documentation plus a focused test or executable example for every public API
-  owner and all of its public methods.
+  owner and all of its public methods, trait methods, fields, and enum variants.
 - `MappedBytes` and `NativeTcp*` remain native resource owners. No native public
   signature exposes `SharedBytes`, and portable packages do not expose
   `MappedBytes`.

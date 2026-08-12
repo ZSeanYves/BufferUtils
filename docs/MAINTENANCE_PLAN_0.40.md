@@ -20,7 +20,11 @@ must be reviewable and revertible without reverting unrelated test or CI work.
   cancellation, and recovery contracts.
 - The PR-04 implementation CI run [31495616259](https://github.com/ZSeanYves/BufferUtils/actions/runs/31495616259)
   passed all validation, coverage, sanitizer, contract, and performance jobs.
-- Coverage was 95.22% overall with each core package above 90%.
+- The PR-05 governance CI run [31627369509](https://github.com/ZSeanYves/BufferUtils/actions/runs/31627369509)
+  passed all eight validation, coverage, sanitizer, contract, and performance
+  jobs after the Windows CRLF evidence-path fix.
+- PR-05 coverage is 95.20% overall; `buffer`, `io`, `async_io`, and `native`
+  are 98.8%, 98.2%, 91.5%, and 91.2%, respectively.
 - Synchronous shared streaming has additive accumulation, write, buffered
   extraction, adapter, and memory-fixture paths. Asynchronous shared streaming
   now has additive accumulation and write paths while retaining the existing
